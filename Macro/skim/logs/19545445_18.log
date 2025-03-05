@@ -1,0 +1,5 @@
+009 (19545445.018.000) 2025-03-05 10:51:50 Job was aborted.
+	via condor_rm (by user jun502s)
+
+	Job terminated by itself at 2025-02-28T10:03:48Z (using method 0: OF_ITS_OWN_ACCORD).
+...

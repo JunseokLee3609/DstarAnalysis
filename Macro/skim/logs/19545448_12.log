@@ -1,0 +1,34 @@
+000 (19545448.012.000) 2025-02-28 19:10:29 Job submitted from host: <192.168.35.100:9618?addrs=192.168.35.100-9618&alias=kunpl&noUDP&sock=schedd_1898_72d7>
+...
+040 (19545448.012.000) 2025-02-28 19:10:29 Started transferring input files
+	Transferring to host: <192.168.35.114:9618?addrs=192.168.35.114-9618&alias=kunpl-node14&noUDP&sock=slot1_2_1143074_ca4c_37617>
+...
+040 (19545448.012.000) 2025-02-28 19:10:29 Finished transferring input files
+...
+001 (19545448.012.000) 2025-02-28 19:10:30 Job executing on host: <192.168.35.114:9618?addrs=192.168.35.114-9618&alias=kunpl-node14&noUDP&sock=startd_1143051_7d54>
+...
+006 (19545448.012.000) 2025-02-28 19:10:32 Image size of job updated: 425712
+	0  -  MemoryUsage of job (MB)
+	0  -  ResidentSetSize of job (KB)
+...
+040 (19545448.012.000) 2025-02-28 19:10:32 Started transferring output files
+...
+040 (19545448.012.000) 2025-02-28 19:10:32 Finished transferring output files
+...
+005 (19545448.012.000) 2025-02-28 19:10:32 Job terminated.
+	(1) Normal termination (return value 1)
+		Usr 0 00:00:01, Sys 0 00:00:00  -  Run Remote Usage
+		Usr 0 00:00:00, Sys 0 00:00:00  -  Run Local Usage
+		Usr 0 00:00:01, Sys 0 00:00:00  -  Total Remote Usage
+		Usr 0 00:00:00, Sys 0 00:00:00  -  Total Local Usage
+	312  -  Run Bytes Sent By Job
+	486  -  Run Bytes Received By Job
+	312  -  Total Bytes Sent By Job
+	486  -  Total Bytes Received By Job
+	Partitionable Resources :    Usage  Request Allocated 
+	   Cpus                 :                 1         1 
+	   Disk (KB)            :       12        1    436909 
+	   Memory (MB)          :        0        1       128 
+
+	Job terminated of its own accord at 2025-02-28T10:10:32Z with exit-code 1.
+...

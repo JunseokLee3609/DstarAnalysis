@@ -1,0 +1,3 @@
+/home/jun502s/DstarAna/DStarAnalysis/Data/MC/MCNPD0KPi_DpT8_0220/d0ana_tree_12.root 1
+/home/jun502s/DstarAna/DStarAnalysis/Data/MC/MCNPD0KPi_DpT8_0220/d0ana_tree_14.root 2
+/home/jun502s/DstarAna/DStarAnalysis/Data/MC/MCNPD0KPi_DpT8_0220/d0ana_tree_3.root 3

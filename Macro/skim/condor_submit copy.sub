@@ -1,0 +1,14 @@
+universe           = vanilla
+executable         = runProcess.sh
+getenv = True
+arguments          = $(inputFile) $(num)
+output             = logs/$(Cluster)_$(Process).out
+error              = logs/$(Cluster)_$(Process).err
+log                = logs/$(Cluster)_$(Process).log
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+transfer_input_files = skimMC_ForCondor.cpp, file_MCNPD0KPi_DpT8_0220.txt
+
+queue inputFile num from file_MCNPD0KPi_DpT8_0220.txt
+

@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "flattener.C": "cpp",
+        "checkFinderFileBased.C": "cpp",
+        "massFit_MC.C": "cpp",
+        "FitDstar.C": "cpp"
+    },
+    "remote.extensionKind": {
+        "GitHub.copilot": ["ui"],
+      }
+}

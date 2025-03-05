@@ -1,0 +1,12 @@
+input_line_9:2:20: error: expected expression
+ FlatMix(16*100000,, $(Process+1)*100000-1,,) /* '.x' tries to invoke a function with the same name as the macro */
+                   ^
+input_line_9:2:24: error: use of undeclared identifier 'Process'
+ FlatMix(16*100000,, $(Process+1)*100000-1,,) /* '.x' tries to invoke a function with the same name as the macro */
+                       ^
+input_line_9:2:44: error: expected expression
+ FlatMix(16*100000,, $(Process+1)*100000-1,,) /* '.x' tries to invoke a function with the same name as the macro */
+                                           ^
+input_line_9:2:45: error: expected expression
+ FlatMix(16*100000,, $(Process+1)*100000-1,,) /* '.x' tries to invoke a function with the same name as the macro */
+                                            ^

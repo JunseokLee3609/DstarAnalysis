@@ -1,0 +1,37 @@
+#ifndef __CORR_COMMONSEL__
+#define __CORR_COMMONSEL__
+
+
+#define PDG_DAU1 211
+#define PDG_DAU2 321
+#define DSGLPTLO 4
+#define DSGLPTHI 30
+#define DSGLABSY 1.0
+#define DSGL3DPA 1.0
+#define DSGL2DPA 1.0
+
+#define DSGLMVASCALE 1.0
+
+
+#define DSGLPT_D0DAU1 1
+#define DSGLPT_D0DAU2 1
+#define DSGLABSETA_D0DAU1 2.4
+#define DSGLABSETA_D0DAU2 2.4
+#define DSGLABSY_D0 1.0
+#define DSGLABSETA_D0 1.0
+#define DSGLABSETA_D1 1.5
+#define DSGLPT_D1 0.4
+
+
+#define DSGLNHIT_DAU1 10
+#define DSGLNHIT_DAU2 10
+
+#define DSGLPTERR_DAU1 0.1
+#define DSGLPTERR_DAU2 0.1
+
+#define DSGLETADIFF_DAU 1.0
+#define DSGLPTSUM_DAU 1.6
+
+
+
+#endif
