@@ -7,12 +7,12 @@ namespace PDFParams {
 
     // Gaussian Parameters
     struct GaussianParams {
-        double mean = 1.86;
+        double mean = 1.864;
         double sigma = 0.01;
-        double mean_min = 1.84;
-        double mean_max = 1.88;
+        double mean_min = 1.86;
+        double mean_max = 1.87;
         double sigma_min = 0.001;
-        double sigma_max = 1;
+        double sigma_max = 0.02;
     };
 
     // Double Gaussian Parameters
@@ -100,15 +100,15 @@ namespace PDFParams {
 
     // Phenomenological Parameters
     struct PhenomenologicalParams {
-        double p0 = 0.0;
-        double p0_min = -10.0;
-        double p0_max = 10.0;
-        double p1 = 0.0;
-        double p1_min = -10.0;
-        double p1_max = 10.0;
-        double p2 = 0.0;
-        double p2_min = -10.0;
-        double p2_max = 10.0;
+        double p0;
+        double p0_min;
+        double p0_max;
+        double p1;
+        double p1_min; 
+        double p1_max; 
+        double p2; 
+        double p2_min; 
+        double p2_max;
     };
 
     // Exponential Background Parameters
@@ -127,9 +127,9 @@ namespace PDFParams {
 
     // Polynomial Background Parameters
     struct PolynomialBkgParams {
-        std::vector<double> coefficients = {0.0};
-        std::vector<double> coef_min = {-1.0};
-        std::vector<double> coef_max = {1.0};
+        std::vector<double> coefficients; 
+        std::vector<double> coef_min;
+        std::vector<double> coef_max;
     };
 
 }

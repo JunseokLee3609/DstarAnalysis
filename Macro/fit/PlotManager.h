@@ -26,11 +26,15 @@ private:
     std::string pdfName_;
     std::string varName_;
     std::string fitResultName_;
+    std::string wsName_;
+    std::string plotName_;
     TFile* file_;
     RooDataSet* dataset_;
     RooAbsPdf* pdf_;
     RooRealVar* var_;
     RooFitResult* fitResult_;
+    RooWorkspace* ws_;
+    int colorIndex = 1; // Start with a different color for each component
 
     void DrawPullFrame(RooPlot* frame);
     RooAbsPdf* ExtractComponent(const std::string& namePattern);
@@ -38,36 +42,47 @@ private:
     void DrawParameterPad();
 };
 PlotManager::PlotManager(FitOpt opt)
-    : filename_(opt.outputFile), datasetName_(opt.reducedDataName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
-    file_ = TFile::Open(filename_.c_str());
+    : filename_(opt.outputFile), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
+    file_ = TFile::Open(Form("roots/%s.root",filename_.c_str()));
     if (!file_ || file_->IsZombie()) {
         std::cerr << "Error: Failed to open file " << filename_ << std::endl;
         return;
     }
-
-    dataset_ = (RooDataSet*)file_->Get(datasetName_.c_str());
-    if (!dataset_) {
-        std::cerr << "Error: Failed to load dataset from file" << std::endl;
+    ws_ = (RooWorkspace*)file_->Get(wsName_.c_str());
+    if (!ws_) {
+        std::cerr << "Error: Failed to load ws from file" << std::endl;
         file_->Close();
         return;
     }
 
-    pdf_ = (RooAbsPdf*)file_->Get(pdfName_.c_str());
+    dataset_ = (RooDataSet*)ws_->data(datasetName_.c_str());
+    if (!dataset_) {
+        std::cerr << "Error: Failed to load dataset from workspace" << std::endl;
+        file_->Close();
+        return;
+    }
+    cout << "Total Entry : " << dataset_->sumEntries() << endl;
+    if(opt.doFit){ 
+    pdf_ = (RooAbsPdf*)ws_->pdf(pdfName_.c_str());
     if (!pdf_) {
         std::cerr << "Error: Failed to load PDF from file" << std::endl;
         file_->Close();
         return;
-    }
+    }}
     const RooArgSet* vars = dataset_->get();
+    
     if (vars) {
             var_ = (RooRealVar*)vars->find(varName_.c_str());
     }
+    var_=(RooRealVar*)ws_->var(varName_.c_str());
     if (!var_) {
         std::cerr << "Error: Failed to load variable from RooDataSet" << std::endl;
         file_->Close();
         return;
     }
     var_->setRange("analysis", opt.massMin, opt.massMax);
+    // var_->setMin(opt.massMin);
+    // var_->setMax(opt.massMax);
 
     fitResult_ = (RooFitResult*)file_->Get(fitResultName_.c_str());
     if (!fitResult_) {
@@ -84,10 +99,10 @@ void PlotManager::DrawRawDistribution() {
     }
 
     TCanvas* canvas = new TCanvas("canvas", "Raw Distribution", 800, 600);
-    RooPlot* frame = var_->frame(RooFit::Range("analysis"),RooFit::NormRange("analysis"));
+    RooPlot* frame = var_->frame(RooFit::Range("analysis"));
     dataset_->plotOn(frame);
     frame->Draw();
-    canvas->SaveAs("raw_distribution.png");
+    canvas->SaveAs(Form("plots_raw/RawDist%s.pdf",plotName_.c_str()));
     delete canvas;
 }
 RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
@@ -103,6 +118,7 @@ RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
             break;
         }
     }
+    cout << "foundPdf: " << foundPdf->GetName() << endl;
     
     delete iter;
     return foundPdf;
@@ -121,8 +137,10 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     TPad* pullPad = new TPad("pullPad", "", 0.0, 0.0, 0.7, 0.3);
     TPad* paramPad = new TPad("paramPad", "", 0.7, 0.0, 1.0, 1.0);
 
-    mainPad->SetBottomMargin(0.02);
-    pullPad->SetTopMargin(0.02);
+    mainPad->SetBottomMargin(0.00);
+    mainPad->SetTopMargin(0.12);
+    mainPad->SetLeftMargin(0.1);
+    pullPad->SetTopMargin(0.01);
     pullPad->SetBottomMargin(0.3);
 
     mainPad->Draw();
@@ -131,23 +149,25 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // Draw the main plot
     mainPad->cd();
-    RooPlot* frame = var_->frame(RooFit::Title("Fit Result"), RooFit::Range("analysis"));
-    dataset_->plotOn(frame, RooFit::Range("analysis"), RooFit::NormRange("analysis"));
+    var_->Print("v");
+    RooPlot* frame = var_->frame(RooFit::Bins(120),RooFit::Title(""),RooFit::Range("analysis"));
+    dataset_->plotOn(frame, RooFit::Name("datapoints"));
     
     // Clear any fit range attribute that might cause problems
-    pdf_->setStringAttribute("fitrange", nullptr);
+    // pdf_->setStringAttribute("fitrange", nullptr);
     
     // Plot the total PDF
-    pdf_->plotOn(frame, RooFit::Range("analysis"), RooFit::NormRange("analysis"));
+    pdf_->plotOn(frame, RooFit::Name("model"), RooFit::NormRange("analysis"),RooFit::Range("analysis"));
+    // pdf_->getParameters(dataset_)->Print("v");
     
     // Extract and plot signal component
-    RooAbsPdf* signalPdf = ExtractComponent("sig");
-    if (signalPdf) {
-        PlotComponents(frame, signalPdf);
-    }
+    // RooAbsPdf* signalPdf = ExtractComponent("sig");
+    // if (signalPdf) {
+    //     PlotComponents(frame, signalPdf);
+    // }
     
     // Extract and plot background component
-    RooAbsPdf* backgroundPdf = ExtractComponent("bkg");
+    RooAbsPdf* backgroundPdf = ExtractComponent("tot");
     if (backgroundPdf) {
         PlotComponents(frame, backgroundPdf);
     }
@@ -164,21 +184,27 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     paramPad->cd();
     DrawParameterPad();
 
-    canvas->SaveAs("fitted_model.png");
+    canvas->SaveAs(Form("plots/%s.pdf",plotName_.c_str()));
     delete canvas;
 }
 
 void PlotManager::DrawPullFrame(RooPlot* frame) {
-    RooHist* pullHist = frame->pullHist();
-    RooPlot* pullFrame = var_->frame(RooFit::Range("analysis"));
+    RooHist* pullHist = frame->pullHist("datapoints", "model");
+    RooPlot* pullFrame = var_->frame(RooFit::Title(" "),RooFit::Range("analysis"));
     pullFrame->addPlotable(pullHist, "P");
-    pullFrame->GetYaxis()->SetTitle("Pull");
-    pullFrame->GetYaxis()->SetTitleOffset(1.5);
-    pullFrame->GetXaxis()->SetTitleSize(0.1);
+    pullFrame->SetMinimum(-2);
+    pullFrame->SetMaximum(2);
+    pullFrame->GetYaxis()->SetTitle("");
+    pullFrame->GetYaxis()->SetTitleOffset(0.3);
     pullFrame->GetYaxis()->SetTitleSize(0.1);
-    pullFrame->GetXaxis()->SetLabelSize(0.1);
+    pullFrame->GetYaxis()->SetNdivisions(505);
     pullFrame->GetYaxis()->SetLabelSize(0.1);
+    pullFrame->GetXaxis()->SetTitleSize(0.1);
+    pullFrame->GetXaxis()->SetLabelSize(0.1);
     pullFrame->Draw();
+    TLine* line0 = new TLine(var_->getMin("analysis"), 0, var_->getMax("analysis"), 0);
+    line0->SetLineStyle(2);
+    line0->Draw();
 }
 
 void PlotManager::DrawParameterPad() {
@@ -197,27 +223,31 @@ void PlotManager::PlotComponents(RooPlot* frame, RooAbsPdf* Pdf) {
     if (components->getSize() > 1) {
         TIterator* iter = components->createIterator();
         RooAbsArg* component;
-        int colorIndex = 5; // Start with a different color for each component
         while ((component = (RooAbsArg*)iter->Next())) {
             RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(component);
-            if (pdfComponent && std::string(pdfComponent->GetName()).find("sig") == 0) {
+            
                 Pdf->plotOn(frame, 
                                   RooFit::Components(*pdfComponent),
                                   RooFit::LineStyle(kDashed),
                                   RooFit::LineColor(colorIndex),
                                   RooFit::Name(pdfComponent->GetName()),
-                                  RooFit::Range("analysis"));
+                                  RooFit::Range("analysis"),
+                                  RooFit::NormRange("analysis"));
                 colorIndex++;
-            }
+            
         }
         delete iter;
     } else {
         Pdf->plotOn(frame, 
                           RooFit::Components(*Pdf),
                           RooFit::LineStyle(kDashed),
-                          RooFit::LineColor(kRed),
-                          RooFit::Name("background"),
-                          RooFit::Range("analysis"));
+                          RooFit::LineColor(colorIndex),
+                          RooFit::Name(Pdf->GetName()),
+                        //   RooFit::Normalization(1.0, RooAbsReal::Raw),
+                          RooFit::Range("analysis"),
+                          RooFit::NormRange("analysis"));
+                colorIndex++;
+                        //   RooFit::NormRange("analysis"));
     }
 }
 

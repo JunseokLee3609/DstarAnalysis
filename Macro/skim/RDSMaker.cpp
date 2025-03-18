@@ -268,24 +268,27 @@ void RDSMaker() {
         // {"nHits",  VarType::INT, 0, 50},
         
         // 불리언 변수
-        // {"isMC", VarType::BOOL},
-        {"matchGEN", VarType::BOOL}
+        {"isSwap",VarType::BOOL},
+        {"isMC", VarType::BOOL},
+        {"matchGEN", VarType::BOOL},
+        {"mva", VarType::FLOAT, -1, 1}
     };
     
     // 청크 단위로 RooDataSet 생성
-    string filename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_Mix_0_2500227.root";  // 실제 파일 경로로 변경
+    string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_Mix_11_2500227.root";  // 실제 파일 경로로 변경
+    string outputfilename = "RDS_D0DATAMVA.root";  // 출력 파일 이름
     string outputDirectory = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC";  // 출력 파일 이름
     string treename = "skimTreeFlat";        // 실제 트리 이름으로 변경
     Long64_t chunkSize = 5000000;      // 청크 크기 설정 (필요에 따라 조정)
-    Long64_t maxEntries = 200000000;        // 전체 데이터 처리 (-1: 제한 없음)
+    Long64_t maxEntries = -1;        // 전체 데이터 처리 (-1: 제한 없음)
     
-    RooDataSet* data = ChunkedRDSMaker(filename, treename, variables, chunkSize, maxEntries);
+    RooDataSet* data = ChunkedRDSMaker(inputfilename, treename, variables, chunkSize, maxEntries);
 
     
     // 데이터셋 사용 예시
     if (data) {
         // 출력 파일 생성
-        TFile* outputFile = new TFile(Form("%s/RDS_D0MC.root",outputDirectory.c_str()), "RECREATE");
+        TFile* outputFile = new TFile(Form("%s/%s",outputDirectory.c_str(),outputfilename.c_str()), "RECREATE");
         
         // 데이터셋을 파일에 저장
         data->Write("dataset");
@@ -294,7 +297,9 @@ void RDSMaker() {
         outputFile->Close();
         delete outputFile;
         
-        cout << "Dataset has been saved in " << Form("%s/RDS_D0MC.root",outputDirectory.c_str()) << "." << endl;
+        // cout << "Dataset has been saved in " << Form("%s/RDS_D0MC.root",outputDirectory.c_str()) << "." << endl;
+        cout << "Dataset has been saved in " << Form("%s/%s",outputDirectory.c_str(),outputfilename.c_str()) << "." << endl;
+
         
         // 메모리에서 데이터셋 삭제 (파일에는 이미 복사되었으므로 안전함)
         delete data;

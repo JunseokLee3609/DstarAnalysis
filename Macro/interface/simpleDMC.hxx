@@ -4,7 +4,7 @@
 #include <TTree.h>
 #include <TBranch.h>
 #include <iostream>
-const int __MAXCAND_MC__ = 500000;
+const int __MAXCAND_MC__ = 2000;
 
 namespace DataFormat{
     struct simpleDStarDataTreeevt{

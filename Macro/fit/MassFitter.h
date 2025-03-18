@@ -44,14 +44,14 @@ using PolynomialBkgParams = PDFParams::PolynomialBkgParams;
 class MassFitter {
 public:
     // 생성자 & 소멸자
-    MassFitter(const std::string& name, double massMin, double massMax);
+    MassFitter(const std::string& name,RooDataSet* dataset,std::string& massvar, double massMin, double massMax);
     ~MassFitter();
     
     
     // 데이터 설정
     template <typename SigPar, typename BkgPar>
-    void init(FitOpt opt,std::string filepath_, bool inclusive, const std::string pTbin,const std::string etabin, SigPar sigParams, BkgPar bkgParams);
-    void SetData(RooDataSet* dataset);
+    void PerformFit(FitOpt opt, bool inclusive, const std::string pTbin,const std::string etabin, SigPar sigParams, BkgPar bkgParams);
+    // void SetData(RooDataSet* dataset);
     void ApplyCut(const std::string& cutExpr);
     
     // Signal PDF 설정 메서드
@@ -68,7 +68,7 @@ public:
     void SetBackgroundPDF(const PhenomenologicalParams& params, const std::string &name);
     
     // 피팅 수행
-    RooFitResult* Fit(bool useMinos = false, bool useHesse = true, bool verbose = false, double rangeMin = 1.9, double rangeMax = 2.1);
+    RooFitResult* Fit(bool useMinos = false, bool useHesse = true, bool verbose = false,bool useCUDA=true, double rangeMin = 1.9, double rangeMax = 2.1);
     
     // 결과 접근 메서드
     double GetSignalYield() const;
@@ -101,7 +101,8 @@ private:
     void MakeExponential(const ExponentialBkgParams& params, const std::string& name = "exp");
     void MakeChebychev(const ChebychevBkgParams& params, const std::string& name = "cheb");
     void MakePolynomial(const PolynomialBkgParams& params, const std::string& name = "poly");
-    void MakePhenomenological(const PhenomenologicalParams& params, const std::string& name = "phenom");
+    void MakeRooDstD0Bg(const PhenomenologicalParams& params, const std::string& name = "dstd0");
+    // void MakePhenomenological(const PhenomenologicalParams& params, const std::string& name = "phenom");
     
     // 전체 PDF 생성
     void CombinePDFs();
@@ -270,19 +271,29 @@ void MassFitter::MakePolynomial(const PolynomialBkgParams& params, const std::st
     background_pdf_= new RooChebychev(name.c_str(), ("Polynomial_" + name).c_str(),
                            *activeMassVar_, coefList);
 }
-void MassFitter::MakePhenomenological(const PhenomenologicalParams& params, const std::string& name) {
-    // if (!activeMassVar_) return nullptr;
+// void MassFitter::MakePhenomenological(const PhenomenologicalParams& params, const std::string& name) {
+//     // if (!activeMassVar_) return nullptr;
     
-    RooRealVar* m0 = new RooRealVar("m0", "m0",PION_MASS );        // Parameter m0
+//     RooRealVar* m0 = new RooRealVar("m0", "m0",PION_MASS );        // Parameter m0
+//     RooRealVar* p0 = new RooRealVar("p0", "p0", params.p0, params.p0_min, params.p0_max);          // Parameter p0
+//     RooRealVar* p1 = new RooRealVar("p1", "p1", params.p1, params.p1_min, params.p1_max);          // Parameter p1
+//     RooRealVar* p2 = new RooRealVar("p2", "p2", params.p2, params.p2_min, params.p2_max);          // Parameter p2
+//     RooFormulaVar* exp_term= new RooFormulaVar("exp_term", "1 - exp(-(@0 - @1)/@2)", RooArgList(*activeMassVar_, *m0, *p0));
+//     RooFormulaVar* pow_term= new RooFormulaVar("pow_term", "pow(@0/@1, @2)", RooArgList(*activeMassVar_, *m0, *p1));
+//     RooFormulaVar* lin_term= new RooFormulaVar("lin_term", "@0 * (@1/@2 - 1)", RooArgList(*p2, *activeMassVar_, *m0));
+    
+//     background_pdf_= new RooGenericPdf("pdf", "exp_term * pow_term + lin_term",RooArgList(*exp_term, *pow_term, *lin_term));
+// }
+void MassFitter::MakeRooDstD0Bg(const PhenomenologicalParams& params, const std::string& name = "dstd0") {
+    
+    RooRealVar* m0 = new RooRealVar("m0", "m0", PION_MASS );        // Parameter m0
     RooRealVar* p0 = new RooRealVar("p0", "p0", params.p0, params.p0_min, params.p0_max);          // Parameter p0
     RooRealVar* p1 = new RooRealVar("p1", "p1", params.p1, params.p1_min, params.p1_max);          // Parameter p1
     RooRealVar* p2 = new RooRealVar("p2", "p2", params.p2, params.p2_min, params.p2_max);          // Parameter p2
-    RooFormulaVar* exp_term= new RooFormulaVar("exp_term", "1 - exp(-(@0 - @1)/@2)", RooArgList(*activeMassVar_, *m0, *p0));
-    RooFormulaVar* pow_term= new RooFormulaVar("pow_term", "pow(@0/@1, @2)", RooArgList(*activeMassVar_, *m0, *p1));
-    RooFormulaVar* lin_term= new RooFormulaVar("lin_term", "@0 * (@1/@2 - 1)", RooArgList(*p2, *activeMassVar_, *m0));
     
-    background_pdf_= new RooGenericPdf("pdf", "exp_term * pow_term + lin_term",RooArgList(*exp_term, *pow_term, *lin_term));
+    background_pdf_= new RooDstD0BG("pdf", ("RooDstD0Bg" + name).c_str(), *activeMassVar_,*m0,*p0,*p1,*p2);
 }
+
 
 void MassFitter::CombinePDFs() {
     if (!signal_pdf_ || !background_pdf_){
@@ -290,23 +301,24 @@ void MassFitter::CombinePDFs() {
         return;
     } 
     int a =reduced_data_->sumEntries();
+    cout << "total Emtries : " << a << endl; 
     
-    RooRealVar* nsig = new RooRealVar("nsig", "Signal Yield", 1000, 0., 2.*a);
-    RooRealVar* nbkg = new RooRealVar("nbkg", "Background Yield", 1e4, a/100., 2.*a);
+    RooRealVar* nsig = new RooRealVar("nsig", "Signal Yield", 100, 0., a);
+    RooRealVar* nbkg = new RooRealVar("nbkg", "Background Yield", a/1000, a/10000, a);
     
     total_pdf_= new RooAddPdf("total_pdf", "Signal + Background",
                         RooArgList(*signal_pdf_, *background_pdf_),
                         RooArgList(*nsig, *nbkg));
 }
-MassFitter::MassFitter(const std::string& name, double massMin, double massMax) 
+MassFitter::MassFitter(const std::string& name, RooDataSet* dataset, std::string& massVar, double massMin, double massMax) 
     : name_(name), 
-      massVar_("mass"), 
+      massVar_(massVar), 
       useMVA_(false), 
       useDeltaMass_(false), 
       signal_pdf_(nullptr), 
       background_pdf_(nullptr), 
       total_pdf_(nullptr),
-      full_data_(nullptr),
+      full_data_(dataset),
       reduced_data_(nullptr),
       fit_result_(nullptr),
       workspace_(nullptr),
@@ -324,20 +336,19 @@ MassFitter::MassFitter(const std::string& name, double massMin, double massMax)
 }
 
 MassFitter::~MassFitter() {
-    // 워크스페이스가 소유권을 가지므로 여기서는 명시적으로 삭제하지 않음
     delete workspace_;
     delete mass_;
 }
 
-void MassFitter::SetData(RooDataSet* dataset) {
-    if (!dataset) {
-        std::cerr << "Error: Null dataset provided" << std::endl;
-        return;
-    }
+// void MassFitter::SetData(RooDataSet* dataset) {
+//     if (!dataset) {
+//         std::cerr << "Error: Null dataset provided" << std::endl;
+//         return;
+//     }
     
-    full_data_ = dataset;
-    reduced_data_ = dataset;  // 초기에는 전체 데이터셋 사용
-}
+//     full_data_ = dataset;
+//     reduced_data_ = dataset;  // 초기에는 전체 데이터셋 사용
+// }
 
 void MassFitter::ApplyCut(const std::string& cutExpr) {
     if (!full_data_) {
@@ -350,6 +361,7 @@ void MassFitter::ApplyCut(const std::string& cutExpr) {
     
     std::cout << "Applied cut: " << cutExpr << std::endl;
     std::cout << "Entries after cut: " << reduced_data_->numEntries() << std::endl;
+    workspace_->import(*reduced_data_);
 }
 
 void MassFitter::UseDeltaMass(bool use, double daughterMassMin, double daughterMassMax) {
@@ -409,10 +421,11 @@ void MassFitter::SetBackgroundPDF(const PolynomialBkgParams& params, const std::
 }
 void MassFitter::SetBackgroundPDF(const PhenomenologicalParams& params, const std::string& name) {
     std::string pdfName = name.empty() ? "bkg_" + name_ : name;
-    MakePhenomenological(params, pdfName);
+    MakeRooDstD0Bg(params, pdfName);
 }
 
-RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, double rangeMin, double rangeMax) {
+
+RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, bool useCUDA, double rangeMin, double rangeMax) {
     if (!signal_pdf_ || !background_pdf_ || !reduced_data_) {
         std::cerr << "Error: Signal PDF, background PDF, or dataset not set" << std::endl;
         return nullptr;
@@ -427,13 +440,14 @@ RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, double
     
     // 피팅 수행
     fit_result_ = total_pdf_->fitTo(*reduced_data_, 
+                                    RooFit::NumCPU(8),
+                                    // useRooFit::EvalBackend(useCUDA ? "cuda" : "CPU"),
                                     RooFit::Extended(true), 
                                     RooFit::Save(true),
                                     RooFit::Minos(useMinos),
                                     RooFit::Hesse(useHesse),
                                     RooFit::PrintLevel(verbose ? 1 : -1),
-                                    RooFit::Range("analysis"),
-                                    RooFit::NormRange("analysis"));
+                                    RooFit::Range("analysis"));
     
     // 결과 출력
     if (verbose) {
@@ -446,7 +460,6 @@ RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, double
     
     // 워크스페이스에 결과 저장
     workspace_->import(*total_pdf_);
-    workspace_->import(*reduced_data_);
     
     return fit_result_;
 }
@@ -491,26 +504,26 @@ double MassFitter::GetReducedChiSquare() const {
     return (ndf > 0) ? GetChiSquare() / ndf : -1.0;
 }
 template <typename SigPar, typename BkgPar>
-void MassFitter::init(FitOpt opt, std::string filepath_, bool inclusive, const std::string pTbin, const std::string etabin, SigPar sigParams, BkgPar bkgParams) {
+void MassFitter::PerformFit(FitOpt opt, bool inclusive, const std::string pTbin, const std::string etabin, SigPar sigParams, BkgPar bkgParams) {
     // Open ROOT file
-    TFile* file = TFile::Open(filepath_.c_str());
-    if (!file || file->IsZombie()) {
-        std::cerr << "Error: Failed to open file " << filepath_ << std::endl;
-        return;
-    }
+    // TFile* file = TFile::Open(filepath_.c_str());
+    // if (!file || file->IsZombie()) {
+    //     std::cerr << "Error: Failed to open file " << filepath_ << std::endl;
+    //     return;
+    // }
     
-    // Get the dataset from the file
-    RooDataSet* dataset = dynamic_cast<RooDataSet*>(file->Get(opt.datasetName.c_str()));
-    if (!dataset) {
-        std::cerr << "Error: Failed to load dataset '" << opt.datasetName << "' from file" << std::endl;
-        file->Close();
-        return;
-    }
+    // // Get the dataset from the file
+    // RooDataSet* dataset = dynamic_cast<RooDataSet*>(file->Get(opt.datasetName.c_str()));
+    // if (!dataset) {
+    //     std::cerr << "Error: Failed to load dataset '" << opt.datasetName << "' from file" << std::endl;
+    //     file->Close();
+    //     return;
+    // }
     
-    // Set the dataset
-    SetData(dataset);
+    // // Set the dataset
+    // SetData(dataset);
     
-    // Apply cuts based on inclusive flag
+    // // Apply cuts based on inclusive flag
     if (inclusive) {
         ApplyCut(opt.cutExpr);
     } else {
@@ -522,20 +535,21 @@ void MassFitter::init(FitOpt opt, std::string filepath_, bool inclusive, const s
     SetBackgroundPDF(bkgParams, "");
 
     // Perform fit and save results
-    Fit(opt.useMinos, opt.useHesse, opt.verbose,opt.massMin,opt.massMax);
+    if(opt.doFit)Fit(opt.useMinos, opt.useHesse,opt.verbose,opt.useCUDA, opt.massMin,opt.massMax);
     SaveResults(opt.outputFile, opt.saveWorkspace);
     
     // Close the file (dataset is already copied to MassFitter)
-    file->Close();
+    // file->Close();
 }
 
 void MassFitter::SaveResults(const std::string& filename, bool saveWorkspace) {
-    TFile* outFile = new TFile(filename.c_str(), "RECREATE");
+    TFile* outFile = new TFile(Form("roots/%s.root",filename.c_str()), "RECREATE");
     // 피팅 결과 저장
     if (fit_result_) {
         fit_result_->Write("fitResult");
     }
     if (reduced_data_) {
+        cout << "writing entry : " << reduced_data_->sumEntries() << endl;
         reduced_data_->Write("reducedData");
     }
     if (total_pdf_) {
@@ -556,8 +570,8 @@ void MassFitter::SaveResults(const std::string& filename, bool saveWorkspace) {
 void MassFitter::PlotResult(bool drawFitModel, std::string filename_, double pTMin=0, double pTMax=0, double etaMin=0, double etaMax=0) {
     TFile file(filename_.c_str(), "READ");
     if(drawFitModel){
-    fit_result_ = dynamic_cast<RooFitResult*>(file.Get("fit_result"));
-    total_pdf_ = dynamic_cast<RooAddPdf*>(file.Get("total_pdf"));
+    // fit_result_ = dynamic_cast<RooFitResult*>(file.Get("fit_result"));
+    // total_pdf_ = dynamic_cast<RooAddPdf*>(file.Get("total_pdf"));
     }
     // reduced_data_ = dynamic_cast<RooDataSet*>(file.Get("dataset"));
     // RooRealVar* mass = dynamic_cast<RooRealVar*>(total_pdf_->getVariables()->find("mass"));
@@ -566,7 +580,7 @@ void MassFitter::PlotResult(bool drawFitModel, std::string filename_, double pTM
         RooDataSet* dataToPlot = reduced_data_;
         if (!dataToPlot){
 	cout << "no data to Plot" << endl;
-	 return false;
+	 return;
 	}
 
     // Create canvas with two pads: main plot and pull distribution
@@ -589,7 +603,7 @@ void MassFitter::PlotResult(bool drawFitModel, std::string filename_, double pTM
     
     // Draw main plot
     padUp->cd();
-    RooPlot* frame = activeMassVar_->frame(RooFit::Title(" "));
+    RooPlot* frame = activeMassVar_->frame(RooFit::Bins(120),RooFit::Title(" "));
     
     // Data points
     cout << "adsasd" << endl;
@@ -686,7 +700,7 @@ if(total_pdf_ != nullptr) {
                               param->getVal(),
                               param->getError()));
     }
-    // paveText->Draw("same");
+    paveText->Draw("same");
     TPaveText* rangeText = new TPaveText(0.15, 0.65, 0.40, 0.8, "NDC");
     rangeText->SetBorderSize(0);
     rangeText->SetFillStyle(0);
@@ -732,7 +746,7 @@ if(total_pdf_ != nullptr) {
     canvas->Update();
     canvas->Modified();
     canvas->SaveAs(Form("../Plots/test_%s_%s_pT%dto%d.pdf",name_.c_str(),massVar_.c_str(),int(pTMin),int(pTMax)));
-    return true;
+    return;
     }
 
 // void MassFitter::init(FitOpt opt, string filepath) {

@@ -116,6 +116,9 @@ namespace DataFormat{
    Float_t         gen_D0Dau2_y[MAXCAND];   //[candSize_gen]
    Int_t           gen_D0Dau2_charge[MAXCAND];   //[candSize_gen]
    Int_t           gen_D0Dau2_pdgId[MAXCAND];   //[candSize_gen]
+   Float_t         Trk3DDCA[MAXCAND];   //[candSize]
+   Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
+   Float_t         mva[MAXCAND];   //[candSize]
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -223,6 +226,9 @@ namespace DataFormat{
    TBranch        *b_gen_D0Dau2_y;   //!
    TBranch        *b_gen_D0Dau2_charge;   //!
    TBranch        *b_gen_D0Dau2_pdgId;   //!
+    TBranch        *b_Trk3DDCA;   //!
+    TBranch        *b_Trk3DDCAErr;   //!
+    TBranch        *b_mva;   //!
    simpleDMCTreeevt* getEventHandle(){ return this;}
     template <typename T>
         void setTree(T *fChain){
@@ -302,6 +308,9 @@ namespace DataFormat{
    fChain->SetBranchAddress("EtaD2", EtaD2, &b_EtaD2);
    fChain->SetBranchAddress("PhiD2", PhiD2, &b_PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2", dedxHarmonic2D2, &b_dedxHarmonic2D2);
+   fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
+    fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
+    fChain->SetBranchAddress("mva", mva, &b_mva);
         };
     template <typename T>
         void setGENTree(T *fChain){ 
@@ -443,6 +452,9 @@ namespace DataFormat{
    Float_t         gen_D0Dau2_y;   //[candSize_gen]
    Int_t           gen_D0Dau2_charge;   //[candSize_gen]
    Int_t           gen_D0Dau2_pdgId;   //[candSize_gen]
+   Float_t        Trk3DDCA;   //[candSize]
+    Float_t        Trk3DDCAErr;   //[candSize]
+    Float_t        mva;   //[candSize]
    bool isMC;
     simpleDMCTreeflat* getEventHandle(){ return this;}
     template <typename T>
@@ -523,6 +535,9 @@ namespace DataFormat{
    fChain->SetBranchAddress("EtaD2",&EtaD2);
    fChain->SetBranchAddress("PhiD2",&PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2",&dedxHarmonic2D2);
+    fChain->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
+    fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
+    fChain->SetBranchAddress("mva",&mva);
     };
     template <typename T>
     void setGENTree(T *fChain){
@@ -635,6 +650,9 @@ namespace DataFormat{
    fChain->Branch("PhiD2",&PhiD2);
    fChain->Branch("dedxHarmonic2D2",&dedxHarmonic2D2);
    fChain->Branch("isMC",&isMC);
+    fChain->Branch("Trk3DDCA",&Trk3DDCA);
+    fChain->Branch("Trk3DDCAErr",&Trk3DDCAErr);
+    fChain->Branch("mva",&mva);
    
     };
     template <typename T>
@@ -745,7 +763,11 @@ pTerrD2 =evt.pTerrD2[idx];   //[candSize]
 EtaD2 =evt.EtaD2[idx];   //[candSize]
 PhiD2 =evt.PhiD2[idx];   //[candSize]
 dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
-};
+Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
+Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
+mva =evt.mva[idx];   //[candSize]
+
+        };
 template <typename T>
 void copyDn( T& evt, int idx){
 Npixel =evt.Npixel;
@@ -792,6 +814,10 @@ pTerrD2 =evt.pTerrD2[idx];   //[candSize]
 EtaD2 =evt.EtaD2[idx];   //[candSize]
 PhiD2 =evt.PhiD2[idx];   //[candSize]
 dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
+Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
+Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
+mva =evt.mva[idx];   //[candSize]
+
 // isMC=isMC;
         };
 void copyGENDn( simpleDMCTreeevt& evt, int idx){
@@ -825,9 +851,6 @@ gen_D0Dau2_y =evt.gen_D0Dau2_y[idx];   //[candSize_gen]
 gen_D0Dau2_charge =evt.gen_D0Dau2_charge[idx];   //[candSize_gen]
 gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     };
-
-
-
 };
     struct simpleDTreeevt{
         protected:
@@ -878,6 +901,9 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    Float_t         EtaD2[MAXCAND];   //[candSize]
    Float_t         PhiD2[MAXCAND];   //[candSize]
    Float_t         dedxHarmonic2D2[MAXCAND];   //[candSize]
+   Float_t        Trk3DDCA[MAXCAND];   //[candSize]
+    Float_t        Trk3DDCAErr[MAXCAND];   //[candSize]
+    Float_t        mva[MAXCAND];   //[candSize]
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -925,6 +951,9 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    TBranch        *b_EtaD2;   //!
    TBranch        *b_PhiD2;   //!
    TBranch        *b_dedxHarmonic2D2;   //!
+   TBranch       *b_Trk3DDCA;   //!
+    TBranch       *b_Trk3DDCAErr;   //!
+    TBranch       *b_mva;   //!
    simpleDTreeevt* getEventHandle(){ return this;};
     template <typename T>
     void setTree(T *fChain){
@@ -973,6 +1002,9 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    fChain->SetBranchAddress("EtaD2", EtaD2, &b_EtaD2);
    fChain->SetBranchAddress("PhiD2", PhiD2, &b_PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2", dedxHarmonic2D2, &b_dedxHarmonic2D2);
+    fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
+    fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
+    fChain->SetBranchAddress("mva", mva, &b_mva);
         };
     
     };
@@ -1023,6 +1055,10 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    Float_t         EtaD2;   //[candSize]
    Float_t         PhiD2;   //[candSize]
    Float_t         dedxHarmonic2D2;   //[candSize]
+    Float_t        Trk3DDCA;   //[candSize]
+     Float_t        Trk3DDCAErr;   //[candSize]
+     Float_t        mva;   //[candSize]
+
    bool isMC;
     simpleDTreeflat* getEventHandle(){ return this;}
     template <typename T>
@@ -1072,6 +1108,9 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    fChain->SetBranchAddress("EtaD2",&EtaD2);
    fChain->SetBranchAddress("PhiD2",&PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2",&dedxHarmonic2D2);
+    fChain->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
+    fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
+    fChain->SetBranchAddress("mva",&mva);
     };
         template <typename T>
     void setOutputTree(T *fChain){
@@ -1121,6 +1160,9 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    fChain->Branch("PhiD2",&PhiD2);
    fChain->Branch("dedxHarmonic2D2",&dedxHarmonic2D2);
    fChain->Branch("isMC",&isMC);
+   fChain->Branch("Trk3DDCA",&Trk3DDCA);
+    fChain->Branch("Trk3DDCAErr",&Trk3DDCAErr);
+    fChain->Branch("mva",&mva);
     };
 void copyDn( simpleDTreeevt& evt, int idx){
 Npixel =evt.Npixel;
@@ -1167,6 +1209,9 @@ pTerrD2 =evt.pTerrD2[idx];   //[candSize]
 EtaD2 =evt.EtaD2[idx];   //[candSize]
 PhiD2 =evt.PhiD2[idx];   //[candSize]
 dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
+Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
+Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
+mva=evt.mva[idx];
 // isMC=isMC;
         };
     };

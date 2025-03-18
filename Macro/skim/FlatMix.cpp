@@ -5,7 +5,7 @@
 // 루트 파일 생성 함수
 TFile* createOutputFile(const std::string& date, int jobIdx) {
     // 배치 번호에 맞는 새로운 파일을 생성
-    std::string fileName = Form("../../Data/flatSkimForBDT_Mix_%d_%s.root", 
+    std::string fileName = Form("../../Data/flatSkimForBDT_Mix_100to1_%d_%s.root", 
                                  jobIdx, date.c_str());
     TFile* fout = new TFile(fileName.c_str(), "RECREATE");
     std::cout << "Output file " << fileName << " has been created." << std::endl;
@@ -28,12 +28,14 @@ void FlatMix(int start, int end, int jobIdx){
         // TFile *fData = TFile::Open(filePath2.c_str());
         // TTree* treeData = (TTree*)fData->Get(treeName.c_str());
         std::string filePath1 = "/home/jun502s/DstarAna/DStarAnalysis/Data/SkimStep1/d0ana_tree_115.root";
-        std::string filePath2 = "/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/d0ana_tree_1.root";
+        // std::string filePath2 = "/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/d0ana_tree_1.root";
+        std::string filePath2 = "/home/CMS/Run3_2023/Data/SkimMVA/testD0.root";
         std::string treeName = "d0ana_newreduced/PATCompositeNtuple";
         std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
         std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
         chainMC->Add("/home/jun502s/DstarAna/DStarAnalysis/Data/0000/*.root");
         chainData->Add("/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/*.root");
+        // chainData->Add(filePath2.c_str());
     
         using namespace DataFormat;
         simpleDMCTreeevt* dinMC=new simpleDMCTreeevt();
@@ -67,70 +69,94 @@ void FlatMix(int start, int end, int jobIdx){
         int counts = 0;
         cout << "loopstart" << endl;
         end = std::min(end, totEvt);
-        for( auto iEvt : ROOT::TSeqU(start, end, skip)){
+        int idxMC = 0;
+        int idxData = 0;
+        for (auto iEvt : ROOT::TSeqU(start, end, skip))
+        {
             // cout << "start" << start << " end" << end << " iEvt" << iEvt << endl;
-            if ((iEvt % 10000) ==0 ){std::cout << "Processing event " << iEvt<< std::endl;}
-                    // try {
+            if ((iEvt % 10000) == 0)
+            {
+                std::cout << "Processing event " << iEvt << std::endl;
+            }
+            // try {
 
             // if (status == 0 || status2 == 0) {
-                // std::cout << "Event " << iEvt << " skipped due to error." << std::endl;
-                // continue;
+            //     std::cout << "Event " << iEvt << " skipped due to error." << std::endl;
+            //     continue;
             // }
 
             // std::cout << "Processing event " << iEvt << std::endl;
 
-        
             chainMC->GetEntry(iEvt);
-            // cout << "MC" << endl;
-            
-            for( auto iD1 : ROOT::TSeqI(dinMC->candSize)){
-            
-                doutMC->isMC = true;
-                doutMC->copyDn(*dinMC, iD1);
-                
-                tskim->Fill();
+            for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
+            {
+                if (dinMC->matchGEN[iD1] == true)
+                {
+                    doutMC->isMC = true;
+                    doutMC->copyDn(*dinMC, iD1);
+                    tskim->Fill();
+                }
+                else
+                {
+                    if (idxMC % 100 == 0)
+                    {
+                        doutMC->isMC = true;
+                        doutMC->copyDn(*dinMC, iD1);
+                        tskim->Fill();
+                    // cout << idxMC << "fill mc" << endl;
+                        
+                    }
+                        idxMC++;
+                }
             }
             chainData->GetEntry(iEvt);
             // cout << "Data" << endl;
-            for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-        //   if ((iD1 % 10000) ==0 )std::cout << "Processing cand " << iD1<< std::endl; 
+            for (auto iD1 : ROOT::TSeqI(dinData->candSize))
+            {
+                //   if ((iD1 % 10000) ==0 )std::cout << "Processing cand " << iD1<< std::endl;
+
+                //   doutMC->idmom_reco=-999;   //[candSize]
+                //   doutMC->idBAnc_reco=-999;   //[candSize]
+                //   doutMC->matchGen3DPointingAngle=-999;   //[candSize]
+                //   doutMC->matchGen2DPointingAngle=-999;   //[candSize]
+                //   doutMC->matchGen3DDecayLength=-999;   //[candSize]
+                //   doutMC->matchGen2DDecayLength=-999;   //[candSize]
+                //   doutMC->matchGen_D0pT=-999;   //[candSize]
+                //   doutMC->matchGen_D0eta=-999;   //[candSize]
+                //   doutMC->matchGen_D0phi=-999;   //[candSize]
+                //   doutMC->matchGen_D0mass=-999;   //[candSize]
+                //   doutMC->matchGen_D0y=-999;   //[candSize]
+                //   doutMC->matchGen_D0charge=-999;   //[candSize]
+                //   doutMC->matchGen_D0pdgId=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_pT=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_eta=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_phi=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_mass=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_y=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_charge=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau1_pdgId=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_pT=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_eta=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_phi=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_mass=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_y=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_charge=-999;   //[candSize]
+                //   doutMC->matchGen_D0Dau2_pdgId=-999;   //[candSize]
+                //   doutMC->matchGen_D1ancestorId_=-999;   //[candSize]
+                //   doutMC->matchGen_D1ancestorFlavor_=-999;   //[candSize]
+                if (idxData % 100 == 0)
+                {
                     doutMC->isMC = false;
-          doutMC->isSwap=0;   //[candSize]
-        //   doutMC->idmom_reco=-999;   //[candSize]
-        //   doutMC->idBAnc_reco=-999;   //[candSize]
-          doutMC->matchGEN=0;   //[candSize]
-        //   doutMC->matchGen3DPointingAngle=-999;   //[candSize]
-        //   doutMC->matchGen2DPointingAngle=-999;   //[candSize]
-        //   doutMC->matchGen3DDecayLength=-999;   //[candSize]
-        //   doutMC->matchGen2DDecayLength=-999;   //[candSize]
-        //   doutMC->matchGen_D0pT=-999;   //[candSize]
-        //   doutMC->matchGen_D0eta=-999;   //[candSize]
-        //   doutMC->matchGen_D0phi=-999;   //[candSize]
-        //   doutMC->matchGen_D0mass=-999;   //[candSize]
-        //   doutMC->matchGen_D0y=-999;   //[candSize]
-        //   doutMC->matchGen_D0charge=-999;   //[candSize]
-        //   doutMC->matchGen_D0pdgId=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_pT=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_eta=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_phi=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_mass=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_y=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_charge=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau1_pdgId=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_pT=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_eta=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_phi=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_mass=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_y=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_charge=-999;   //[candSize]
-        //   doutMC->matchGen_D0Dau2_pdgId=-999;   //[candSize]
-        //   doutMC->matchGen_D1ancestorId_=-999;   //[candSize]
-        //   doutMC->matchGen_D1ancestorFlavor_=-999;   //[candSize]
+                    doutMC->isSwap = 0;   //[candSize]
+                    doutMC->matchGEN = 0; //[candSize]
                     doutMC->copyDn<simpleDTreeevt>(*dinData, iD1);
                     tskim->Fill();
+                    // cout << idxData << "fill data" << endl;
                 }
+                idxData++;
+            }
         }
-                // break;
+        // break;
         // if ((iEvt + 1) % batchSize == 0) {
         //         // 기존 파일 저장 후 새로운 파일을 열기
         //         tskim->Write();
