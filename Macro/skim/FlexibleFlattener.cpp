@@ -232,8 +232,8 @@ void FlexibleData(
     int start,                            // 시작 이벤트
     int end,                              // 종료 이벤트 (-1은 모든 이벤트)
     int jobIdx,                           // 작업 인덱스
+    std::string cutExpr = "",
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
-    int dataSampleRate = 100,             // 데이터 샘플링 비율
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleData job #" << jobIdx << std::endl;
@@ -251,7 +251,7 @@ void FlexibleData(
     // 입자 타입에 따라 적절한 클래스 인스턴스 생성
     void* dinDataPtr = nullptr;
     void* doutDataPtr = nullptr;
-    
+    TTree *filteredTree = chainData->CopyTree(cutExpr.c_str());
     if (particleType == ParticleType::D0) {
         // D0 입자 처리를 위한 클래스 사용
         simpleDTreeevt* dinData = new simpleDTreeevt();
@@ -261,7 +261,8 @@ void FlexibleData(
         doutDataPtr = doutData;
         
         // 체인 설정
-        dinData->setTree<TChain>(chainData.get());
+        dinData->setTree<TTree>(filteredTree);
+        //dinData->setTree<TChain>(chainData.get());
     } else {
         // DStar 입자 처리를 위한 클래스 사용
         simpleDStarDataTreeevt* dinData = new simpleDStarDataTreeevt();
@@ -271,7 +272,8 @@ void FlexibleData(
         doutDataPtr = doutData;
         
         // 체인 설정
-        dinData->setTree<TChain>(chainData.get());
+        dinData->setTree<TTree>(filteredTree);
+        //dinData->setTree<TChain>(chainData.get());
     }
     
     // 로드된 이벤트 수 확인
@@ -313,30 +315,22 @@ void FlexibleData(
             simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
             
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                // 샘플링 비율에 따라 저장
-                if (idxData % dataSampleRate == 0) {
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
                     doutData->copyDn<simpleDTreeevt>(*dinData, iD1);
                     tskim->Fill();
-                }
-                idxData++;
             }
         } else {
             simpleDStarMCTreeflat* doutData = (simpleDStarMCTreeflat*)doutDataPtr;
             simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
             
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                // 샘플링 비율에 따라 저장
-                if (idxData % dataSampleRate == 0) {
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
                     doutData->copyDn(*dinData, iD1);
                     tskim->Fill();
-                }
-                idxData++;
             }
         }
     }
@@ -536,21 +530,42 @@ void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleTyp
 }
 
 // main 함수 예시
-int FlexibleFlattener(int start=0, int end=-1, int idx=0) {
-    // 명령행 인수 처리
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0) {
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
     bool setGEN = true;
-    // std::string mcPath="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/d0ana_tree_ppMC.root"; 
-    std::string mcPath="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root"; 
-    std::string DataPath="/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/*.root";
-    std::string treeName="dStarana_mc/PATCompositeNtuple";
-    std::string outputPath="../../Data/FlatSample/ppMC/";
-    std::string outputPrefix="flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30";
 
-    // DStar 파티클로 처리
-    FlexibleMC(mcPath, treeName, outputPath, outputPrefix, start_, end_, jobIdx_, ParticleType::DStar,setGEN);
-    
+    std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/250404_044553/0000/*.root";
+    std::string dataPath = "/u/user/jun502s/SE_UserHome/DStarMC/junseok/20250401_v1/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/PPRefZeroBiasPlusForward10/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/250401_130954/0000/*.root";
+
+    std::string treeNameMC = "dStarana_mc/PATCompositeNtuple";
+    std::string treeNameData = "dStarana/PATCompositeNtuple";
+    std::string date = "06Apr25";
+    std::string cut = "abs(y)<1.2 && pT > 4";
+
+    std::string outputPath;
+    std::string outputPrefix;
+
+    if (type == 0) {
+	    outputPath = "./Data/FlatSample/ppMC/";
+	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMC";
+	    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_, ParticleType::DStar, setGEN, date);
+
+    } else if (type == 1) {
+	    outputPath = "./Data/FlatSample/ppData/";
+	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapData";
+	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, date);
+
+    } else if (type == 2) {
+	    outputPath = "./Data/FlatSample/ppMix/";
+	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
+	    FlexibleMix(dataPath, mcPath, treeName, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, setGEN, date);
+
+    } else {
+	    std::cerr << "Invalid type value: " << type << ". Must be 0 (MC), 1 (Data), or 2 (Mix)." << std::endl;
+	    return 1;
+    }
+
     return 0;
 }

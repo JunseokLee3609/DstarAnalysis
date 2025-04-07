@@ -4,7 +4,7 @@
 #include <TTree.h>
 #include <TBranch.h>
 #include <iostream>
-const int __MAXCAND_MC__ = 2000;
+const int __MAXCAND_MC__ = 30000;
 
 namespace DataFormat{
     struct simpleDMCTreeevt{
@@ -1550,6 +1550,7 @@ mva=evt.mva[idx];
             float EtaGrandD2[MAXCAND];
             float dedxHarmonic2GrandD1[MAXCAND];
             float dedxHarmonic2GrandD2[MAXCAND];
+	    float mva[MAXCAND];
             Int_t           candSize_gen;
    Float_t         gen_mass[MAXCAND];   //[candSize_gen]
    Float_t         gen_pT[MAXCAND];   //[candSize_gen]
@@ -1786,6 +1787,7 @@ mva=evt.mva[idx];
             t->SetBranchAddress("EtaGrandD2",&EtaGrandD2);
             t->SetBranchAddress("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+	    t->SetBranchAddress("mva",&mva);
             };
             template <typename T>
             void setGENTree(T *t){
@@ -1987,6 +1989,7 @@ mva=evt.mva[idx];
             float dedxHarmonic2GrandD1;
             float dedxHarmonic2GrandD2;
             bool isMC;
+	   float mva;
                   Int_t           candSize_gen;
    Float_t         gen_mass;   //[candSize_gen]
    Float_t         gen_pT;   //[candSize_gen]
@@ -2228,7 +2231,8 @@ mva=evt.mva[idx];
             t->SetBranchAddress("EtaGrandD1",&EtaGrandD1);
             t->SetBranchAddress("EtaGrandD2",&EtaGrandD2);
             t->SetBranchAddress("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
-            t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);};
+            t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+	    t->SetBranchAddress("mva",&mva);};
             template <typename T>
         void setOutputTree(T *t){
             t->Branch("Ntrkoffline",&Ntrkoffline);
@@ -2349,6 +2353,7 @@ mva=evt.mva[idx];
             t->Branch("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->Branch("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
             t->Branch("isMC",&isMC);
+	    t->Branch("mva",&mva);
         };
         template <typename T>
         void setGENOutputTree(T *t){
@@ -2511,6 +2516,7 @@ mva=evt.mva[idx];
             EtaGrandD2=evt.EtaGrandD2[idx];
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1[idx];
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2[idx];
+	    mva = evt.mva[idx];
             //isData=evt.isData;
             };
         void copyDn( simpleDStarDataTreeevt& evt, int idx){
@@ -2746,6 +2752,7 @@ mva=evt.mva[idx];
             EtaGrandD2=evt.EtaGrandD2;
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1;
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2;
+	    mva = evt.mva;
             //isData=evt.isData;
             };
 };    struct simpleDStarDataTreeflat{
