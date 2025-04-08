@@ -1,14 +1,22 @@
 #include "EffHead.h"
 #include "commonSelectionVar.h"
-#include "../interface/simpleDMC.hxx"
+#include "../interface/simpleDMC.h"
 #include "../interface/simpleAlgos.hxx"
+#include "../interface/simpleAlgos.hxx"
+#include "../Tools/Transformations.h"
+#include "../Tools/BasicHeaders.h"
+#include "../Tools/Parameters/AnalysisParameters.h"
+#include "../Tools/Parameters/PhaseSpace.h"
 
 
 
-void EffAccCalculator(
+void FlatEffAccCalculator(
     // ANA::selBase selMVA,
     // ANA::selBase selDCA,
-    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root",
+    // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root",
+    // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root",
+    // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_06Apr25.root",
+    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_1_07Apr25.root",
     // string fileMCNP,
     string subDir = "",
     bool cutBased = false, 
@@ -33,6 +41,9 @@ void EffAccCalculator(
     std::map<MC, TH1D*> histoPhi;
     histoPhi[MC::kPR] = new TH1D("phi_pr", "",nphi, phil, phih);
     // histoPhi[MC::kNP] = new TH1D("phi_np", "",nphi, phil, phih);
+    std::map<MC, TH1D*> histoCos;
+    histoCos[MC::kPR] = new TH1D("cos_pr", "",ncos, coslo, coshi);
+    // histoPhi[MC::kNP] = new TH1D("phi_np", "",nphi, phil, phih);
     std::map<MC, TH2D*> histoPtY;
     histoPtY[MC::kPR] = new TH2D("pt_y_pr", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
     // histoPtY[MC::kNP] = new TH2D("pt_y_np", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
@@ -41,6 +52,15 @@ void EffAccCalculator(
     // histoYPhi[MC::kNP] = new TH2D("y_phi_np", "",ny, yl, yh, nphi, phil, phih);
     std::map<MC, TH2D*> histoPhiPt;
     histoPhiPt[MC::kPR] = new TH2D("phi_pt_pr", "",nphi, phil, phih, npt, pl, ph);
+    // histoPhiPt[MC::kNP] = new TH2D("phi_pt_np", "",nphi, phil, phih, npt, pl, ph);
+    std::map<MC, TH2D*> histoYCos;
+    histoYCos[MC::kPR] = new TH2D("y_cos_pr", "",ny, yl, yh, ncos, coslo, coshi);
+    // histoPtY[MC::kNP] = new TH2D("pt_y_np", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
+    std::map<MC, TH2D*> histoPhiCos;
+    histoPhiCos[MC::kPR] = new TH2D("phi_cos_pr", "", nphi, phil, phih, ncos, coslo, coshi );
+    // histoYPhi[MC::kNP] = new TH2D("y_phi_np", "",ny, yl, yh, nphi, phil, phih);
+    std::map<MC, TH2D*> histoPtCos;
+    histoPtCos[MC::kPR] = new TH2D("pt_cos_pr", "", npt, pl, ph, ncos, coslo, coshi);
     // histoPhiPt[MC::kNP] = new TH2D("phi_pt_np", "",nphi, phil, phih, npt, pl, ph);
 
     // std::map<MC, TH1D*> histoAglGenPass;
@@ -77,6 +97,9 @@ void EffAccCalculator(
     std::map<MC, TH1D*> histoPhiPass;
     histoPhiPass[MC::kPR] = new TH1D("phi_pr_pass", "",nphi, phil, phih);
     // histoPhiPass[MC::kNP] = new TH1D("phi_np_pass", "",nphi, phil, phih);
+    std::map<MC, TH1D*> histoCosPass;
+    histoCosPass[MC::kPR] = new TH1D("cos_pr_pass", "",ncos, coslo, coshi );
+    // histoPhiPass[MC::kNP] = new TH1D("phi_np_pass", "",nphi, phil, phih);
     std::map<MC, TH2D*> histoPtYPass;
     histoPtYPass[MC::kPR] = new TH2D("pt_y_pr_pass", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
     // histoPtYPass[MC::kNP] = new TH2D("pt_y_np_pass", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
@@ -86,6 +109,15 @@ void EffAccCalculator(
     std::map<MC, TH2D*> histoPhiPtPass;
     histoPhiPtPass[MC::kPR] = new TH2D("phi_pt_pr_pass", "",nphi, phil, phih, npt, pl, ph);
     // histoPhiPtPass[MC::kNP] = new TH2D("phi_pt_np_pass", "",nphi, phil, phih, npt, pl, ph);
+    std::map<MC, TH2D*> histoYCosPass;
+    histoYCosPass[MC::kPR] = new TH2D("y_cos_pr_pass", "",ny, yl, yh, ncos, coslo, coshi);
+    // histoPtY[MC::kNP] = new TH2D("pt_y_np", "",npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0]);
+    std::map<MC, TH2D*> histoPhiCosPass;
+    histoPhiCosPass[MC::kPR] = new TH2D("phi_cos_pr_pass", "", nphi, phil, phih, ncos, coslo, coshi );
+    // histoYPhi[MC::kNP] = new TH2D("y_phi_np", "",ny, yl, yh, nphi, phil, phih);
+    std::map<MC, TH2D*> histoPtCosPass;
+    histoPtCosPass[MC::kPR] = new TH2D("pt_cos_pr_pass", "", npt, pl, ph, ncos, coslo, coshi);
+    // histoPhiPt[MC::kNP] = new TH2D("phi_pt_np", "",nphi, phil, phih, npt, pl, ph);
 
     std::map<MC, TH3D*> histo3D;
     histo3D[MC::kPR]  = new TH3D("pt_y_phi_pr", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], nphi, &algo::getEqualRangeV<double>(phil, phih, nphi)[0] );
@@ -98,160 +130,138 @@ void EffAccCalculator(
     // histo3DPass[MC::kNP]  = new TH3D("pt_y_phi_np_pass", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], nphi, &algo::getEqualRangeV<double>(phil, phih, nphi)[0] );
 
 
-    DataFormat::simpleDStarMCTreeevt evtPR;
-    DataFormat::simpleDStarDataTreeflat evtData;
 
-    string name_tree = "dStarana_mc/VertexCompositeNtuple";
-    int count = 0;
-    int countgen = 0;
-
-
-    /* Get file*/
-    TFile* fMCPR =  TFile::Open(fileMCPR.c_str());
-    // TFile* fMCNP =  TFile::Open(fileMCNP.c_str());
-
-    /* Get tree*/
-    auto tMCPR = (TTree*) fMCPR->Get(name_tree.c_str());
+    DataFormat::simpleDStarMCTreeflat evtGenFlat;  // For Gen tree
+    DataFormat::simpleDStarMCTreeflat evtRecoFlat; // For Reco tree
+    
+    /* Get files and trees */
+    TFile* fMCPR = TFile::Open(fileMCPR.c_str());
+    if (!fMCPR || fMCPR->IsZombie()) {
+        std::cerr << "Error opening file: " << fileMCPR << std::endl;
+        return;
+    }
+    
+    // Get the flat trees
+    TTree* genTree = (TTree*)fMCPR->Get("skimGENTreeFlat");
+    TTree* recoTree = (TTree*)fMCPR->Get("skimTreeFlat");
     // auto tMCNP = (TTree*) fMCNP->Get(name_tree.c_str());
+    if (!genTree || !recoTree) {
+        std::cerr << "Error: Could not find required trees in the file" << std::endl;
+        return;
+    }
 
     /* Set tree*/
-    evtPR.setTree(tMCPR);
-    evtPR.setGENTree(tMCPR);
+    evtGenFlat.setGENTree(genTree);
+    evtRecoFlat.setTree(recoTree);
+    long long numGenEntries = genTree->GetEntries();
+    long long numRecoEntries = recoTree->GetEntries();
     // evtNP.setTree(tMCNP);
 
-    long long numEvtPR = tMCPR->GetEntries();
+    // long long numEvtPR = tMCPR->GetEntries();
     // numEvtPR = 100000;
     // long long numEvtNP = tMCNP->GetEntries();
 
     TFile* outputFile = new TFile(Form("output.root"),"recreate");
 
     /* Histo Filling Algorithm, takes index and will run every loop that is declared after*/
+    int countgen = 0;
+    int count = 0;
 
-    auto fillGen = [&](int igen, double dzW, MC mcID){
-        if((
-            // abs(evtPR.gen_D1ancestorId[igen]) < 500 && 
-            // std::min(abs(evtPR.DauID1_gen[igen]), abs(evtPR.DauID2_gen[igen])) ==PDG_DAU1 && 
-            // std::max(abs(evtPR.DauID1_gen[igen]), abs(evtPR.DauID2_gen[igen])) ==PDG_DAU2 && 
-            evtPR.gen_pT[igen] > DSGLPTLO && 
-            // evtPR.gen_pT[igen] < DSGLPTHI &&
-            // evtPR.gen_D0pT[igen] > DSGLPT_DAU1 &&
-            // evtPR.gen_D1pT[igen] > DSGLPT_DAU2 && 
-            // fabs(evtPR.gen_D0eta[igen]) < DSGLABSETA_DAU1 &&
-            // fabs(evtPR.gen_D1eta[igen]) < DSGLABSETA_DAU2 && 
-            fabs(evtPR.gen_y[igen]) < DSGLABSY && 
-            // evtPR.angle2D_gen[igen] < 1.0 && 
-            // evtPR.angle3D_gen[igen] < 1.0 && 
-            true
-        )) {
+    auto fillGen = [&](double dzW, MC mcID){
+        if( evtGenFlat.gen_pT > DSGLPTLO && 
+            fabs(evtGenFlat.gen_y) < DSGLABSY &&
+            true){
+            TLorentzVector Dstar,D0,D1,D0Dau1,D0Dau2;
+            Dstar.SetPtEtaPhiM(evtGenFlat.gen_pT, evtGenFlat.gen_eta, evtGenFlat.gen_phi, evtGenFlat.gen_mass);
+            D0.SetPtEtaPhiM(evtGenFlat.gen_D0pT, evtGenFlat.gen_D0eta, evtGenFlat.gen_D0phi, evtGenFlat.gen_D0mass);
+            D1.SetPtEtaPhiM(evtGenFlat.gen_D1pT, evtGenFlat.gen_D1eta, evtGenFlat.gen_D1phi, evtGenFlat.gen_D1mass);
+            D0Dau1.SetPtEtaPhiM(evtGenFlat.gen_D0Dau1_pT, evtGenFlat.gen_D0Dau1_eta, evtGenFlat.gen_D0Dau1_phi, evtGenFlat.gen_D0Dau1_mass);
+            D0Dau2.SetPtEtaPhiM(evtGenFlat.gen_D0Dau2_pT, evtGenFlat.gen_D0Dau2_eta, evtGenFlat.gen_D0Dau2_phi, evtGenFlat.gen_D0Dau2_mass);
+            TVector3 vect = DstarDau1Vector_Helicity(Dstar,D0);
             countgen++;
-            histoPt[mcID]->Fill(evtPR.gen_pT[igen] , dzW);
-            // histoAgl[mcID]->Fill(evtPR.angle3D_gen[igen] , dzW);
-            histoY[mcID]->Fill(Direction_y* evtPR.gen_y[igen] , dzW);
-            histoPhi[mcID]->Fill(evtPR.gen_phi[igen] , dzW);
-            histoPtY[mcID]->Fill(evtPR.gen_pT[igen], Direction_y * evtPR.gen_y[igen] , dzW);
-            histoYPhi[mcID]->Fill(Direction_y* evtPR.gen_y[igen], evtPR.gen_phi[igen] , dzW);
-            histoPhiPt[mcID]->Fill(evtPR.gen_phi[igen], evtPR.gen_pT[igen] , dzW);
-            histo3D[mcID] ->Fill(evtPR.gen_pT[igen], Direction_y* evtPR.gen_y[igen], evtPR.gen_phi[igen], dzW);
-            if( 
-                // std::min(abs(evtPR.DauID1_gen[igen]), abs(evtPR.DauID2_gen[igen])) ==PDG_DAU1 && 
-                // std::max(abs(evtPR.DauID1_gen[igen]), abs(evtPR.DauID2_gen[igen])) ==PDG_DAU2 && 
-                fabs(evtPR.gen_D0y[igen]) < DSGLABSY_D0 &&
-                fabs(evtPR.gen_D1eta[igen]) < DSGLABSETA_D1 && 
-                evtPR.gen_D1pT[igen] > DSGLPT_D1 && 
-                fabs(evtPR.gen_D0Dau1_eta[igen]) < DSGLABSETA_D0DAU1 &&
-                fabs(evtPR.gen_D0Dau2_eta[igen]) < DSGLABSETA_D0DAU2 &&
-                evtPR.gen_D0Dau1_pT[igen] > DSGLPT_D0DAU1 &&
-                evtPR.gen_D0Dau2_pT[igen] > DSGLPT_D0DAU2 &&
-                true
-            ){
-                histoPtGenPass[mcID]->Fill(evtPR.gen_pT[igen]  , dzW);
-                // histoAglGenPass[mcID]->Fill(evtPR.angle3D_gen[igen]  , dzW);
-                histoYGenPass[mcID]->Fill(Direction_y * evtPR.gen_y[igen]  , dzW);
-                histoPhiGenPass[mcID]->Fill(evtPR.gen_phi[igen]  , dzW);
-                histoPtYGenPass[mcID]->Fill(evtPR.gen_pT[igen], Direction_y * evtPR.gen_y[igen]  , dzW);
-                histoYPhiGenPass[mcID]->Fill(Direction_y * evtPR.gen_y[igen], evtPR.gen_phi[igen]  , dzW);
-                histoPhiPtGenPass[mcID]->Fill(evtPR.gen_phi[igen], evtPR.gen_pT[igen]  , dzW);
-                histo3DGenPass[mcID] ->Fill(evtPR.gen_pT[igen], Direction_y * evtPR.gen_y[igen], evtPR.gen_phi[igen], dzW);
+            histoPt[mcID]->Fill(evtGenFlat.gen_pT, dzW);
+            histoY[mcID]->Fill(Direction_y * evtGenFlat.gen_y, dzW);
+            histoCos[mcID]->Fill(vect.CosTheta(), dzW);
+            histoPhi[mcID]->Fill(evtGenFlat.gen_phi, dzW);
+            histoPtY[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, dzW);
+            histoYCos[mcID]->Fill(Direction_y * evtGenFlat.gen_y, vect.CosTheta(), dzW);
+            histoPhiCos[mcID]->Fill(evtGenFlat.gen_phi, vect.CosTheta(), dzW);
+            histoPtCos[mcID]->Fill(evtGenFlat.gen_pT, vect.CosTheta(), dzW);
+            histoYPhi[mcID]->Fill(Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
+            histoPhiPt[mcID]->Fill(evtGenFlat.gen_phi, evtGenFlat.gen_pT, dzW);
+            histo3D[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
+            
+            if (fabs(evtGenFlat.gen_D0y) < DSGLABSY_D0 &&
+                fabs(evtGenFlat.gen_D1eta) < DSGLABSETA_D1 &&
+                evtGenFlat.gen_D1pT > DSGLPT_D1 &&
+                fabs(evtGenFlat.gen_D0Dau1_eta) < DSGLABSETA_D0DAU1 &&
+                fabs(evtGenFlat.gen_D0Dau2_eta) < DSGLABSETA_D0DAU2 &&
+                evtGenFlat.gen_D0Dau1_pT > DSGLPT_D0DAU1 &&
+                evtGenFlat.gen_D0Dau2_pT > DSGLPT_D0DAU2 &&
+                true) {
+                
+                histoPtGenPass[mcID]->Fill(evtGenFlat.gen_pT, dzW);
+                histoYGenPass[mcID]->Fill(Direction_y * evtGenFlat.gen_y, dzW);
+                histoPhiGenPass[mcID]->Fill(evtGenFlat.gen_phi, dzW);
+                histoPtYGenPass[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, dzW);
+                histoYPhiGenPass[mcID]->Fill(Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
+                histoPhiPtGenPass[mcID]->Fill(evtGenFlat.gen_phi, evtGenFlat.gen_pT, dzW);
+                histo3DGenPass[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
             }
         }
     };
-    auto fillReco = [&](int ireco, double dzW, MC mcID){
-        if( evtPR.matchGEN[ireco]  && !evtPR.isSwap[ireco] ){ 
-            auto D0y= algo::rapidity(evtPR.pTD1[ireco], evtPR.EtaD1[ireco], evtPR.phi[ireco], evtPR.massDaugther1[ireco]);
+    auto fillReco = [&](double dzW, MC mcID){
+        if (evtRecoFlat.matchGEN) {
+            auto D0y = algo::rapidity(evtRecoFlat.pTD1, evtRecoFlat.EtaD1, evtRecoFlat.PhiD1, evtRecoFlat.massDaugther1);
             
-            bool cutPassed = false;
-            if(cutBased){
-                if(mvaV<4) cutPassed = ( (mvaV ==1  || evtPR._3DDecayLengthSignificance[ireco] > 3.5) && (mvaV == 2 || evtPR._3DPointingAngle[ireco] < 0.13) && ( mvaV == 3 || evtPR.VtxProb[ireco] > 0.1) );
-                else{
-                    if(mvaV == 4) cutPassed = evtPR._3DDecayLengthSignificance[ireco] > 3.5 ;
-                    if(mvaV == 5) cutPassed = evtPR._3DPointingAngle[ireco] < 0.13 ;
-                    if(mvaV == 6) cutPassed = evtPR.VtxProb[ireco] > 0.1 ;
-                }                  
-            }
-            if ((
-                // ( 
-                //     (fabs(evtPR.pTD1[ireco] -evtPR.gen_D1pTD1[ireco])/evtPR.gen_D1pTD1[ireco] < 0.3 && 
-                //     fabs(evtPR.pTD2[ireco] -evtPR.gen_D1pTD2[ireco])/evtPR.gen_D1pTD2[ireco] < 0.3 ) || 
-                //     (fabs(evtPR.pTD2[ireco] -evtPR.gen_D1pTD1[ireco])/evtPR.gen_D1pTD1[ireco] < 0.3 && 
-                //     fabs(evtPR.pTD1[ireco] -evtPR.gen_D1pTD2[ireco])/evtPR.gen_D1pTD2[ireco] < 0.3) 
-                // ) && 
-                // ( dR(evtPR.EtaD1[ireco] -evtPR.gen_D1etaD1[ireco],(evtPR.PhiD1[ireco] -evtPR.gen_D1phiD1[ireco] )) < 0.03) &&
-                // ( dR(evtPR.EtaD2[ireco] -evtPR.gen_D1etaD2[ireco],(evtPR.PhiD2[ireco] -evtPR.gen_D1phiD2[ireco] )) < 0.03) &&
-                // evtPR.HighPuritydaughter1[ireco] && evtPR.HighPuritydaughter2[ireco]
-                // Candiate
-                // && (evtPR.NHitD1[ireco] > DSGLNHIT_DAU1 && evtPR.NHitD2[ireco] > DSGLNHIT_DAU2 )
-                // true
-                // (evtPR.pTD1[ireco] > DSGLPT_D0DAU1 && evtPR.pTD2[ireco] > DSGLPT_D0DAU2)
-                // && (evtPR.pTerrD1[ireco] < DSGLPTERR_DAU1 && evtPR.pTerrD2[ireco] < DSGLPTERR_DAU2)
-                // && abs(evtPR.EtaD1[ireco] -evtPR.EtaD2[ireco]) < DSGLETADIFF_DAU
-                // && abs(evtPR.EtaD1[ireco]) < DSGLABSETA_DAU1 
-                // && abs(evtPR.EtaD2[ireco]) < DSGLABSETA_DAU2
-                // && (evtPR.pTD1[ireco] + evtPR.pTD2[ireco]) > DSGLPTSUM_DAU
-                // // && ((evtPR.mva[ireco]-0.3)*DSGLMVASCALE +0.3 ) > mvaCut
-                // // && evtPR.mva[ireco] > mvaCut
-                // // && evtPR.mva[ireco] < selMVA.high
-                // && evtPR._3DPointingAngle[ireco] < DSGL3DPA 
-                // && evtPR._2DPointingAngle[ireco] < DSGL2DPA  
-                // // && (TMath::Sin(evtPR._3DPointingAngle[ireco]) * evtPR._3DDecayLength[ireco]) < dcaCut
-                // && (evtPR.pT[ireco] > DSGLPTLO && evtPR.pT[ireco]< DSGLPTHI)
-                // && ( fabs(evtPR.y[ireco]) < DSGLABSY) 
-                fabs(evtPR.EtaD2[ireco]) < DSGLABSETA_D1 && 
-                evtPR.pTD2[ireco] > DSGLPT_D1 && 
+            // Apply selection criteria
+            if (fabs(evtRecoFlat.y) < DSGLABSY &&
+                evtRecoFlat.pT > DSGLPTLO &&
                 fabs(D0y) < DSGLABSY_D0 &&
+                fabs(evtRecoFlat.EtaD2) < DSGLABSETA_D1 &&
+                evtRecoFlat.pTD2 > DSGLPT_D1 &&
+                fabs(evtRecoFlat.EtaGrandD1) < DSGLABSETA_D0DAU1 &&
+                fabs(evtRecoFlat.EtaGrandD2) < DSGLABSETA_D0DAU2 &&
+                evtRecoFlat.pTGrandD1 > DSGLPT_D0DAU1 &&
+                evtRecoFlat.pTGrandD2 > DSGLPT_D0DAU2 &&
+                true ) {
                 
-
-                fabs(evtPR.EtaGrandD1[ireco]) < DSGLABSETA_D0DAU1 &&
-                fabs(evtPR.EtaGrandD2[ireco]) < DSGLABSETA_D0DAU2 &&
-                evtPR.pTGrandD1[ireco] > DSGLPT_D0DAU1 &&
-                evtPR.pTGrandD2[ireco] > DSGLPT_D0DAU2 &&
-                true
-                // && ( !cutBased || cutPassed) // False or (True/False)
-            )){
-                count ++;
-                    // histoAglPass[mcID]->Fill(evtPR.v3DPointingAngle[ireco]  , dzW);
-                    histoPtPass[mcID]->Fill(evtPR.pT[ireco]  , dzW);
-                    histoYPass[mcID]->Fill(Direction_y * evtPR.y[ireco]  , dzW);
-                    histoPhiPass[mcID]->Fill(evtPR.phi[ireco]  , dzW);
-                    histoPtYPass[mcID]->Fill(evtPR.pT[ireco], Direction_y *evtPR.y[ireco]  , dzW);
-                    histoYPhiPass[mcID]->Fill(Direction_y * evtPR.y[ireco], evtPR.phi[ireco]  , dzW);
-                    histoPhiPtPass[mcID]->Fill(evtPR.phi[ireco], evtPR.pT[ireco]  , dzW);
-                    histo3DPass[mcID] ->Fill(evtPR.pT[ireco], Direction_y *evtPR.y[ireco], evtPR.phi[ireco], dzW);
+                TLorentzVector Dstar, D0;
+                Dstar.SetPtEtaPhiM(evtRecoFlat.pT, evtRecoFlat.eta, evtRecoFlat.phi, evtRecoFlat.mass);
+                D0.SetPtEtaPhiM(evtRecoFlat.pTD1, evtRecoFlat.EtaD1, evtRecoFlat.PhiD1, evtRecoFlat.massDaugther1);
+                TVector3 vect = DstarDau1Vector_Helicity(Dstar, D0);
+                
+                count++;
+                
+                histoPtPass[mcID]->Fill(evtRecoFlat.pT, dzW);
+                histoYPass[mcID]->Fill(Direction_y * evtRecoFlat.y, dzW);
+                histoPhiPass[mcID]->Fill(evtRecoFlat.phi, dzW);
+                histoCosPass[mcID]->Fill(vect.CosTheta(), dzW);
+                histoPtYPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, dzW);
+                histoYPhiPass[mcID]->Fill(Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
+                histoPhiPtPass[mcID]->Fill(evtRecoFlat.phi, evtRecoFlat.pT, dzW);
+                histo3DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
+                histoYCosPass[mcID]->Fill(Direction_y * evtRecoFlat.y, vect.CosTheta(), dzW);
+                histoPhiCosPass[mcID]->Fill(evtRecoFlat.phi, vect.CosTheta(), dzW);
+                histoPtCosPass[mcID]->Fill(evtRecoFlat.pT, vect.CosTheta(), dzW);
             }
         }
     };
 
     /* Actual filling loop*/
 
-    for( auto idx : ROOT::TSeqU(numEvtPR)){
-        tMCPR->GetEntry(idx);
+    for( auto idx : ROOT::TSeqU(numGenEntries)){
+        genTree->GetEntry(idx);
 		// double dzW = hDzRatio->GetBinContent(hDzRatio->FindBin(evtPR.bestvtxZ));
         double dzW = 1.0;
-        for( auto igen : ROOT::TSeqI(evtPR.candSize_gen)){
-            fillGen(igen, dzW, MC::kPR);
-        }
-        for( auto ireco : ROOT::TSeqI(evtPR.candSize)){
-            fillReco(ireco, dzW, MC::kPR);
-        }
+            fillGen(dzW, MC::kPR);
+        // std::cout << std::endl;
+    }
+    for( auto idx : ROOT::TSeqU(numRecoEntries)){
+        recoTree->GetEntry(idx);
+        double dzW = 1.0;
+		// double dzW = hDzRatio->GetBinContent(hDzRatio->FindBin(evtPR.bestvtxZ));
+            fillReco(dzW, MC::kPR);
         // std::cout << std::endl;
     }
     // for( auto idx : ROOT::TSeqU(numEvtPR)){
@@ -293,6 +303,14 @@ void EffAccCalculator(
         return ratio1D;
     };
 
+    auto Get2DRatioPlot = [&](TH2D* num, TH2D* den){
+        auto ratio2D =  (TH2D*) num->Clone(Form("%s_ratio",num->GetName()));
+        ratio2D->Divide(den);
+        // ratio2D->GetYaxis()->SetRangeUser(ratio2D->GetMinimum()*1.2, ratio2D->GetMaximum()*1.2);
+        // ratio2D->GetXaxis()->SetRangeUser(ratio2D->GetMinimum()*1.2, ratio2D->GetMaximum()*1.2);
+        return ratio2D;
+    };
+
     // auto ratioAglPR = GetRatioPlot(histoAglPass[MC::kPR], histoAgl[MC::kPR]);
     // auto ratioAglNP = GetRatioPlot(histoAglPass[MC::kNP], histoAgl[MC::kNP]);
     auto ratioPtPR = GetRatioPlot(histoPtPass[MC::kPR], histoPt[MC::kPR]);
@@ -300,6 +318,8 @@ void EffAccCalculator(
     auto ratioYPR = GetRatioPlot(histoYPass[MC::kPR], histoY[MC::kPR]);
     // auto ratioYNP = GetRatioPlot(histoYPass[MC::kNP], histoY[MC::kNP]);
     auto ratioPhiPR = GetRatioPlot(histoPhiPass[MC::kPR], histoPhi[MC::kPR]);
+    auto ratioCosPR = GetRatioPlot(histoCosPass[MC::kPR], histoCos[MC::kPR]);
+    auto ratioPtCosPR = Get2DRatioPlot(histoPtCosPass[MC::kPR], histoPtCos[MC::kPR]);
     // auto ratioPhiNP = GetRatioPlot(histoPhiPass[MC::kNP], histoPhi[MC::kNP]);
     // ratioAglPR->SetLineColor(kRed);
     // ratioAglNP->SetLineColor(kBlue);
@@ -309,6 +329,7 @@ void EffAccCalculator(
     // ratioYNP->SetLineColor(kBlue);
     ratioPhiPR->SetLineColor(kRed);
     // ratioPhiNP->SetLineColor(kBlue);
+    ratioCosPR->SetLineColor(kRed);
 
     TCanvas* c1 = new TCanvas("c1", "c", 400*3, 400*2);
     c1->Divide(3,2);
@@ -322,6 +343,10 @@ void EffAccCalculator(
     // ratioYNP->Draw("same");
     c1->cd(4);
     ratioPhiPR->Draw();
+    c1->cd(5);
+    ratioCosPR->Draw();
+    c1->cd(6);
+    ratioPtCosPR->Draw("colz");
     // ratioPhiNP->Draw("same");
     // c1->cd(5);
     // ratioAglPR->Draw();
@@ -341,8 +366,12 @@ void EffAccCalculator(
     histoPtY[MC::kPR]->Write();
     histoYPhi[MC::kPR]->Write();
     histoPhiPt[MC::kPR]->Write();
+    histoPtCos[MC::kPR]->Write();
+    histoYCos[MC::kPR]->Write();
+    histoPhiCos[MC::kPR]->Write();
     histo3D[MC::kPR] ->Write();
     histoPtGenPass[MC::kPR]->Write();
+    histoCos[MC::kPR]->Write();
     // histoAglGenPass[MC::kPR]->Write();
     histoYGenPass[MC::kPR]->Write();
     histoPhiGenPass[MC::kPR]->Write();
@@ -350,12 +379,16 @@ void EffAccCalculator(
     histoYPhiGenPass[MC::kPR]->Write();
     histoPhiPtGenPass[MC::kPR]->Write();
     histoPtPass[MC::kPR]->Write();
+    histoCosPass[MC::kPR]->Write();
     // histoAglPass[MC::kPR]->Write();
     histoYPass[MC::kPR]->Write();
     histoPhiPass[MC::kPR]->Write();
     histoPtYPass[MC::kPR]->Write();
     histoYPhiPass[MC::kPR]->Write();
     histoPhiPtPass[MC::kPR]->Write();
+    histoYCosPass[MC::kPR]->Write();
+    histoPhiCosPass[MC::kPR]->Write();
+    histoPtCosPass[MC::kPR]->Write();
     histo3DGenPass[MC::kPR] ->Write();
     histo3DPass[MC::kPR] ->Write();
     // histoPt[MC::kNP]->Write();
@@ -388,6 +421,8 @@ void EffAccCalculator(
     // ratio3DNPACC->Write();
     ratio3DPRRECO->Write();
     // ratio3DNPRECO->Write();
+    ratioPtCosPR->Write();
+    ratioCosPR->Write();
     outputFile->Close();
 
 }
