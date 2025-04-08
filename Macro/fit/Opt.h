@@ -10,17 +10,23 @@ struct FitOpt {
     // 기본 정보
     std::string name;               // 인스턴스 이름
     
-    // 파일 및 데이터셋 관련
-    std::string filePath;           // 데이터 파일 경로
+    // 파일 및 데이터셋 관련    
+    
+
     std::string datasetName;        // 데이터셋 이름
     std::string reducedDataName;
     std::string treeName;           // 트리 이름 (필요시)
+    std::string cutMCExpr;            // 추가 컷 문자열
     std::string cutExpr;            // 추가 컷 문자열
     std::string outputFile;
+    std::string outputMCFile;
+    std::string outputMCSwap0File;
+    std::string outputMCSwap1File;
     std::string pdfName;
     std::string fitResultName;
     std::string wsName;
     std::string plotName;
+    std::string plotMCName;
     
     // 변수명 정보
     std::string massVar;            // 질량 변수 이름
@@ -28,6 +34,8 @@ struct FitOpt {
     std::string etaVar;             // eta 변수 이름
     std::string centVar;            // 중심도 변수 이름
     std::string mvaVar;            // 중심도 변수 이름
+    std::string cosVar;            // 중심도 변수 이름
+    std::vector<std::string> constraintParameters;
     
     // 질량 범위 설정
     double massMin;                 // 질량 최소값
@@ -39,6 +47,12 @@ struct FitOpt {
     double deltaMassMax;            // 델타 M 최대값
     std::string deltaMassVar;       // 델타 M 변수명
     double mvaMin;
+    double pTMin;
+    double pTMax;
+    double etaMin;
+    double etaMax;
+    double cosMin;
+    double cosMax;
     
     // binning 관련
     std::vector<double> ptBins;
@@ -55,6 +69,7 @@ struct FitOpt {
     
     // 출력 관련
     std::string outputDir;    
+    std::string outputMCDir;    
     std::string outputPrefix; 
     bool savePlots;           
     bool saveWorkspace;       
@@ -62,7 +77,7 @@ struct FitOpt {
     // 생성자 - 기본값 설정
     FitOpt() : 
         name("default"),
-        datasetName("dataset"),
+        datasetName("datasetHX"),
         reducedDataName("reducedData"),
         outputFile("outputtest.root"),
         fitResultName("fitResult"),
@@ -71,17 +86,26 @@ struct FitOpt {
         etaVar("eta"),
         centVar("cent"),
         mvaVar("mva"),
+        cosVar("cos"),
         massMin(0.0),
         massMax(10.0),
         useDeltaMass(false),
         deltaMassMin(0.0),
         deltaMassMax(1.0),
         deltaMassVar("deltaMass"),
-        mvaMin(0.0),
+        // mvaMin(0.0),
+        // pTMin(4.0),
+        // pTMax(100.0),
+        // etaMin(-1.5),
+        // etaMax(1.5),
+        // cosMin(-1.0),
+        // cosMax(1.0),
         useMinos(false),
         useHesse(true),
-        verbose(false),
+        verbose(true),
         useCUDA(true),
+        outputDir("roots/Data/"),
+        outputMCDir("roots/MC/"),
         savePlots(true),
         saveWorkspace(true)
     {}
@@ -91,7 +115,7 @@ struct FitOpt {
         this->name = "D0";
         this->massMin = 1.74;
         this->massMax = 1.98;
-        this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.5 && matchGEN==1 && isSwap==1", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str());
+        this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.5 && matchGEN==1 && isSwap==0", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str());
         this->pdfName = "total_pdf";
         this->wsName = "ws_D0";
         // this->datasetName = "reducedData";
@@ -118,8 +142,34 @@ struct FitOpt {
         this->cutExpr = Form("eta<1 && eta>-1 && pT>4");
         this->pdfName = "total_pdf";
         this->wsName = "ws_DStar";
-        this->plotName = Form("Plot%s_%s_%s_%s_%s_%s",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->outputFile = Form("%s_%s_%s_%s_%s_%s",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputFile = Form("%s_%s_%s_%s_%s_%s.root",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDir="roots/MC/";
+        // this->datasetName = "reducedData";
+    }
+    void DStarMCDefault() {
+        this->name = "DStar";
+        this->massVar ="massPion";
+        this->massMin = 0.140;
+        this->massMax = 0.155;
+        // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
+        // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
+        // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
+        this->cutMCExpr = Form("eta<1 && eta>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f  && matchGEN==1", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        this->cutExpr = Form("eta<1 && eta>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->pdfName = "total_pdf";
+        this->wsName = Form("ws_%s",this->name.c_str());
+        this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {};
+        // this->outputMCDir="roots/MC/";
+        // this->outputDir="roots/Data/";
         // this->datasetName = "reducedData";
     }
     std::string convertDotToP(double value) {

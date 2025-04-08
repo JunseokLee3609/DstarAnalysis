@@ -2068,6 +2068,49 @@ mva=evt.mva[idx];
             // float gen_D1pdgI;
             simpleDStarMCTreeflat* getEventHandle(){ return this;}
             template <typename T>
+        void setGENTree(T *t){
+                // t->Branch("isData",&isData);
+                t->SetBranchAddress("candSize_gen",&candSize_gen);
+                t->SetBranchAddress("gen_mass",&gen_mass);  
+                t->SetBranchAddress("gen_pT",&gen_pT);
+                t->SetBranchAddress("gen_eta",&gen_eta);
+                t->SetBranchAddress("gen_phi",&gen_phi);
+                t->SetBranchAddress("gen_y",&gen_y);
+                t->SetBranchAddress("gen_status",&gen_status);
+                t->SetBranchAddress("gen_MotherID",&gen_MotherID);
+                t->SetBranchAddress("gen_DauID1",&gen_DauID1);
+                t->SetBranchAddress("gen_DauID2",&gen_DauID2);
+                t->SetBranchAddress("gen_DauID3",&gen_DauID3);
+                t->SetBranchAddress("gen_D0pT",&gen_D0pT);
+                t->SetBranchAddress("gen_D0eta",&gen_D0eta);
+                t->SetBranchAddress("gen_D0phi",&gen_D0phi);
+                t->SetBranchAddress("gen_D0mass",&gen_D0mass);
+                t->SetBranchAddress("gen_D0y",&gen_D0y);
+                t->SetBranchAddress("gen_D0charge",&gen_D0charge);
+                t->SetBranchAddress("gen_D0pdgId",&gen_D0pdgId);
+                t->SetBranchAddress("gen_D0Dau1_pT",&gen_D0Dau1_pT);
+                t->SetBranchAddress("gen_D0Dau1_eta",&gen_D0Dau1_eta);
+                t->SetBranchAddress("gen_D0Dau1_phi",&gen_D0Dau1_phi);
+                t->SetBranchAddress("gen_D0Dau1_mass",&gen_D0Dau1_mass);
+                t->SetBranchAddress("gen_D0Dau1_y",&gen_D0Dau1_y);
+                t->SetBranchAddress("gen_D0Dau1_charge",&gen_D0Dau1_charge);
+                t->SetBranchAddress("gen_D0Dau1_pdgId",&gen_D0Dau1_pdgId);
+                t->SetBranchAddress("gen_D0Dau2_pT",&gen_D0Dau2_pT);
+                t->SetBranchAddress("gen_D0Dau2_eta",&gen_D0Dau2_eta);
+                t->SetBranchAddress("gen_D0Dau2_phi",&gen_D0Dau2_phi);
+                t->SetBranchAddress("gen_D0Dau2_mass",&gen_D0Dau2_mass);
+                t->SetBranchAddress("gen_D0Dau2_y",&gen_D0Dau2_y);
+                t->SetBranchAddress("gen_D0Dau2_charge",&gen_D0Dau2_charge);
+                t->SetBranchAddress("gen_D0Dau2_pdgId",&gen_D0Dau2_pdgId);
+                t->SetBranchAddress("gen_D1pT",&gen_D1pT);
+                t->SetBranchAddress("gen_D1eta",&gen_D1eta);
+                t->SetBranchAddress("gen_D1phi",&gen_D1phi);
+                t->SetBranchAddress("gen_D1mass",&gen_D1mass);
+                t->SetBranchAddress("gen_D1y",&gen_D1y);
+                t->SetBranchAddress("gen_D1charge",&gen_D1charge);
+                t->SetBranchAddress("gen_D1pdgId",&gen_D1pdgId);
+        }; 
+        template <typename T>
         void setTree(T *t){
             t->SetBranchAddress("Ntrkoffline",&Ntrkoffline);
             t->SetBranchAddress("Npixel",&Npixel);

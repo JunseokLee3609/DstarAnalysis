@@ -13,10 +13,11 @@
 #include "TLegend.h"
 #include "RooFitResult.h"
 #include "Opt.h"
+#include "Helper.h"
 
 class PlotManager {
 public:
-    PlotManager(FitOpt opt);
+    PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir);
     void DrawRawDistribution();
     void DrawFittedModel(bool drawPull = false);
 
@@ -28,6 +29,8 @@ private:
     std::string fitResultName_;
     std::string wsName_;
     std::string plotName_;
+    std::string fileDir_;
+    std::string outputDir_;
     TFile* file_;
     RooDataSet* dataset_;
     RooAbsPdf* pdf_;
@@ -35,15 +38,17 @@ private:
     RooFitResult* fitResult_;
     RooWorkspace* ws_;
     int colorIndex = 1; // Start with a different color for each component
+    std::vector<std::pair<std::string, int>> legendEntries; // 컴포넌트 이름과 색상 저장
 
     void DrawPullFrame(RooPlot* frame);
     RooAbsPdf* ExtractComponent(const std::string& namePattern);
     void PlotComponents(RooPlot* frame, RooAbsPdf* Pdf);
     void DrawParameterPad();
 };
-PlotManager::PlotManager(FitOpt opt)
-    : filename_(opt.outputFile), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
-    file_ = TFile::Open(Form("roots/%s.root",filename_.c_str()));
+PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir)
+    : fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
+    file_ = TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str()));
+    if(file_) cout << "File Opened :: " << Form("roots/MC/%s",filename_.c_str()) <<endl;
     if (!file_ || file_->IsZombie()) {
         std::cerr << "Error: Failed to open file " << filename_ << std::endl;
         return;
@@ -81,14 +86,14 @@ PlotManager::PlotManager(FitOpt opt)
         return;
     }
     var_->setRange("analysis", opt.massMin, opt.massMax);
-    // var_->setMin(opt.massMin);
-    // var_->setMax(opt.massMax);
+    var_->setMin(opt.massMin);
+    var_->setMax(opt.massMax);
 
     fitResult_ = (RooFitResult*)file_->Get(fitResultName_.c_str());
     if (!fitResult_) {
         std::cerr << "Error: Failed to load fit result from file" << std::endl;
         file_->Close();
-        return;
+        // return;
     }
 }
 
@@ -102,25 +107,27 @@ void PlotManager::DrawRawDistribution() {
     RooPlot* frame = var_->frame(RooFit::Range("analysis"));
     dataset_->plotOn(frame);
     frame->Draw();
-    canvas->SaveAs(Form("plots_raw/RawDist%s.pdf",plotName_.c_str()));
+    createDir(Form("%s/",outputDir_.c_str()));
+    canvas->SaveAs(Form("%s/RawDist%s",outputDir_.c_str(),plotName_.c_str()));
     delete canvas;
 }
 RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
     const RooArgSet* components = pdf_->getComponents();
-    TIterator* iter = components->createIterator();
-    RooAbsArg* component;
     RooAbsPdf* foundPdf = nullptr;
     
-    while ((component = (RooAbsArg*)iter->Next())) {
-        RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(component);
+    // Use range-based for loop instead of deprecated iterator
+    for (const auto& obj : *components) {
+        RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(obj);
         if (pdfComponent && std::string(pdfComponent->GetName()).find(namePattern) != std::string::npos) {
             foundPdf = pdfComponent;
             break;
         }
     }
-    cout << "foundPdf: " << foundPdf->GetName() << endl;
     
-    delete iter;
+    if (foundPdf) {
+        cout << "foundPdf: " << foundPdf->GetName() << endl;
+    }
+    
     return foundPdf;
 }
 
@@ -129,6 +136,10 @@ void PlotManager::DrawFittedModel(bool drawPull) {
         std::cerr << "Error: Dataset, PDF, variable, or fit result not loaded" << std::endl;
         return;
     }
+
+    // 범례 엔트리 초기화
+    legendEntries.clear();
+    colorIndex = 1;
 
     TCanvas* canvas = new TCanvas("canvas", "", 1200, 800);
 
@@ -153,18 +164,13 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     RooPlot* frame = var_->frame(RooFit::Bins(120),RooFit::Title(""),RooFit::Range("analysis"));
     dataset_->plotOn(frame, RooFit::Name("datapoints"));
     
-    // Clear any fit range attribute that might cause problems
-    // pdf_->setStringAttribute("fitrange", nullptr);
-    
     // Plot the total PDF
     pdf_->plotOn(frame, RooFit::Name("model"), RooFit::NormRange("analysis"),RooFit::Range("analysis"));
-    // pdf_->getParameters(dataset_)->Print("v");
     
-    // Extract and plot signal component
-    // RooAbsPdf* signalPdf = ExtractComponent("sig");
-    // if (signalPdf) {
-    //     PlotComponents(frame, signalPdf);
-    // }
+    // 데이터 및 전체 모델 항목 추가
+    legendEntries.push_back(std::make_pair("Data", kBlack));
+    legendEntries.push_back(std::make_pair("Total PDF", kBlue));
+
     
     // Extract and plot background component
     RooAbsPdf* backgroundPdf = ExtractComponent("tot");
@@ -173,6 +179,38 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     }
     
     frame->Draw();
+    
+    // 범례 생성 및 그리기
+    TLegend* legend = new TLegend(0.7, 0.7, 0.95, 0.9);
+    legend->SetBorderSize(0);
+    legend->SetFillStyle(0);
+    
+    // 데이터 포인트 추가
+    legend->AddEntry(frame->findObject("datapoints"), "Data", "P");
+    
+    // 전체 모델 추가
+    legend->AddEntry(frame->findObject("model"), "Total Fit", "L");
+    
+    // 컴포넌트 추가
+    for (const auto& entry : legendEntries) {
+        // 처음 두 항목(데이터 및 전체 모델)은 이미 추가했으므로 건너뜀
+        if (entry.first != "Data" && entry.first != "Total PDF") {
+            TObject* obj = frame->findObject(entry.first.c_str());
+            if (obj) {
+                // 이름을 보기 좋게 가공 (선택적)
+                std::string displayName = entry.first;
+                // // sig_, bkg_ 등의 접두사 제거
+                // size_t pos = displayName.find("_");
+                // if (pos != std::string::npos) {
+                //     displayName = displayName.substr(pos + 1);
+                // }
+                
+                legend->AddEntry(obj, displayName.c_str(), "L");
+            }
+        }
+    }
+    
+    legend->Draw();
 
     // Draw the pull distribution
     if (drawPull) {
@@ -184,8 +222,11 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     paramPad->cd();
     DrawParameterPad();
 
-    canvas->SaveAs(Form("plots/%s.pdf",plotName_.c_str()));
+    createDir(Form("%s/",outputDir_.c_str()));
+    canvas->SaveAs(Form("%s/%s",outputDir_.c_str(),plotName_.c_str()));
+
     delete canvas;
+    delete legend; // 메모리 누수 방지
 }
 
 void PlotManager::DrawPullFrame(RooPlot* frame) {
@@ -215,39 +256,56 @@ void PlotManager::DrawParameterPad() {
     const RooArgList& params = fitResult_->floatParsFinal();
     for (int i = 0; i < params.getSize(); ++i) {
         RooRealVar* param = (RooRealVar*)params.at(i);
-        latex.DrawLatex(0.1, 0.9 - i * 0.05, Form("%s = %.3f #pm %.3f", param->GetName(), param->getVal(), param->getError()));
+        latex.DrawLatex(0.1, 0.9 - i * 0.05, Form("%s = %.5f #pm %.5f", param->GetName(), param->getVal(), param->getError()));
     }
 }
 void PlotManager::PlotComponents(RooPlot* frame, RooAbsPdf* Pdf) {
     const RooArgSet* components = Pdf->getComponents();
     if (components->getSize() > 1) {
-        TIterator* iter = components->createIterator();
-        RooAbsArg* component;
-        while ((component = (RooAbsArg*)iter->Next())) {
-            RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(component);
-            
+        // Use range-based for loop instead of deprecated iterator
+        for (const auto& obj : *components) {
+            RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(obj);
+            if (pdfComponent) {
+                std::string compName = pdfComponent->GetName();
+                if(compName.find("tot") != std::string::npos){ colorIndex++; continue;}
+                if(compName.find("sig")||compName.find("bkg")){
+                    Pdf->plotOn(frame, 
+                        RooFit::Components(*pdfComponent),
+                        RooFit::LineStyle(kDashed),
+                        RooFit::LineColor(colorIndex),
+                        RooFit::Name(compName.c_str()),
+                        RooFit::Range("analysis"),
+                        RooFit::NormRange("analysis"));
+
+                }
+                else{
                 Pdf->plotOn(frame, 
-                                  RooFit::Components(*pdfComponent),
-                                  RooFit::LineStyle(kDashed),
-                                  RooFit::LineColor(colorIndex),
-                                  RooFit::Name(pdfComponent->GetName()),
-                                  RooFit::Range("analysis"),
-                                  RooFit::NormRange("analysis"));
-                colorIndex++;
-            
-        }
-        delete iter;
-    } else {
-        Pdf->plotOn(frame, 
-                          RooFit::Components(*Pdf),
+                          RooFit::Components(*pdfComponent),
                           RooFit::LineStyle(kDashed),
                           RooFit::LineColor(colorIndex),
-                          RooFit::Name(Pdf->GetName()),
-                        //   RooFit::Normalization(1.0, RooAbsReal::Raw),
+                          RooFit::Name(compName.c_str()),
                           RooFit::Range("analysis"),
                           RooFit::NormRange("analysis"));
+                
+                }
+                // 범례 항목 추가
+                legendEntries.push_back(std::make_pair(compName, colorIndex));
                 colorIndex++;
-                        //   RooFit::NormRange("analysis"));
+            }
+        }
+    } else {
+        std::string pdfName = Pdf->GetName();
+        Pdf->plotOn(frame, 
+                  RooFit::Components(*Pdf),
+                  RooFit::LineStyle(kDashed),
+                  RooFit::LineColor(colorIndex),
+                  RooFit::Name(pdfName.c_str()),
+                  RooFit::Range("analysis"),
+                  RooFit::NormRange("analysis"));
+        
+        // 범례 항목 추가
+        legendEntries.push_back(std::make_pair(pdfName, colorIndex));
+        colorIndex++;
     }
 }
 

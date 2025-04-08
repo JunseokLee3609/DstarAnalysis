@@ -3,28 +3,43 @@
 #include "../Params.h"
 #include "../Helper.h"
 #include "../PlotManager.h"
-void Macro(){
+#include "../DataLoader.h"
+void Macro(bool doFit = false,bool useCUDA=true){
     FitOpt D0opt;
-    D0opt.D0Default();
+    D0opt.useCUDA = useCUDA;
+    D0opt.doFit = doFit;
+    cout << D0opt.mvaMin << endl; 
     std::string particleType = "D0";
     std::vector<double> ptBins = {0.0, 1.0, 2.0, 3.0};
     std::vector<double> etaBins = {0.0, 0.5, 1.0};
-    std::string filepath = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_D0MC.root";
+    std::vector<double> mvabin = {-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9};
+    // std::string filepath = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_D0DATAMVA.root";
+    std::string filepath = "/home/jun502s/DstarAna/DStarAna/data/DstarData_Rds_CUDA_pp.root";
     std::string datasetName = "dataset";
-    MassFitter fitter(D0opt.name,D0opt.massMin,D0opt.massMax);
-    ParamMap params = ParamMaker(ptBins,etaBins);
+    DStarParamMap params = DStarParamMaker(ptBins,etaBins);
+    DataLoader loader(filepath);
+    loader.loadRooDataSet(datasetName,"workspace");
     // RooDataSet* dataset = (RooDataSet*)TFile::Open(filepath.c_str())->Get(datasetName.c_str());
     // fitter.SetData(dataset);
     // fitter.ApplyCut(D0opt.cutExpr);
-    // fitter.init(D0opt, filepath, true, "","", params[{0.0,0.0}].first,params[{0.0,0.0}].second);
+    // for(auto mva : mvabin){
+    // D0opt.mvaMin = mva;
+    D0opt.DStarDataDefault();
+    MassFitter fitter(D0opt.name,loader.getDataSet(),D0opt.massVar,D0opt.massMin,D0opt.massMax);
+    fitter.PerformFit(D0opt, true, "","", params[{0.0,0.0}].first,params[{0.0,0.0}].second);
+    // fitter.PlotResult(true,D0opt.outputFile);
     PlotManager plotManager(D0opt);
-    plotManager.DrawRawDistribution();
+    if(!doFit){
+        plotManager.DrawRawDistribution();
+    }
     plotManager.DrawFittedModel(true);
-    
-
-    
-
-
-
-
+    // }
 }
+    
+
+    
+
+
+
+
+
