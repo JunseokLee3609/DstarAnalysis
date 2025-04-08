@@ -2,7 +2,35 @@
 #include <ROOT/TThreadExecutor.hxx>
 #include "../interface/simpleDMC.h"
 
-// 입자 타입을 정의하는 enum
+void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
+    TSystemDirectory dir(folderPath.c_str(), folderPath.c_str());
+    TList* files = dir.GetListOfFiles();
+
+    if (!files) return;
+
+    TIter next(files);
+    TSystemFile* file;
+
+    while ((file = (TSystemFile*)next())) {
+        std::string fileName = file->GetName();
+
+        // Skip "." and ".."
+	if (fileName == "." || fileName == "..") continue;
+
+	std::string fullPath = folderPath + "/" + fileName;
+
+	if (file->IsDirectory()) {
+		// Recursive call for subdirectories
+		loadRootFilesRecursively(chain, fullPath);
+	} else if (fileName.find(".root") != std::string::npos) {
+		std::cout << "Adding: " << fullPath << std::endl;
+		chain->Add(fullPath.c_str());
+	}
+    }
+}
+        
+        
+
 enum class ParticleType {
     D0,    // D0 입자
     DStar  // D* 입자
@@ -244,7 +272,8 @@ void FlexibleData(
     std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
     
     // 파일 추가
-    chainData->Add(dataPath.c_str());
+    loadRootFilesRecursively(chainData.get(),dataPath);
+    //chainData->Add(dataPath.c_str());
     
     using namespace DataFormat;
     
@@ -277,7 +306,8 @@ void FlexibleData(
     }
     
     // 로드된 이벤트 수 확인
-    std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
+    if(!cutExpr.empty()) std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
+    else std::cout << "Data (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
     
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
@@ -291,7 +321,8 @@ void FlexibleData(
     }
     
     // 처리할 이벤트 수 결정
-    int totEvt = chainData->GetEntries();
+    //int totEvt = chainData->GetEntries();
+    int totEvt = filteredTree->GetEntries();
     std::cout << "Total events available: " << totEvt << std::endl;
     
     // 종료 이벤트 조정
@@ -303,12 +334,12 @@ void FlexibleData(
     
     // 메인 처리 루프
     for (auto iEvt : ROOT::TSeqU(start, end, skip)) {
-        if ((iEvt % 10000) == 0) {
+        if ((iEvt % 100000) == 0) {
             std::cout << "Processing event " << iEvt << " / " << end << std::endl;
         }
         
         // Data 처리
-        chainData->GetEntry(iEvt);
+        filteredTree->GetEntry(iEvt);
         
         if (particleType == ParticleType::D0) {
             simpleDMCTreeflat* doutData = (simpleDMCTreeflat*)doutDataPtr;
@@ -378,7 +409,9 @@ void FlexibleMC(
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
     
     // 파일 추가
-    chainMC->Add(mcPath.c_str());
+    // chainMC->Add(mcPath.c_str());
+    loadRootFilesRecursively(chainMC.get(),mcPath);
+    // TTree* filteredTree = chainMC->CopyTree(cutExpr.c_str());
     
     using namespace DataFormat;
     
@@ -397,6 +430,8 @@ void FlexibleMC(
         // 체인 설정
         dinMC->setTree<TChain>(chainMC.get());
         if(setGEN) dinMC->setGENTree<TChain>(chainMC.get());
+        // dinMC->setTree<TTree>(filteredTree);
+        // if(setGEN) dinMC->setGENTree<TTree>(filteredTree);
     } else {
         // DStar 입자 처리를 위한 클래스 사용
         simpleDStarMCTreeevt* dinMC = new simpleDStarMCTreeevt();
@@ -408,10 +443,13 @@ void FlexibleMC(
         // 체인 설정
         dinMC->setTree<TChain>(chainMC.get());
         if(setGEN) dinMC->setGENTree<TChain>(chainMC.get());
+        // dinMC->setTree<TTree>(filteredTree);
+        // if(setGEN) dinMC->setGENTree<TTree>(filteredTree);
     }
     
     // 로드된 이벤트 수 확인
     std::cout << "MC entries: " << chainMC->GetEntries() << std::endl;
+    // else std::cout << "MC (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
     
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
@@ -430,6 +468,7 @@ void FlexibleMC(
     
     // 처리할 이벤트 수 결정
     int totEvt = chainMC->GetEntries();
+    // int totEvt = filteredTree->GetEntries();
     std::cout << "Total events available: " << totEvt << std::endl;
     
     // 종료 이벤트 조정
@@ -496,6 +535,7 @@ void FlexibleMC(
     if (fout) {
         std::cout << "Writing output file with " << tskim->GetEntries() << " entries..." << std::endl;
         tskim->Write();
+        tskimGEN->Write();
         fout->Write();
         fout->Close();
         std::cout << "Output file " << fout->GetName() << " has been created." << std::endl;
@@ -530,7 +570,7 @@ void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleTyp
 }
 
 // main 함수 예시
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0) {
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "") {
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
@@ -541,8 +581,9 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0) {
 
     std::string treeNameMC = "dStarana_mc/PATCompositeNtuple";
     std::string treeNameData = "dStarana/PATCompositeNtuple";
-    std::string date = "06Apr25";
+    std::string date = "07Apr25";
     std::string cut = "abs(y)<1.2 && pT > 4";
+    // std::string cut = "";
 
     std::string outputPath;
     std::string outputPrefix;
@@ -550,17 +591,19 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0) {
     if (type == 0) {
 	    outputPath = "./Data/FlatSample/ppMC/";
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMC";
-	    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_, ParticleType::DStar, setGEN, date);
+ 	    if(!path.empty()) mcPath = path;
+	    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_,ParticleType::DStar, setGEN, date);
 
     } else if (type == 1) {
 	    outputPath = "./Data/FlatSample/ppData/";
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapData";
-	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, date);
+ 	    if(!path.empty()) dataPath = path;
+	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_,cut, ParticleType::DStar, date);
 
     } else if (type == 2) {
 	    outputPath = "./Data/FlatSample/ppMix/";
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
-	    FlexibleMix(dataPath, mcPath, treeName, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, setGEN, date);
+	    //FlexibleMix(dataPath, mcPath, treeName, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, setGEN, date);
 
     } else {
 	    std::cerr << "Invalid type value: " << type << ". Must be 0 (MC), 1 (Data), or 2 (Mix)." << std::endl;
