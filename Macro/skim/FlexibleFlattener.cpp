@@ -3,6 +3,16 @@
 #include "../interface/simpleDMC.h"
 
 void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
+    
+    if(TString(folderPath).EndsWith(".root")) {
+                     std::cout << "Adding file directly: " << folderPath << std::endl;
+                     chain->Add(folderPath.c_str());
+                return; // Nothing more to do if it was a file path
+    }
+            // If it's a directory, proceed to list its contents below
+            
+
+        // Original logic for handling directories
     TSystemDirectory dir(folderPath.c_str(), folderPath.c_str());
     TList* files = dir.GetListOfFiles();
 
@@ -23,6 +33,7 @@ void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
 		// Recursive call for subdirectories
 		loadRootFilesRecursively(chain, fullPath);
 	} else if (fileName.find(".root") != std::string::npos) {
+
 		std::cout << "Adding: " << fullPath << std::endl;
 		chain->Add(fullPath.c_str());
 	}
@@ -260,7 +271,6 @@ void FlexibleData(
     int start,                            // 시작 이벤트
     int end,                              // 종료 이벤트 (-1은 모든 이벤트)
     int jobIdx,                           // 작업 인덱스
-    std::string cutExpr = "",
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
@@ -280,7 +290,7 @@ void FlexibleData(
     // 입자 타입에 따라 적절한 클래스 인스턴스 생성
     void* dinDataPtr = nullptr;
     void* doutDataPtr = nullptr;
-    //TTree *filteredTree = chainData->CopyTree(cutExpr.c_str());
+
     if (particleType == ParticleType::D0) {
         // D0 입자 처리를 위한 클래스 사용
         simpleDTreeevt* dinData = new simpleDTreeevt();
@@ -290,8 +300,8 @@ void FlexibleData(
         doutDataPtr = doutData;
         
         // 체인 설정
-        //dinData->setTree<TTree>(filteredTree);
         dinData->setTree<TChain>(chainData.get());
+        //dinData->setTree<TChain>(chainData.get());
     } else {
         // DStar 입자 처리를 위한 클래스 사용
         simpleDStarDataTreeevt* dinData = new simpleDStarDataTreeevt();
@@ -308,6 +318,7 @@ void FlexibleData(
     // 로드된 이벤트 수 확인
     if(!cutExpr.empty()) std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
     //else std::cout << "Data (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
+
     
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
@@ -322,7 +333,6 @@ void FlexibleData(
     
     // 처리할 이벤트 수 결정
     int totEvt = chainData->GetEntries();
-    //int totEvt = filteredTree->GetEntries();
     std::cout << "Total events available: " << totEvt << std::endl;
     
     // 종료 이벤트 조정
@@ -339,7 +349,6 @@ void FlexibleData(
         }
         
         // Data 처리
-        //filteredTree->GetEntry(iEvt);
         chainData->GetEntry(iEvt);
         
         if (particleType == ParticleType::D0) {
@@ -406,17 +415,12 @@ void FlexibleMC(
     std::cout << "Processing MC files: " << mcPath << std::endl;
     std::cout << "Particle type: " << (particleType == ParticleType::D0 ? "D0" : "DStar") << std::endl;
     
-    // MC 체인 생성
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
     
-    // 파일 추가
-    // chainMC->Add(mcPath.c_str());
     loadRootFilesRecursively(chainMC.get(),mcPath);
-    // TTree* filteredTree = chainMC->CopyTree(cutExpr.c_str());
     
     using namespace DataFormat;
     
-    // 입자 타입에 따라 적절한 클래스 인스턴스 생성
     void* dinMCPtr = nullptr;
     void* doutMCPtr = nullptr;
     
@@ -572,6 +576,7 @@ void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleTyp
 
 // main 함수 예시
 int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string suffix="") {
+
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
@@ -582,9 +587,8 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 
     std::string treeNameMC = "dStarana_mc/PATCompositeNtuple";
     std::string treeNameData = "dStarana/PATCompositeNtuple";
-    std::string date = "07Apr25";
+    std::string date = "14Apr25";
     std::string cut = "abs(y)<1.2 && pT > 4";
-    // std::string cut = "";
 
     std::string outputPath;
     std::string outputPrefix;
@@ -601,7 +605,8 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapData";
 	    if(!path.empty()) dataPath = path;
 	    if(!suffix.empty()) outputPrefix += "_"+suffix;
-	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_,cut, ParticleType::DStar, date);
+
+	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_, ParticleType::DStar, date);
 
     } else if (type == 2) {
 	    outputPath = "./Data/FlatSample/ppMix/";

@@ -428,6 +428,7 @@ void DStarRDSMaker(bool isMC = true) {
         {"EtaD2", VarType::FLOAT, -2.5, 2.5},
         {"PhiD2", VarType::FLOAT, -3.14, 3.14},
         {"mva", VarType::FLOAT, -1, 1},
+        {"dca3D", VarType::FLOAT, 0, 5},
         {"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}},
         // {"pT_ratio", "pTD1 / pT", {"pTD1", "pT"}},
         // {"deltaEta", "eta - EtaD1", {"eta", "EtaD1"}}
@@ -437,10 +438,12 @@ void DStarRDSMaker(bool isMC = true) {
         variables.push_back({"isSwap", VarType::BOOL});
         variables.push_back({"isMC", VarType::BOOL});
         variables.push_back({"matchGEN", VarType::BOOL});
+        variables.push_back({"matchGen_D1ancestorFlavor_", VarType::INT, 0, 5});
     }
     // 청크 단위로 RooDataSet 생성
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_DStarMC_ppRef_0_20250320.root"; //Data
-    string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/ppMC/flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30_0_20250331.root"; //MC
+    // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/ppMC/flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30_0_20250331.root"; //MC
+    string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_07Apr25.root"; //MC
     string outputfilename = !isMC ? "RDS_Physics_Data.root" : "RDS_Physics_MC_pp.root";
     string outputDirectory = !isMC ? "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/" : "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/";
     string treename = "skimTreeFlat";
