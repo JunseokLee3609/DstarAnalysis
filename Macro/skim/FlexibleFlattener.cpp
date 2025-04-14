@@ -280,7 +280,7 @@ void FlexibleData(
     // 입자 타입에 따라 적절한 클래스 인스턴스 생성
     void* dinDataPtr = nullptr;
     void* doutDataPtr = nullptr;
-    TTree *filteredTree = chainData->CopyTree(cutExpr.c_str());
+    //TTree *filteredTree = chainData->CopyTree(cutExpr.c_str());
     if (particleType == ParticleType::D0) {
         // D0 입자 처리를 위한 클래스 사용
         simpleDTreeevt* dinData = new simpleDTreeevt();
@@ -290,8 +290,8 @@ void FlexibleData(
         doutDataPtr = doutData;
         
         // 체인 설정
-        dinData->setTree<TTree>(filteredTree);
-        //dinData->setTree<TChain>(chainData.get());
+        //dinData->setTree<TTree>(filteredTree);
+        dinData->setTree<TChain>(chainData.get());
     } else {
         // DStar 입자 처리를 위한 클래스 사용
         simpleDStarDataTreeevt* dinData = new simpleDStarDataTreeevt();
@@ -301,13 +301,13 @@ void FlexibleData(
         doutDataPtr = doutData;
         
         // 체인 설정
-        dinData->setTree<TTree>(filteredTree);
-        //dinData->setTree<TChain>(chainData.get());
+        //dinData->setTree<TTree>(filteredTree);
+        dinData->setTree<TChain>(chainData.get());
     }
     
     // 로드된 이벤트 수 확인
     if(!cutExpr.empty()) std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
-    else std::cout << "Data (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
+    //else std::cout << "Data (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
     
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
@@ -321,8 +321,8 @@ void FlexibleData(
     }
     
     // 처리할 이벤트 수 결정
-    //int totEvt = chainData->GetEntries();
-    int totEvt = filteredTree->GetEntries();
+    int totEvt = chainData->GetEntries();
+    //int totEvt = filteredTree->GetEntries();
     std::cout << "Total events available: " << totEvt << std::endl;
     
     // 종료 이벤트 조정
@@ -339,7 +339,8 @@ void FlexibleData(
         }
         
         // Data 처리
-        filteredTree->GetEntry(iEvt);
+        //filteredTree->GetEntry(iEvt);
+        chainData->GetEntry(iEvt);
         
         if (particleType == ParticleType::D0) {
             simpleDMCTreeflat* doutData = (simpleDMCTreeflat*)doutDataPtr;
@@ -570,7 +571,7 @@ void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleTyp
 }
 
 // main 함수 예시
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "") {
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string suffix="") {
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
@@ -592,12 +593,14 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 	    outputPath = "./Data/FlatSample/ppMC/";
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMC";
  	    if(!path.empty()) mcPath = path;
-	    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_,ParticleType::DStar, setGEN, date);
+	    if(!suffix.empty()) outputPrefix += "_"+ suffix;
+		    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_,ParticleType::DStar, setGEN, date);
 
     } else if (type == 1) {
 	    outputPath = "./Data/FlatSample/ppData/";
 	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapData";
- 	    if(!path.empty()) dataPath = path;
+	    if(!path.empty()) dataPath = path;
+	    if(!suffix.empty()) outputPrefix += "_"+suffix;
 	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_,cut, ParticleType::DStar, date);
 
     } else if (type == 2) {
