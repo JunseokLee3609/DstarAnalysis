@@ -3,6 +3,16 @@
 #include "../interface/simpleDMC.h"
 
 void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
+    
+    if(TString(folderPath).EndsWith(".root")) {
+                     std::cout << "Adding file directly: " << folderPath << std::endl;
+                     chain->Add(folderPath.c_str());
+                return; // Nothing more to do if it was a file path
+    }
+            // If it's a directory, proceed to list its contents below
+            
+
+        // Original logic for handling directories
     TSystemDirectory dir(folderPath.c_str(), folderPath.c_str());
     TList* files = dir.GetListOfFiles();
 
@@ -22,7 +32,7 @@ void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
 	if (file->IsDirectory()) {
 		// Recursive call for subdirectories
 		loadRootFilesRecursively(chain, fullPath);
-	} else if (fileName.find(".root") != std::string::npos) {
+	} else if (fileName.find(".root") != std::string::npos || folderPath.find(".root") != std::string::npos) {
 		std::cout << "Adding: " << fullPath << std::endl;
 		chain->Add(fullPath.c_str());
 	}
@@ -570,7 +580,7 @@ void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleTyp
 }
 
 // main 함수 예시
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "") {
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string prefix ="") {
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
@@ -581,7 +591,7 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 
     std::string treeNameMC = "dStarana_mc/PATCompositeNtuple";
     std::string treeNameData = "dStarana/PATCompositeNtuple";
-    std::string date = "07Apr25";
+    std::string date = "14Apr25";
     std::string cut = "abs(y)<1.2 && pT > 4";
     // std::string cut = "";
 
@@ -590,14 +600,16 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 
     if (type == 0) {
 	    outputPath = "./Data/FlatSample/ppMC/";
-	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMC";
+	    outputPrefix = "flatSkimForBDT_DStar_NonSwapMC";
  	    if(!path.empty()) mcPath = path;
+	    if(!prefix.empty()) outputPrefix += prefix;
 	    FlexibleMC(mcPath, treeNameMC, outputPath, outputPrefix, start_, end_, jobIdx_,ParticleType::DStar, setGEN, date);
 
     } else if (type == 1) {
 	    outputPath = "./Data/FlatSample/ppData/";
-	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapData";
+	    outputPrefix = "flatSkimForBDT_DStar_NonSwapData";
  	    if(!path.empty()) dataPath = path;
+	    if(!prefix.empty()) outputPrefix += prefix;
 	    FlexibleData(dataPath, treeNameData, outputPath, outputPrefix, start_, end_, jobIdx_,cut, ParticleType::DStar, date);
 
     } else if (type == 2) {

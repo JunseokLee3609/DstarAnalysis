@@ -119,6 +119,7 @@ namespace DataFormat{
    Float_t         Trk3DDCA[MAXCAND];   //[candSize]
    Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
    Float_t         mva[MAXCAND];   //[candSize]
+   Float_t         dca3D[MAXCAND];   //[candSize]
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -229,6 +230,7 @@ namespace DataFormat{
     TBranch        *b_Trk3DDCA;   //!
     TBranch        *b_Trk3DDCAErr;   //!
     TBranch        *b_mva;   //!
+    TBranch        *b_dca3D;   //!
    simpleDMCTreeevt* getEventHandle(){ return this;}
     template <typename T>
         void setTree(T *fChain){
@@ -311,6 +313,7 @@ namespace DataFormat{
    fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
+    fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
         };
     template <typename T>
         void setGENTree(T *fChain){ 
@@ -455,6 +458,7 @@ namespace DataFormat{
    Float_t        Trk3DDCA;   //[candSize]
     Float_t        Trk3DDCAErr;   //[candSize]
     Float_t        mva;   //[candSize]
+    Float_t        dca3D;   //[candSize]
    bool isMC;
     simpleDMCTreeflat* getEventHandle(){ return this;}
     template <typename T>
@@ -538,6 +542,7 @@ namespace DataFormat{
     fChain->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
     fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->SetBranchAddress("mva",&mva);
+    fChain->SetBranchAddress("dca3D",&dca3D);
     };
     template <typename T>
     void setGENTree(T *fChain){
@@ -653,6 +658,7 @@ namespace DataFormat{
     fChain->Branch("Trk3DDCA",&Trk3DDCA);
     fChain->Branch("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->Branch("mva",&mva);
+    fChain->Branch("dca3D",&dca3D);
    
     };
     template <typename T>
@@ -766,6 +772,7 @@ dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
 Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
 Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
 mva =evt.mva[idx];   //[candSize]
+dca3D =evt.dca3D[idx];   //[candSize]
 
         };
 template <typename T>
@@ -817,6 +824,7 @@ dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
 Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
 Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
 mva =evt.mva[idx];   //[candSize]
+dca3D =evt.dca3D[idx];   //[candSize]
 
 // isMC=isMC;
         };
@@ -904,6 +912,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    Float_t        Trk3DDCA[MAXCAND];   //[candSize]
     Float_t        Trk3DDCAErr[MAXCAND];   //[candSize]
     Float_t        mva[MAXCAND];   //[candSize]
+    Float_t       dca3D[MAXCAND];   //[candSize]
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -954,6 +963,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    TBranch       *b_Trk3DDCA;   //!
     TBranch       *b_Trk3DDCAErr;   //!
     TBranch       *b_mva;   //!
+    TBranch       *b_dca3D;   //!
    simpleDTreeevt* getEventHandle(){ return this;};
     template <typename T>
     void setTree(T *fChain){
@@ -1005,6 +1015,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
+    fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
         };
     
     };
@@ -1058,6 +1069,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     Float_t        Trk3DDCA;   //[candSize]
      Float_t        Trk3DDCAErr;   //[candSize]
      Float_t        mva;   //[candSize]
+     Float_t       dca3D;   //[candSize]
 
    bool isMC;
     simpleDTreeflat* getEventHandle(){ return this;}
@@ -1112,6 +1124,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->SetBranchAddress("mva",&mva);
    fChain->Branch("isMC",&isMC);
+    fChain->SetBranchAddress("dca3D",&dca3D);
     };
         template <typename T>
     void setOutputTree(T *fChain){
@@ -1164,7 +1177,8 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    fChain->Branch("Trk3DDCA",&Trk3DDCA);
     fChain->Branch("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->Branch("mva",&mva);
-    };
+    fChain->Branch("dca3D",&dca3D);
+          };
 void copyDn( simpleDTreeevt& evt, int idx){
 Npixel =evt.Npixel;
 HFsumETPlus =evt.HFsumETPlus;
@@ -1213,6 +1227,7 @@ dedxHarmonic2D2 =evt.dedxHarmonic2D2[idx];   //[candSize]
 Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
 Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
 mva=evt.mva[idx];
+dca3D=evt.dca3D[idx];
 // isMC=isMC;
         };
     };
@@ -1288,6 +1303,10 @@ mva=evt.mva[idx];
    Float_t         EtaGrandD2[MAXCAND];   //[candSize]
    Float_t         dedxHarmonic2GrandD1[MAXCAND];   //[candSize]
    Float_t         dedxHarmonic2GrandD2[MAXCAND];   //[candSize]
+   Float_t         Trk3DDCA[MAXCAND];   //[candSize]
+   Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
+   Float_t         mva[MAXCAND];   //[candSize]
+   Float_t        dca3D[MAXCAND];   //[candSize]
    TBranch        *b_Ntrkoffline;   //!
    TBranch        *b_Npixel;   //!
    TBranch        *b_HFsumETPlus;   //!
@@ -1356,6 +1375,11 @@ mva=evt.mva[idx];
    TBranch        *b_EtaGrandD2;   //!
    TBranch        *b_dedxHarmonic2GrandD1;   //!
    TBranch        *b_dedxHarmonic2GrandD2;   //! 
+    TBranch        *b_Trk3DDCA;   //!
+    TBranch        *b_Trk3DDCAErr;   //!
+    TBranch        *b_mva;   //!
+    TBranch        *b_dca3D;   //!
+
     simpleDStarDataTreeevt* getEventHandle(){ return this;}
     template <typename T>
         void setTree(T *fChain){
@@ -1427,6 +1451,10 @@ mva=evt.mva[idx];
    fChain->SetBranchAddress("EtaGrandD2", EtaGrandD2, &b_EtaGrandD2);
    fChain->SetBranchAddress("dedxHarmonic2GrandD1", dedxHarmonic2GrandD1, &b_dedxHarmonic2GrandD1);
    fChain->SetBranchAddress("dedxHarmonic2GrandD2", dedxHarmonic2GrandD2, &b_dedxHarmonic2GrandD2);
+   fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
+    fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
+    fChain->SetBranchAddress("mva", mva, &b_mva);
+    fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
         };
     };
     struct simpleDStarMCTreeevt{
@@ -1507,8 +1535,8 @@ mva=evt.mva[idx];
             float matchGen_D1decayLength3D_[MAXCAND];
             float matchGen_D1angle2D_[MAXCAND];
             float matchGen_D1angle3D_[MAXCAND];
-            float matchGen_D1ancestorId_[MAXCAND];
-            float matchGen_D1ancestorFlavor_[MAXCAND];
+            Int_t matchGen_D1ancestorId_[MAXCAND];
+            Int_t matchGen_D1ancestorFlavor_[MAXCAND];
             float massDaugther1[MAXCAND];
             float pTD1[MAXCAND];
             float EtaD1[MAXCAND];
@@ -1550,7 +1578,10 @@ mva=evt.mva[idx];
             float EtaGrandD2[MAXCAND];
             float dedxHarmonic2GrandD1[MAXCAND];
             float dedxHarmonic2GrandD2[MAXCAND];
-	    float mva[MAXCAND];
+            float Trk3DDCA[MAXCAND];
+            float Trk3DDCAErr[MAXCAND];
+	        float mva[MAXCAND];
+            float dca3D[MAXCAND];
             Int_t           candSize_gen;
    Float_t         gen_mass[MAXCAND];   //[candSize_gen]
    Float_t         gen_pT[MAXCAND];   //[candSize_gen]
@@ -1629,6 +1660,7 @@ mva=evt.mva[idx];
    TBranch        *b_gen_D1y;   //!
    TBranch        *b_gen_D1charge;   //!
    TBranch        *b_gen_D1pdgId;   //!
+
             //bool isData;
             // int candSize_gen;
             // float gen_pT[MAXCAND];
@@ -1787,6 +1819,9 @@ mva=evt.mva[idx];
             t->SetBranchAddress("EtaGrandD2",&EtaGrandD2);
             t->SetBranchAddress("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+            t->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
+            t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
+            t->SetBranchAddress("dca3D",&dca3D);
 	    t->SetBranchAddress("mva",&mva);
             };
             template <typename T>
@@ -1945,8 +1980,8 @@ mva=evt.mva[idx];
             float matchGen_D1decayLength3D_;
             float matchGen_D1angle2D_;
             float matchGen_D1angle3D_;
-            float matchGen_D1ancestorId_;
-            float matchGen_D1ancestorFlavor_;
+            Int_t matchGen_D1ancestorId_;
+            Int_t matchGen_D1ancestorFlavor_;
             float massDaugther1;
             float pTD1;
             float EtaD1;
@@ -1988,8 +2023,11 @@ mva=evt.mva[idx];
             float EtaGrandD2;
             float dedxHarmonic2GrandD1;
             float dedxHarmonic2GrandD2;
+            float Trk3DDCA;
+            float Trk3DDCAErr;
+            float dca3D;
             bool isMC;
-	   float mva;
+	        float mva;
                   Int_t           candSize_gen;
    Float_t         gen_mass;   //[candSize_gen]
    Float_t         gen_pT;   //[candSize_gen]
@@ -2232,6 +2270,9 @@ mva=evt.mva[idx];
             t->SetBranchAddress("EtaGrandD2",&EtaGrandD2);
             t->SetBranchAddress("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+            t->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
+            t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
+            t->SetBranchAddress("dca3D",&dca3D);
 	    t->SetBranchAddress("mva",&mva);};
             template <typename T>
         void setOutputTree(T *t){
@@ -2352,6 +2393,9 @@ mva=evt.mva[idx];
             t->Branch("EtaGrandD2",&EtaGrandD2);
             t->Branch("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->Branch("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+            t->Branch("Trk3DDCA",&Trk3DDCA);
+            t->Branch("Trk3DDCAErr",&Trk3DDCAErr);
+            t->Branch("dca3D",&dca3D);
             t->Branch("isMC",&isMC);
 	    t->Branch("mva",&mva);
         };
@@ -2516,6 +2560,9 @@ mva=evt.mva[idx];
             EtaGrandD2=evt.EtaGrandD2[idx];
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1[idx];
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2[idx];
+            Trk3DDCA=evt.Trk3DDCA[idx];
+            Trk3DDCAErr=evt.Trk3DDCAErr[idx];
+            dca3D=evt.dca3D[idx];
 	    mva = evt.mva[idx];
             //isData=evt.isData;
             };
@@ -2588,6 +2635,10 @@ mva=evt.mva[idx];
             EtaGrandD2=evt.EtaGrandD2[idx];
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1[idx];
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2[idx];
+            Trk3DDCA=evt.Trk3DDCA[idx];
+            Trk3DDCAErr=evt.Trk3DDCAErr[idx];
+            dca3D=evt.dca3D[idx];
+            mva = evt.mva[idx];
             //isData=evt.isData;
             };
         void copyGENDn( simpleDStarMCTreeevt& evt, int idx){
@@ -2825,6 +2876,10 @@ mva=evt.mva[idx];
             float EtaGrandD2;
             float dedxHarmonic2GrandD1;
             float dedxHarmonic2GrandD2;
+            float Trk3DDCA;
+            float Trk3DDCAErr;
+            float dca3D;
+            float mva;
             bool isMC;
             // int candSize_gen;
             // float gen_pT;
@@ -2934,6 +2989,10 @@ mva=evt.mva[idx];
             t->Branch("EtaGrandD2",&EtaGrandD2);
             t->Branch("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
             t->Branch("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+            t->Branch("Trk3DDCA",&Trk3DDCA);
+            t->Branch("Trk3DDCAErr",&Trk3DDCAErr);
+            t->Branch("dca3D",&dca3D);
+            t->Branch("mva",&mva);
             t->Branch("isMC",&isMC);
             // t->SetBranchAddress("candSize_gen",&candSize_gen);
             // t->SetBranchAddress("gen_pT",&gen_pT);
@@ -3042,233 +3101,12 @@ mva=evt.mva[idx];
             EtaGrandD2=evt.EtaGrandD2[idx];
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1[idx];
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2[idx];
-            };
-};
-    struct simpleDMCNtpevt{
-        public:
-            int Ntrkoffline ;
-            int Npixel    ;
-            float HFsumET   ;
-            float bestvtxX  ;
-            float bestvtxY  ;
-            float bestvtxZ  ;
-            int candSize  ;
-            float pT;                                         
-            float y;                                          
-            float eta;                                        
-            float phi;                                        
-            float mass;                                       
-            float mva;                                        
-            float flavor;                                     
-            float VtxProb;                                    
-            float v3DCosPointingAngle ;
-            float v3DPointingAngle ;
-            float v2DCosPointingAngle ;
-            float v2DPointingAngle ;
-            float v3DDecayLengthSignificance ;
-            float v3DDecayLength ;
-            float v2DDecayLengthSignificance ;
-            float v2DDecayLength ;
-            float zDCASignificanceDaugther1 ;
-            float xyDCASignificanceDaugther1 ;
-            float NHitD1    ;
-            bool HighPurityDaugther1 ;
-            float pTD1      ;
-            float pTerrD1   ;
-            float EtaD1     ;
-            float PhiD1     ;
-            float dedxHarmonic2D1 ;
-            float zDCASignificanceDaugther2 ;
-            float xyDCASignificanceDaugther2 ;
-            float NHitD2    ;
-            bool HighPurityDaugther2 ;
-            float pTD2      ;
-            float pTerrD2   ;
-            float EtaD2     ;
-            float PhiD2     ;
-            float dedxHarmonic2D2 ;
-            bool        isSwap    ;
-            int        idmom_reco ;
-            bool        matchGEN  ;
-            int        gen_ancestorFlavor ;
-            int        gen_ancestorId ;
-            float        gen_PVx_  ;
-            float        gen_PVy   ;
-            float        gen_PVz   ;
-            float        gen_pT    ;
-            float        gen_eta   ;
-            float        gen_phi   ;
-            float        gen_mass  ;
-            float        gen_y     ;
-            float        gen_decayLength3D ;
-            float        gen_decayLength2D ;
-            float        gen_angle3D ;
-            float        gen_angle2D ;
-            float        gen_pTD1  ;
-            float        gen_etaD1 ;
-            float        gen_phiD1 ;
-            float        gen_massD1 ;
-            float        gen_yD1   ;
-            float        gen_chargeD1 ;
-            float        gen_pdgIdD1 ;
-            float        gen_pTD2  ;
-            float        gen_etaD2 ;
-            float        gen_phiD2 ;
-            float        gen_massD2 ;
-            float        gen_yD2   ;
-            float        gen_chargeD2 ;
-            float        gen_pdgIdD2 ;
-            simpleDMCNtpevt* getEventHandle(){ return this;}
-
-            template <typename T>
-            void setTree(T* t){
-                t->SetBranchAddress("Ntrkoffline", &Ntrkoffline) ;
-                t->SetBranchAddress("Npixel", &Npixel)    ;
-                t->SetBranchAddress("HFsumET", &HFsumET)   ;
-                t->SetBranchAddress("bestvtxX", &bestvtxX)  ;
-                t->SetBranchAddress("bestvtxY", &bestvtxY)  ;
-                t->SetBranchAddress("bestvtxZ", &bestvtxZ)  ;
-                t->SetBranchAddress("candSize", &candSize)  ;
-                t->SetBranchAddress("pT", &pT);                                         
-                t->SetBranchAddress("y", &y);                                          
-                t->SetBranchAddress("eta", &eta);                                        
-                t->SetBranchAddress("phi", &phi);                                        
-                t->SetBranchAddress("mass", &mass);                                       
-                t->SetBranchAddress("mva", &mva);                                        
-                t->SetBranchAddress("flavor", &flavor);                                     
-                t->SetBranchAddress("VtxProb", &VtxProb);                                    
-                t->SetBranchAddress("3DCosPointingAngle", &v3DCosPointingAngle) ;
-                t->SetBranchAddress("3DPointingAngle", &v3DPointingAngle) ;
-                t->SetBranchAddress("2DCosPointingAngle", &v2DCosPointingAngle) ;
-                t->SetBranchAddress("2DPointingAngle", &v2DPointingAngle) ;
-                t->SetBranchAddress("3DDecayLengthSignificance", &v3DDecayLengthSignificance) ;
-                t->SetBranchAddress("3DDecayLength", &v3DDecayLength) ;
-                t->SetBranchAddress("2DDecayLengthSignificance", &v2DDecayLengthSignificance) ;
-                t->SetBranchAddress("2DDecayLength", &v2DDecayLength) ;
-                t->SetBranchAddress("zDCASignificanceDaugther1", &zDCASignificanceDaugther1) ;
-                t->SetBranchAddress("xyDCASignificanceDaugther1", &xyDCASignificanceDaugther1) ;
-                t->SetBranchAddress("NHitD1", &NHitD1)    ;
-                t->SetBranchAddress("HighPurityDaugther1", &HighPurityDaugther1) ;
-                t->SetBranchAddress("pTD1", &pTD1)      ;
-                t->SetBranchAddress("pTerrD1", &pTerrD1)   ;
-                t->SetBranchAddress("EtaD1", &EtaD1)     ;
-                t->SetBranchAddress("PhiD1", &PhiD1)     ;
-                t->SetBranchAddress("dedxHarmonic2D1", &dedxHarmonic2D1) ;
-                t->SetBranchAddress("zDCASignificanceDaugther2", &zDCASignificanceDaugther2) ;
-                t->SetBranchAddress("xyDCASignificanceDaugther2", &xyDCASignificanceDaugther2) ;
-                t->SetBranchAddress("NHitD2", &NHitD2)    ;
-                t->SetBranchAddress("HighPurityDaugther2", &HighPurityDaugther2) ;
-                t->SetBranchAddress("pTD2", &pTD2)      ;
-                t->SetBranchAddress("pTerrD2", &pTerrD2)   ;
-                t->SetBranchAddress("EtaD2", &EtaD2)     ;
-                t->SetBranchAddress("PhiD2", &PhiD2)     ;
-                t->SetBranchAddress("dedxHarmonic2D2", &dedxHarmonic2D2) ;
-            	t->SetBranchAddress("isSwap", &isSwap)    ;
-            	t->SetBranchAddress("idmom_reco", &idmom_reco) ;
-            	t->SetBranchAddress("matchGEN", &matchGEN)  ;
-            	t->SetBranchAddress("gen_ancestorFlavor", &gen_ancestorFlavor) ;
-            	t->SetBranchAddress("gen_ancestorId", &gen_ancestorId) ;
-            	t->SetBranchAddress("gen_PVx_", &gen_PVx_)  ;
-            	t->SetBranchAddress("gen_PVy", &gen_PVy)   ;
-            	t->SetBranchAddress("gen_PVz", &gen_PVz)   ;
-            	t->SetBranchAddress("gen_pT", &gen_pT)    ;
-            	t->SetBranchAddress("gen_eta", &gen_eta)   ;
-            	t->SetBranchAddress("gen_phi", &gen_phi)   ;
-            	t->SetBranchAddress("gen_mass", &gen_mass)  ;
-            	t->SetBranchAddress("gen_y", &gen_y)     ;
-            	t->SetBranchAddress("gen_decayLength3D", &gen_decayLength3D) ;
-            	t->SetBranchAddress("gen_decayLength2D", &gen_decayLength2D) ;
-            	t->SetBranchAddress("gen_angle3D", &gen_angle3D) ;
-            	t->SetBranchAddress("gen_angle2D", &gen_angle2D) ;
-            	t->SetBranchAddress("gen_pTD1", &gen_pTD1)  ;
-            	t->SetBranchAddress("gen_etaD1", &gen_etaD1) ;
-            	t->SetBranchAddress("gen_phiD1", &gen_phiD1) ;
-            	t->SetBranchAddress("gen_massD1", &gen_massD1) ;
-            	t->SetBranchAddress("gen_yD1", &gen_yD1)   ;
-            	t->SetBranchAddress("gen_chargeD1", &gen_chargeD1) ;
-            	t->SetBranchAddress("gen_pdgIdD1", &gen_pdgIdD1) ;
-            	t->SetBranchAddress("gen_pTD2", &gen_pTD2)  ;
-            	t->SetBranchAddress("gen_etaD2", &gen_etaD2) ;
-            	t->SetBranchAddress("gen_phiD2", &gen_phiD2) ;
-            	t->SetBranchAddress("gen_massD2", &gen_massD2) ;
-            	t->SetBranchAddress("gen_yD2", &gen_yD2)   ;
-            	t->SetBranchAddress("gen_chargeD2", &gen_chargeD2) ;
-            	t->SetBranchAddress("gen_pdgIdD2", &gen_pdgIdD2) ;
-            };
-            void setOutputTree(TTree* t){
-                t->Branch("Ntrkoffline",&Ntrkoffline) ;
-                t->Branch("Npixel",&Npixel)    ;
-                t->Branch("HFsumET",&HFsumET)   ;
-                t->Branch("bestvtxX",&bestvtxX)  ;
-                t->Branch("bestvtxY",&bestvtxY)  ;
-                t->Branch("bestvtxZ",&bestvtxZ)  ;
-                t->Branch("candSize",&candSize)  ;
-                t->Branch("pT",&pT);                                         
-                t->Branch("y",&y);                                          
-                t->Branch("eta",&eta);                                        
-                t->Branch("phi",&phi);                                        
-                t->Branch("mass",&mass);                                       
-                t->Branch("mva",&mva);                                        
-                t->Branch("flavor",&flavor);                                     
-                t->Branch("VtxProb",&VtxProb);                                    
-                t->Branch("v3DCosPointingAngle",&v3DCosPointingAngle) ;
-                t->Branch("v3DPointingAngle",&v3DPointingAngle) ;
-                t->Branch("v2DCosPointingAngle",&v2DCosPointingAngle) ;
-                t->Branch("v2DPointingAngle",&v2DPointingAngle) ;
-                t->Branch("v3DDecayLengthSignificance",&v3DDecayLengthSignificance) ;
-                t->Branch("v3DDecayLength",&v3DDecayLength) ;
-                t->Branch("v2DDecayLengthSignificance",&v2DDecayLengthSignificance) ;
-                t->Branch("v2DDecayLength",&v2DDecayLength) ;
-                t->Branch("zDCASignificanceDaugther1",&zDCASignificanceDaugther1) ;
-                t->Branch("xyDCASignificanceDaugther1",&xyDCASignificanceDaugther1) ;
-                t->Branch("NHitD1",&NHitD1)    ;
-                t->Branch("HighPurityDaugther1",&HighPurityDaugther1) ;
-                t->Branch("pTD1",&pTD1)      ;
-                t->Branch("pTerrD1",&pTerrD1)   ;
-                t->Branch("EtaD1",&EtaD1)     ;
-                t->Branch("PhiD1",&PhiD1)     ;
-                t->Branch("dedxHarmonic2D1",&dedxHarmonic2D1) ;
-                t->Branch("zDCASignificanceDaugther2",&zDCASignificanceDaugther2) ;
-                t->Branch("xyDCASignificanceDaugther2",&xyDCASignificanceDaugther2) ;
-                t->Branch("NHitD2",&NHitD2)    ;
-                t->Branch("HighPurityDaugther2",&HighPurityDaugther2) ;
-                t->Branch("pTD2",&pTD2)      ;
-                t->Branch("pTerrD2",&pTerrD2)   ;
-                t->Branch("EtaD2",&EtaD2)     ;
-                t->Branch("PhiD2",&PhiD2)     ;
-                t->Branch("dedxHarmonic2D2",&dedxHarmonic2D2) ;
-            	t->Branch("isSwap",&isSwap)    ;
-            	t->Branch("idmom_reco",&idmom_reco) ;
-            	t->Branch("matchGEN",&matchGEN)  ;
-            	t->Branch("gen_ancestorFlavor",&gen_ancestorFlavor) ;
-            	t->Branch("gen_ancestorId",&gen_ancestorId) ;
-            	t->Branch("gen_PVx_",&gen_PVx_)  ;
-            	t->Branch("gen_PVy",&gen_PVy)   ;
-            	t->Branch("gen_PVz",&gen_PVz)   ;
-            	t->Branch("gen_pT",&gen_pT)    ;
-            	t->Branch("gen_eta",&gen_eta)   ;
-            	t->Branch("gen_phi",&gen_phi)   ;
-            	t->Branch("gen_mass",&gen_mass)  ;
-            	t->Branch("gen_y",&gen_y)     ;
-            	t->Branch("gen_decayLength3D",&gen_decayLength3D) ;
-            	t->Branch("gen_decayLength2D",&gen_decayLength2D) ;
-            	t->Branch("gen_angle3D",&gen_angle3D) ;
-            	t->Branch("gen_angle2D",&gen_angle2D) ;
-            	t->Branch("gen_pTD1",&gen_pTD1)  ;
-            	t->Branch("gen_etaD1",&gen_etaD1) ;
-            	t->Branch("gen_phiD1",&gen_phiD1) ;
-            	t->Branch("gen_massD1",&gen_massD1) ;
-            	t->Branch("gen_yD1",&gen_yD1)   ;
-            	t->Branch("gen_chargeD1",&gen_chargeD1) ;
-            	t->Branch("gen_pdgIdD1",&gen_pdgIdD1) ;
-            	t->Branch("gen_pTD2",&gen_pTD2)  ;
-            	t->Branch("gen_etaD2",&gen_etaD2) ;
-            	t->Branch("gen_phiD2",&gen_phiD2) ;
-            	t->Branch("gen_massD2",&gen_massD2) ;
-            	t->Branch("gen_yD2",&gen_yD2)   ;
-            	t->Branch("gen_chargeD2",&gen_chargeD2) ;
-            	t->Branch("gen_pdgIdD2",&gen_pdgIdD2) ;
+            Trk3DDCA=evt.Trk3DDCA[idx];
+            Trk3DDCAErr=evt.Trk3DDCAErr[idx];
+            dca3D=evt.dca3D[idx];
+            mva=evt.mva[idx];
             };
     };
+ 
 }
 #endif
