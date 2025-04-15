@@ -43,6 +43,7 @@ TFile* createFileInDir(const std::string& dirPath, const std::string& filePath) 
 
 enum class VarType {
     FLOAT,    // 실수형 (RooRealVar)
+    SHORT,
     INT,      // 정수형 (RooRealVar with integer range)
     BOOL,      // 불리언 (RooCategory with True/False)
     FORMULA
@@ -150,6 +151,7 @@ vector<RooDataSet*> ChunkedRDSMaker(
     // 변수들을 보관할 맵 (이름 -> 변수 포인터)
     map<string, RooAbsArg*> varMap;
     map<string, float> floatBranchMap;   // float 브랜치 버퍼
+    map<string, short> shortBranchMap;       // int 브랜치 버퍼
     map<string, int> intBranchMap;       // int 브랜치 버퍼
     map<string, bool> boolBranchMap;       // int 브랜치 버퍼
     
@@ -171,6 +173,15 @@ vector<RooDataSet*> ChunkedRDSMaker(
                 floatBranchMap[varDef.name] = 0.0f;
                 tree->SetBranchAddress(varDef.name.c_str(), &floatBranchMap[varDef.name]);
                 cout << "Float var added: " << varDef.name << " (Range: " << varDef.min << " - " << varDef.max << ")" << endl;
+                break;
+            }
+            case VarType::SHORT: {
+                RooRealVar* var = new RooRealVar(varDef.name.c_str(), varDef.name.c_str(), varDef.min, varDef.max, "unit");
+                baseVarSet.add(*var);
+                varMap[varDef.name] = var;
+                shortBranchMap[varDef.name] = 0;
+                tree->SetBranchAddress(varDef.name.c_str(), &shortBranchMap[varDef.name]);
+                cout << "Short var added: " << varDef.name << " (Range: " << varDef.min << " - " << varDef.max << ")" << endl;
                 break;
             }
             case VarType::INT: {
@@ -296,6 +307,15 @@ vector<RooDataSet*> ChunkedRDSMaker(
                         realVar->setVal(value);
                         break;
                     }
+                    case VarType::SHORT: {
+                        short value = shortBranchMap[varDef.name];
+                        RooRealVar* realVar = static_cast<RooRealVar*>(var);
+                        if (value < realVar->getMin() || value > realVar->getMax()) {
+                            goto nextEntry;
+                        }
+                        realVar->setVal(value);
+                        break;
+                    }
                     case VarType::INT: {
                         int value = intBranchMap[varDef.name];
                         RooRealVar* realVar = static_cast<RooRealVar*>(var);
@@ -413,27 +433,34 @@ nextEntry:;
 }
 
 // 메인 함수
-void DStarRDSMaker(bool isMC = true) {
+void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "", std::string suffix = "") {
     // 다양한 타입의 변수 정의
     vector<VarDef> variables = {
-        {"mass", VarType::FLOAT, 1.8, 2.2},
+        {"mass", VarType::FLOAT, 1.7, 2.2},
         {"pT", VarType::FLOAT, 0.0, 100.0},
         {"eta", VarType::FLOAT, -2.5, 2.5},
         {"phi", VarType::FLOAT, -3.14, 3.14},
-        {"pTD1", VarType::FLOAT, 0.0, 100.0},
-        {"EtaD1", VarType::FLOAT, -2.5, 2.5},
-        {"PhiD1", VarType::FLOAT, -3.14, 3.14},
-        {"massDaugther1", VarType::FLOAT, 1.7, 2.0},
-        {"pTD2", VarType::FLOAT, 0.0, 100.0},
-        {"EtaD2", VarType::FLOAT, -2.5, 2.5},
-        {"PhiD2", VarType::FLOAT, -3.14, 3.14},
-        {"mva", VarType::FLOAT, -1, 1},
-        {"dca3D", VarType::FLOAT, 0, 5},
-        {"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}},
+        // {"pTD1", VarType::FLOAT, 0.0, 100.0},
+        // {"EtaD1", VarType::FLOAT, -2.5, 2.5},
+        // {"PhiD1", VarType::FLOAT, -3.14, 3.14},
+        // {"massDaugther1", VarType::FLOAT, 1.7, 2.0},
+        // {"pTD2", VarType::FLOAT, 0.0, 100.0},
+        // {"EtaD2", VarType::FLOAT, -2.5, 2.5},
+        // {"PhiD2", VarType::FLOAT, -3.14, 3.14},
+        {"mva", VarType::FLOAT, 0.99, 1},
+        // {"dca3D", VarType::FLOAT, 0, 5},
+        {"centrality",VarType::SHORT, 0, 200}, // 중앙성 범위 설정
+        
+        {"Centrality","centrality/2",{"centrality"}}
+        // {"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}},
         // {"pT_ratio", "pTD1 / pT", {"pTD1", "pT"}},
         // {"deltaEta", "eta - EtaD1", {"eta", "EtaD1"}}
         
     };
+    if(!isD0){
+        variables.push_back({"massDaugther1", VarType::FLOAT, 1.7, 2.1});
+        variables.push_back({"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}});
+    }
     if (isMC) {
         variables.push_back({"isSwap", VarType::BOOL});
         variables.push_back({"isMC", VarType::BOOL});
@@ -443,14 +470,23 @@ void DStarRDSMaker(bool isMC = true) {
     // 청크 단위로 RooDataSet 생성
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_DStarMC_ppRef_0_20250320.root"; //Data
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/ppMC/flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30_0_20250331.root"; //MC
-    string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_07Apr25.root"; //MC
-    string outputfilename = !isMC ? "RDS_Physics_Data.root" : "RDS_Physics_MC_pp.root";
+    // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_07Apr25.root"; //MC
+    string inputfilename = !inputPath.empty() ? inputPath : "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppData/flatSkimForBDT_DStar_ppRef_NonSwapData_PbPb_Data_ONNX_0_14Apr25.root"; //MC
+    string outputfilename = !isMC ? "RDS_Physics_Data" : "RDS_Physics_MC";
+    if(!suffix.empty()){
+        outputfilename = outputfilename +"_" + suffix + ".root";
+    }
+    else {
+        outputfilename = outputfilename + ".root";
+    }
     string outputDirectory = !isMC ? "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/" : "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/";
     string treename = "skimTreeFlat";
     Long64_t chunkSize = 5000000;
     Long64_t maxEntries = -1;
     bool saveCS = true;
     bool saveHX = true;
+    if(isD0) saveCS = false;
+    if(isD0) saveHX = false;
     
 
     

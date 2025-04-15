@@ -1581,7 +1581,6 @@ dca3D=evt.dca3D[idx];
 	    float mva[MAXCAND];
             float Trk3DDCA[MAXCAND];
             float Trk3DDCAErr[MAXCAND];
-	        float mva[MAXCAND];
             float dca3D[MAXCAND];
             Int_t           candSize_gen;
    Float_t         gen_mass[MAXCAND];   //[candSize_gen]

@@ -53,6 +53,8 @@ struct FitOpt {
     double etaMax;
     double cosMin;
     double cosMax;
+    double centMin;
+    double centMax;
     
     // binning 관련
     std::vector<double> ptBins;
@@ -111,19 +113,19 @@ struct FitOpt {
     {}
     
     // 편의를 위한 D0 기본 설정 메서드
-    void D0MCDefault() {
-        this->name = "D0";
-        this->massMin = 1.74;
-        this->massMax = 1.98;
-        this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.5 && matchGEN==1 && isSwap==0", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str());
-        this->pdfName = "total_pdf";
-        this->wsName = "ws_D0";
-        // this->datasetName = "reducedData";
-    }
+    // void D0MCDefault() {
+    //     this->name = "D0";
+    //     this->massMin = 1.74;
+    //     this->massMax = 1.98;
+    //     this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.5 && matchGEN==1 && isSwap==0", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str());
+    //     this->pdfName = "total_pdf";
+    //     this->wsName = "ws_D0";
+    //     // this->datasetName = "reducedData";
+    // }
     void D0DataDefault() {
         this->name = "D0";
         this->massMin = 1.74;
-        this->massMax = 1.98;
+        this->massMax = 1.97;
         // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
         this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
         this->pdfName = "total_pdf";
@@ -162,19 +164,47 @@ struct FitOpt {
         this->wsName = Form("ws_%s",this->name.c_str());
         this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->plotName = Form("Plot%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->cosVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->constraintParameters= {};
         // this->outputMCDir="roots/MC/";
         // this->outputDir="roots/Data/";
         // this->datasetName = "reducedData";
     }
+    void D0MCDefault() {
+        this->name = "D0";
+        this->massVar ="mass";
+        this->massMin = 1.75;
+        this->massMax = 2.00;
+        // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
+        // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
+        // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
+        this->cutMCExpr = Form("eta<1 && eta>-1 && Centrality <%0.2f && Centrality > %0.2f&&  pT<%0.2f && pT>%0.2f && mva > %0.9f  && matchGEN==1", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
+        this->cutExpr = Form("eta<1 && eta>-1 && Centrality <%0.2f && Centrality > %0.2f&&  pT<%0.2f && pT>%0.2f && mva > %0.9f", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
+        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->pdfName = "total_pdf";
+        this->wsName = Form("ws_%s",this->name.c_str());
+        this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {};
+        this->outputMCDir="roots/MC_D0_PbPb/";
+        this->outputDir="roots/Data_D0_PbPb/";
+        // this->outputMCDir="roots/MC/";
+        // this->outputDir="roots/Data/";
+        this->datasetName = "dataset";
+    }
     std::string convertDotToP(double value) {
         std::ostringstream oss;
-        oss << std::fixed << std::setprecision(2) << value;
+        oss << std::fixed << std::setprecision(9) << value;
         std::string str = oss.str();
         std::replace(str.begin(), str.end(), '.', 'p');
         std::replace(str.begin(), str.end(), '-', 'm');
