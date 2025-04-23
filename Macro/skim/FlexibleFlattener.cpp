@@ -316,7 +316,7 @@ void FlexibleData(
     }
     
     // 로드된 이벤트 수 확인
-    if(!cutExpr.empty()) std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
+     std::cout << "Data entries: " << chainData->GetEntries() << std::endl;
     //else std::cout << "Data (filtered by cut) entries: " << filteredTree->GetEntries() << std::endl;
 
     
