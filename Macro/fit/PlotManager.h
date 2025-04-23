@@ -62,7 +62,7 @@ PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::st
 
     dataset_ = (RooDataSet*)ws_->data(datasetName_.c_str());
     if (!dataset_) {
-        std::cerr << "Error: Failed to load dataset from workspace" << std::endl;
+        std::cerr << "Error: Failed to load dataset from workspace : " << datasetName_ <<  std::endl;
         file_->Close();
         return;
     }

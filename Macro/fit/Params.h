@@ -17,16 +17,13 @@ namespace PDFParams {
 
     // Double Gaussian Parameters
     struct DoubleGaussianParams {
-        double mean1 = 0.0;
+        double mean = 0.0;
         double sigma1 = 1.0;
-        double mean2 = 0.0;
         double sigma2 = 2.0;
-        double mean1_min = -10.0;
-        double mean1_max = 10.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
         double sigma1_min = 0.1;
         double sigma1_max = 10.0;
-        double mean2_min = -10.0;
-        double mean2_max = 10.0;
         double sigma2_min = 0.1;
         double sigma2_max = 10.0;
         double fraction = 0.5;
