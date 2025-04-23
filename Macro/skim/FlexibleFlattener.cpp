@@ -382,6 +382,7 @@ void FlexibleData(
             simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                    if(dinData[iD1].pT > 100 || abs(dinData[iD1].y) >1 || dinData[iD1].pTD1 <1 || dinData[iD1].pTD2 <1 || dinData[iD1].EtaD1 >2.4 || dinData[iD1].EtaD2 >2.4) continue;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -543,6 +544,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
+                if(dinData[iD1].pT > 100 || abs(dinData[iD1].y) >1 || dinData[iD1].pTD1 <1 || dinData[iD1].pTD2 <1 || dinData[iD1].EtaD1 >2.4 || dinData[iD1].EtaD2 >2.4) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -634,7 +636,6 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 
 
     std::string date = "18Apr25";
-    std::string cut = "abs(y)<1.2 && pT > 4";
 
     std::string outputPath;
     std::string outputPrefix;
