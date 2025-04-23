@@ -635,7 +635,7 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     std::string dataPath = "/u/user/jun502s/SE_UserHome/DStarMC/junseok/20250401_v1/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/PPRefZeroBiasPlusForward10/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/250401_130954/0000/*.root";
 
 
-    std::string date = "18Apr25";
+    std::string date = "";
 
     std::string outputPath;
     std::string outputPrefix;
