@@ -543,6 +543,7 @@ namespace DataFormat{
     fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->SetBranchAddress("mva",&mva);
     fChain->SetBranchAddress("dca3D",&dca3D);
+    fChain->SetBranchAddress("candSize_gen", &candSize_gen);
     };
     template <typename T>
     void setGENTree(T *fChain){
@@ -1621,6 +1622,7 @@ dca3D=evt.dca3D[idx];
    Float_t         gen_D1y[MAXCAND];   //[candSize_gen]
    Int_t         gen_D1charge[MAXCAND];   //[candSize_gen]
    Int_t         gen_D1pdgId[MAXCAND]; 
+   Int_t         gen_D0ancestorId_[MAXCAND];   //[candSize_gen]
   TBranch        *b_candSize_gen;   //!
    TBranch        *b_gen_mass;   //!
    TBranch        *b_gen_pT;   //!
@@ -1660,6 +1662,7 @@ dca3D=evt.dca3D[idx];
    TBranch        *b_gen_D1y;   //!
    TBranch        *b_gen_D1charge;   //!
    TBranch        *b_gen_D1pdgId;   //!
+   TBranch       *b_gen_D0ancestorId;   //!
 
             //bool isData;
             // int candSize_gen;
@@ -1834,6 +1837,7 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("gen_y", gen_y, &b_gen_y);
             t->SetBranchAddress("gen_status", gen_status, &b_gen_status);
             t->SetBranchAddress("gen_MotherID", gen_MotherID, &b_gen_MotherID);
+            t->SetBranchAddress("gen_D0ancestorId_", gen_D0ancestorId_, &b_gen_D0ancestorId);
             t->SetBranchAddress("gen_DauID1", gen_DauID1, &b_gen_DauID1);
             t->SetBranchAddress("gen_DauID2", gen_DauID2, &b_gen_DauID2);
             t->SetBranchAddress("gen_DauID3", gen_DauID3, &b_gen_DauID3);
@@ -2068,6 +2072,7 @@ dca3D=evt.dca3D[idx];
    Float_t         gen_D1y;   //[candSize_gen]
    Float_t         gen_D1charge;   //[candSize_gen]
    Int_t         gen_D1pdgId; 
+       Int_t gen_D0ancestorId_;   //[candSize_gen]
 
             //bool isData;
 
@@ -2151,6 +2156,7 @@ dca3D=evt.dca3D[idx];
                 t->SetBranchAddress("gen_D1y",&gen_D1y);
                 t->SetBranchAddress("gen_D1charge",&gen_D1charge);
                 t->SetBranchAddress("gen_D1pdgId",&gen_D1pdgId);
+                t->SetBranchAddress("gen_D0ancestorId_",&gen_D0ancestorId_);
         }; 
         template <typename T>
         void setTree(T *t){
@@ -2442,6 +2448,7 @@ dca3D=evt.dca3D[idx];
             t->Branch("gen_D1y",&gen_D1y);
             t->Branch("gen_D1charge",&gen_D1charge);
             t->Branch("gen_D1pdgId",&gen_D1pdgId);
+            t->Branch("gen_D0ancestorId_",&gen_D0ancestorId_);
     };
         void copyDn( simpleDStarMCTreeevt& evt, int idx){
             Ntrkoffline=evt.Ntrkoffline;
@@ -2685,6 +2692,7 @@ dca3D=evt.dca3D[idx];
             gen_D1y=evt.gen_D1y[idx];
             gen_D1charge=evt.gen_D1charge[idx];
             gen_D1pdgId=evt.gen_D1pdgId[idx];
+            gen_D0ancestorId_ =evt.gen_D0ancestorId_[idx];   //[candSize_gen]
         };
         void copyDn( simpleDStarMCTreeflat& evt){
             Ntrkoffline=evt.Ntrkoffline;
