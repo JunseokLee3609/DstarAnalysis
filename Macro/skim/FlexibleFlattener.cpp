@@ -383,7 +383,7 @@ void FlexibleData(
             simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                    if(dinData[iD1].pT > 100 || abs(dinData[iD1].y) >1 || dinData[iD1].pTD1 <1 || dinData[iD1].pTD2 <1 || dinData[iD1].EtaD1 >2.4 || dinData[iD1].EtaD2 >2.4) continue;
+                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pTD1[iD1] <1 || dinData->pTD2[iD1] <1 || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4) continue;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -514,6 +514,7 @@ void FlexibleMC(
 
     if (doCent) {
         tskim->Branch("centrality", &centrality, "centrality/S");
+	tskimGEN->Branch("centrality",&centrality,"centrality/S");
         std::cout << "Added 'centrality' branch to output tree(s)." << std::endl;
     }
 
@@ -545,7 +546,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
-                if(dinData[iD1].pT > 100 || abs(dinData[iD1].y) >1 || dinData[iD1].pTD1 <1 || dinData[iD1].pTD2 <1 || dinData[iD1].EtaD1 >2.4 || dinData[iD1].EtaD2 >2.4) continue;
+                if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pTD1[iD1] <1 || dinMC->pTD2[iD1] <1 || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -554,6 +555,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
+                if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_D0Dau1_pT[iD1] <1 || dinMC->gen_D0Dau2_pT[iD1] <1 || dinMC->gen_D0Dau1_eta[iD1] >2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
