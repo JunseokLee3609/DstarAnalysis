@@ -74,6 +74,7 @@ void FlexibleMix(
     const std::string& mcPath,            // MC 파일 경로 패턴
     const std::string& dataPath,          // 데이터 파일 경로 패턴
     const std::string& treeName,          // 트리 이름
+    const std::string& eventInfoTreeName, // Event Info 트리 이름 (추가)
     const std::string& outputPath,        // 출력 파일 경로
     const std::string& outputPrefix,      // 출력 파일 접두사
     int start,                            // 시작 이벤트
@@ -82,179 +83,253 @@ void FlexibleMix(
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
     int mcSampleRate = 100,               // MC 샘플링 비율 (matchGEN=false인 경우)
     int dataSampleRate = 100,             // 데이터 샘플링 비율
+    bool doCent = true,                   // 중앙값 설정 여부 (추가)
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleMix job #" << jobIdx << std::endl;
     std::cout << "Processing MC files: " << mcPath << std::endl;
     std::cout << "Processing Data files: " << dataPath << std::endl;
     std::cout << "Particle type: " << (particleType == ParticleType::D0 ? "D0" : "DStar") << std::endl;
+    std::cout << "Setting doCent: " << (doCent ? "true" : "false") << std::endl;
 
-    
-    // MC와 데이터 체인 생성
+    // MC와 데이터 메인 트리 체인 생성
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
     std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
-    
-    // 파일 추가
-    chainMC->Add(mcPath.c_str());
-    chainData->Add(dataPath.c_str());
-    
+    loadRootFilesRecursively(chainMC.get(), mcPath);
+    loadRootFilesRecursively(chainData.get(), dataPath);
+
+    // Event Info 체인 (doCent가 true일 경우에만 생성 및 사용)
+    std::unique_ptr<TChain> chainEventInfoMC = nullptr;
+    std::unique_ptr<TChain> chainEventInfoData = nullptr;
+    Short_t centralityMC = -99;
+    Short_t centralityData = -99;
+    Float_t ncoll = -99; // Ncoll은 MC에만 해당
+
+    if (doCent) {
+        // MC Event Info
+        chainEventInfoMC.reset(new TChain(eventInfoTreeName.c_str()));
+        loadRootFilesRecursively(chainEventInfoMC.get(), mcPath);
+        if (chainEventInfoMC->GetEntries() > 0) {
+            chainEventInfoMC->SetBranchAddress("centrality", &centralityMC);
+            std::cout << "MC Centrality branch linked from " << eventInfoTreeName << std::endl;
+        } else {
+            std::cerr << "Warning: Event info tree '" << eventInfoTreeName << "' not found or empty in MC files. Centrality will not be saved for MC." << std::endl;
+            // MC Centrality 처리를 비활성화하지 않고, 해당 이벤트에서 기본값을 사용하도록 유지
+        }
+
+        // Data Event Info
+        chainEventInfoData.reset(new TChain(eventInfoTreeName.c_str()));
+        loadRootFilesRecursively(chainEventInfoData.get(), dataPath);
+        if (chainEventInfoData->GetEntries() > 0) {
+            chainEventInfoData->SetBranchAddress("centrality", &centralityData);
+            std::cout << "Data Centrality branch linked from " << eventInfoTreeName << std::endl;
+        } else {
+            std::cerr << "Warning: Event info tree '" << eventInfoTreeName << "' not found or empty in Data files. Centrality will not be saved for Data." << std::endl;
+            // Data Centrality 처리를 비활성화하지 않고, 해당 이벤트에서 기본값을 사용하도록 유지
+        }
+    }
+
     using namespace DataFormat;
-    
+
     // 입자 타입에 따라 적절한 클래스 인스턴스 생성
     void* dinMCPtr = nullptr;
-    void* doutMCPtr = nullptr;
+    void* doutMCPtr = nullptr; // MC와 Data 공통 출력 객체 사용
     void* dinDataPtr = nullptr;
-    
+
     if (particleType == ParticleType::D0) {
-        // D0 입자 처리를 위한 클래스 사용
         simpleDMCTreeevt* dinMC = new simpleDMCTreeevt();
-        simpleDMCTreeflat* doutMC = new simpleDMCTreeflat();
+        simpleDMCTreeflat* doutMC = new simpleDMCTreeflat(); // 공통 출력 객체
         simpleDTreeevt* dinData = new simpleDTreeevt();
-        
+
         dinMCPtr = dinMC;
         doutMCPtr = doutMC;
         dinDataPtr = dinData;
-        
-        // 체인 설정
+
         dinMC->setTree<TChain>(chainMC.get());
         dinData->setTree<TChain>(chainData.get());
     } else {
-        // DStar 입자 처리를 위한 클래스 사용
         simpleDStarMCTreeevt* dinMC = new simpleDStarMCTreeevt();
-        simpleDStarMCTreeflat* doutMC = new simpleDStarMCTreeflat();
+        simpleDStarMCTreeflat* doutMC = new simpleDStarMCTreeflat(); // 공통 출력 객체
         simpleDStarDataTreeevt* dinData = new simpleDStarDataTreeevt();
-        
+
         dinMCPtr = dinMC;
         doutMCPtr = doutMC;
         dinDataPtr = dinData;
-        
-        // 체인 설정
+
         dinMC->setTree<TChain>(chainMC.get());
         dinData->setTree<TChain>(chainData.get());
     }
-    
+
     // 로드된 이벤트 수 확인
-    std::cout << "MC entries: " << chainMC->GetEntries() << ", Data entries: " << chainData->GetEntries() << std::endl;
-    
+    long long nEntriesMC = chainMC->GetEntries();
+    long long nEntriesData = chainData->GetEntries();
+    std::cout << "MC entries: " << nEntriesMC << ", Data entries: " << nEntriesData << std::endl;
+
+    if (doCent) {
+        if (chainEventInfoMC) {
+            long long nEntriesEventInfoMC = chainEventInfoMC->GetEntries();
+            std::cout << "MC Event Info entries: " << nEntriesEventInfoMC << std::endl;
+            if (nEntriesMC != nEntriesEventInfoMC) {
+                std::cerr << "Warning: Mismatch between MC main tree entries (" << nEntriesMC
+                          << ") and MC event info entries (" << nEntriesEventInfoMC << "). Centrality might be incorrect for MC." << std::endl;
+            }
+        }
+        if (chainEventInfoData) {
+            long long nEntriesEventInfoData = chainEventInfoData->GetEntries();
+            std::cout << "Data Event Info entries: " << nEntriesEventInfoData << std::endl;
+            if (nEntriesData != nEntriesEventInfoData) {
+                std::cerr << "Warning: Mismatch between Data main tree entries (" << nEntriesData
+                          << ") and Data event info entries (" << nEntriesEventInfoData << "). Centrality might be incorrect for Data." << std::endl;
+            }
+        }
+    }
+
+
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
-    TTree* tskim = new TTree("skimTreeFlat", "Flattened Skim Tree");
-    
-    // 출력 트리 설정
+    TTree* tskim = new TTree("skimTreeFlat", "Flattened Mixed Skim Tree");
+
+    // 출력 트리 설정 (공통 객체 사용)
     if (particleType == ParticleType::D0) {
         ((simpleDMCTreeflat*)doutMCPtr)->setOutputTree(tskim);
     } else {
         ((simpleDStarMCTreeflat*)doutMCPtr)->setOutputTree(tskim);
     }
-    
-    // 처리할 이벤트 수 결정
-    int totEvt = std::min(chainMC->GetEntries(), chainData->GetEntries());
-    std::cout << "Total events available: " << totEvt << std::endl;
-    
+
+    // 출력 트리에 centrality 및 Ncoll 브랜치 추가 (doCent가 true일 경우)
+    Short_t output_centrality = -99; // 출력용 centrality 변수
+    Float_t output_ncoll = -99;      // 출력용 Ncoll 변수
+    if (doCent) {
+        tskim->Branch("centrality", &output_centrality, "centrality/S");
+        tskim->Branch("Ncoll", &output_ncoll, "Ncoll/F"); // Ncoll은 MC일 때만 의미있는 값, Data는 -99
+        std::cout << "Added 'centrality' and 'Ncoll' branches to output tree." << std::endl;
+    }
+
+    // 처리할 이벤트 수 결정 (MC와 Data 중 작은 쪽 기준)
+    long long totEvt = std::min(nEntriesMC, nEntriesData);
+    std::cout << "Total events available for mixing: " << totEvt << std::endl;
+
     // 종료 이벤트 조정
-    end = (end == -1) ? totEvt : std::min(end, totEvt);
+    end = (end == -1) ? totEvt : std::min((long long)end, totEvt);
     std::cout << "Processing events from " << start << " to " << end << std::endl;
-    
+
     int skip = 1;
     int idxMC = 0;
     int idxData = 0;
-    
+
     // 메인 처리 루프
     for (auto iEvt : ROOT::TSeqU(start, end, skip)) {
         if ((iEvt % 10000) == 0) {
             std::cout << "Processing event " << iEvt << " / " << end << std::endl;
         }
-        
-        // MC 처리
-        chainMC->GetEntry(iEvt);
-        
-        if (particleType == ParticleType::D0) {
-            simpleDMCTreeevt* dinMC = (simpleDMCTreeevt*)dinMCPtr;
-            simpleDMCTreeflat* doutMC = (simpleDMCTreeflat*)doutMCPtr;
-            
-            for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
-                if (dinMC->matchGEN[iD1] == true) {
-                    // GEN 매치된 항목은 모두 저장
-                    doutMC->isMC = true;
-                    doutMC->copyDn(*dinMC, iD1);
-                    tskim->Fill();
-                } else {
-                    // 나머지는 샘플링 비율에 따라 저장
-                    if (idxMC % mcSampleRate == 0) {
-                        doutMC->isMC = true;
-                        doutMC->copyDn(*dinMC, iD1);
-                        tskim->Fill();
-                    }
-                    idxMC++;
-                }
+
+        // Event Info 트리에서 현재 이벤트의 centrality 가져오기 (doCent가 true일 경우)
+        centralityMC = -99; // 루프마다 초기화
+        centralityData = -99;
+        ncoll = -99;
+        if (doCent) {
+            if (chainEventInfoMC && iEvt < chainEventInfoMC->GetEntries()) {
+                chainEventInfoMC->GetEntry(iEvt);
+                ncoll = findNcoll(centralityMC); // MC의 Ncoll 계산
             }
-        } else {
-            simpleDStarMCTreeevt* dinMC = (simpleDStarMCTreeevt*)dinMCPtr;
-            simpleDStarMCTreeflat* doutMC = (simpleDStarMCTreeflat*)doutMCPtr;
-            
-            for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
-                if (dinMC->matchGEN[iD1] == true) {
-                    // GEN 매치된 항목은 모두 저장
-                    doutMC->isMC = true;
-                    doutMC->copyDn(*dinMC, iD1);
-                    tskim->Fill();
-                } else {
-                    // 나머지는 샘플링 비율에 따라 저장
-                    if (idxMC % mcSampleRate == 0) {
+            if (chainEventInfoData && iEvt < chainEventInfoData->GetEntries()) {
+                chainEventInfoData->GetEntry(iEvt);
+            }
+        }
+
+        // MC 처리
+        if (iEvt < nEntriesMC) {
+            chainMC->GetEntry(iEvt);
+            output_centrality = centralityMC; // MC centrality 설정
+            output_ncoll = ncoll;             // MC Ncoll 설정
+
+            if (particleType == ParticleType::D0) {
+                simpleDMCTreeevt* dinMC = (simpleDMCTreeevt*)dinMCPtr;
+                simpleDMCTreeflat* doutMC = (simpleDMCTreeflat*)doutMCPtr;
+
+                for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
+                    if (dinMC->matchGEN[iD1] == true) {
                         doutMC->isMC = true;
                         doutMC->copyDn(*dinMC, iD1);
                         tskim->Fill();
+                    } else {
+                        if (idxMC % mcSampleRate == 0) {
+                            doutMC->isMC = true;
+                            doutMC->copyDn(*dinMC, iD1);
+                            tskim->Fill();
+                        }
+                        idxMC++;
                     }
-                    idxMC++;
+                }
+            } else {
+                simpleDStarMCTreeevt* dinMC = (simpleDStarMCTreeevt*)dinMCPtr;
+                simpleDStarMCTreeflat* doutMC = (simpleDStarMCTreeflat*)doutMCPtr;
+
+                for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
+                    if (dinMC->matchGEN[iD1] == true) {
+                        doutMC->isMC = true;
+                        doutMC->copyDn(*dinMC, iD1);
+                        tskim->Fill();
+                    } else {
+                        if (idxMC % mcSampleRate == 0) {
+                            doutMC->isMC = true;
+                            doutMC->copyDn(*dinMC, iD1);
+                            tskim->Fill();
+                        }
+                        idxMC++;
+                    }
                 }
             }
         }
-        
+
         // Data 처리
-        chainData->GetEntry(iEvt);
-        
-        if (particleType == ParticleType::D0) {
-            simpleDMCTreeflat* doutMC = (simpleDMCTreeflat*)doutMCPtr;
-            simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
-            
-            for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                // 샘플링 비율에 따라 저장
-                if (idxData % dataSampleRate == 0) {
-                    doutMC->isMC = false;
-                    doutMC->isSwap = 0;
-                    doutMC->matchGEN = 0;
-                    doutMC->copyDn(*dinData, iD1);
-                    tskim->Fill();
+        if (iEvt < nEntriesData) {
+            chainData->GetEntry(iEvt);
+            output_centrality = centralityData; // Data centrality 설정
+            output_ncoll = -99;                 // Data는 Ncoll 없음
+
+            if (particleType == ParticleType::D0) {
+                simpleDMCTreeflat* doutMC = (simpleDMCTreeflat*)doutMCPtr; // 공통 출력 객체 사용
+                simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
+
+                for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                    if (idxData % dataSampleRate == 0) {
+                        doutMC->isMC = false;
+                        doutMC->isSwap = 0;
+                        doutMC->matchGEN = 0;
+                        doutMC->copyDn(*dinData, iD1);
+                        tskim->Fill();
+                    }
+                    idxData++;
                 }
-                idxData++;
-            }
-        } else {
-            simpleDStarMCTreeflat* doutMC = (simpleDStarMCTreeflat*)doutMCPtr;
-            simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
-            
-            for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                // 샘플링 비율에 따라 저장
-                if (idxData % dataSampleRate == 0) {
-                    doutMC->isMC = false;
-                    doutMC->isSwap = 0;
-                    doutMC->matchGEN = 0;
-                    doutMC->copyDn(*dinData, iD1);
-                    tskim->Fill();
+            } else {
+                simpleDStarMCTreeflat* doutMC = (simpleDStarMCTreeflat*)doutMCPtr; // 공통 출력 객체 사용
+                simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
+
+                for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                    if (idxData % dataSampleRate == 0) {
+                        doutMC->isMC = false;
+                        doutMC->isSwap = 0;
+                        doutMC->matchGEN = 0;
+                        doutMC->copyDn(*dinData, iD1);
+                        tskim->Fill();
+                    }
+                    idxData++;
                 }
-                idxData++;
             }
         }
     }
-    
+
     // 파일 저장 및 정리
     if (fout) {
         std::cout << "Writing output file with " << tskim->GetEntries() << " entries..." << std::endl;
+        fout->cd();
         tskim->Write();
-        fout->Write();
         fout->Close();
+        std::cout << "Output file " << fout->GetName() << " has been created." << std::endl;
         delete fout;
     }
-    
+
     // 메모리 정리
     if (particleType == ParticleType::D0) {
         delete (simpleDMCTreeevt*)dinMCPtr;
@@ -265,7 +340,7 @@ void FlexibleMix(
         delete (simpleDStarMCTreeflat*)doutMCPtr;
         delete (simpleDStarDataTreeevt*)dinDataPtr;
     }
-    
+
     std::cout << "FlexibleMix job #" << jobIdx << " completed successfully." << std::endl;
 }
 
@@ -622,16 +697,24 @@ void FlexibleMC(
 
 // 간단한 래퍼 함수 - 기본 경로로 호출
 void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleType = ParticleType::D0) {
+    std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple"; // 기본 Event Info 트리 이름
+    bool doCent = true; // 기본적으로 Centrality 사용
+
     FlexibleMix(
         "/home/jun502s/DstarAna/DStarAnalysis/Data/0000/*.root",  // MC 경로
         "/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/*.root",  // 데이터 경로
         "d0ana_newreduced/PATCompositeNtuple",    // 트리 이름
+        eventInfoTreeName,                        // Event Info 트리 이름 (추가)
         "../../Data",                              // 출력 경로
         "flatSkimForBDT_Mix_100to1",              // 출력 접두사
         start,
         end,
         jobIdx,
-        particleType
+        particleType,
+        100, // mcSampleRate
+        1,   // dataSampleRate (기존 100에서 변경된 것으로 보임, 확인 필요)
+        doCent // doCent 플래그 (추가)
+        // date는 기본값 사용
     );
 }
 
@@ -674,9 +757,11 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 	    FlexibleData(dataPath, treeNameData, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, date);
 
     } else if (type == 2) {
-	    outputPath = "./Data/FlatSample/ppMix/";
-	    outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
-	    //FlexibleMix(dataPath, mcPath, treeName, outputPath, outputPrefix, start_, end_, jobIdx_, cut, ParticleType::DStar, setGEN, date);
+        outputPath = "./Data/FlatSample/ppMix/";
+        outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
+        // FlexibleMix 호출 업데이트 필요 - mcPath, dataPath, treeName, eventInfoTreeName, doCent 등 설정
+        // FlexibleMix(mcPath, dataPath, treeName, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, mcSampleRate, dataSampleRate, doCent, date);
+        std::cout << "FlexibleMix (type 2) is currently commented out. Update parameters and uncomment to run." << std::endl;
 
     } else {
 	    std::cerr << "Invalid type value: " << type << ". Must be 0 (MC), 1 (Data), or 2 (Mix)." << std::endl;
