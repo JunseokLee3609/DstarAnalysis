@@ -1,4 +1,4 @@
-../Correction/EffAccCalculator.cpp#ifndef __CORR_COMMONSEL__
+#ifndef __CORR_COMMONSEL__
 #define __CORR_COMMONSEL__
 
 
