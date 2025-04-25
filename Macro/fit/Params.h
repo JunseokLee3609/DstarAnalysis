@@ -17,16 +17,13 @@ namespace PDFParams {
 
     // Double Gaussian Parameters
     struct DoubleGaussianParams {
-        double mean1 = 0.0;
+        double mean = 0.0;
         double sigma1 = 1.0;
-        double mean2 = 0.0;
         double sigma2 = 2.0;
-        double mean1_min = -10.0;
-        double mean1_max = 10.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
         double sigma1_min = 0.1;
         double sigma1_max = 10.0;
-        double mean2_min = -10.0;
-        double mean2_max = 10.0;
         double sigma2_min = 0.1;
         double sigma2_max = 10.0;
         double fraction = 0.5;
@@ -74,6 +71,48 @@ namespace PDFParams {
         double nR_min = 0.1;
         double nR_max = 10.0;
     };
+    struct DoubleDBCrystalBallParams {
+        double mean1 = 0.1455;
+        double mean2 = 0.1455;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+
+        double sigmaL1 = 1.0;
+        double sigmaL2 = 1.0;
+        double sigmaL_min = 0.1;
+        double sigmaL_max = 10.0;
+
+        double sigmaR2 = 1.0;
+        double sigmaR1 = 1.0;
+        double sigmaR_min = 0.1;
+        double sigmaR_max = 10.0;
+        
+        double alphaL1 = 1.0;
+        double alphaL2 = 1.0;
+        double alphaL_min = 0.1;
+        double alphaL_max = 10.0;
+
+        double alphaR1 = 1.0;
+        double alphaR2 = 1.0;
+        double alphaR_min = 0.1;
+        double alphaR_max = 10.0;
+
+        double nL1 = 1.0;
+        double nL2 = 1.0;
+        double nL_min = 0.1;
+        double nL_max = 10.0;
+
+        double nR1 = 1.0;
+        double nR2 = 1.0;
+        double nR_min = 0.1;
+        double nR_max = 10.0;
+        
+        double fraction = 0.5;
+        double fraction_min = 0.0;
+        double fraction_max = 1.0;
+        
+        
+    };
 
     // Voigtian Parameters
     struct VoigtianParams {
@@ -100,15 +139,15 @@ namespace PDFParams {
 
     // Phenomenological Parameters
     struct PhenomenologicalParams {
-        double p0;
-        double p0_min;
-        double p0_max;
-        double p1;
-        double p1_min; 
-        double p1_max; 
-        double p2; 
-        double p2_min; 
-        double p2_max;
+        double p0=0.1;
+        double p0_min= 0.0;
+        double p0_max=-5.0;
+        double p1=2.0;
+        double p1_min=10.0; 
+        double p1_max=-10.0; 
+        double p2=-2.0; 
+        double p2_min=-10.0; 
+        double p2_max=10.0;
     };
 
     // Exponential Background Parameters

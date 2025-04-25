@@ -68,7 +68,8 @@ void FlatMix(int start, int end, int jobIdx){
         short PS = 0;
         int counts = 0;
         cout << "loopstart" << endl;
-        end = std::min(end, totEvt);
+
+        end = end==-1 ? totEvt : std::min(end, totEvt);
         int idxMC = 0;
         int idxData = 0;
         for (auto iEvt : ROOT::TSeqU(start, end, skip))

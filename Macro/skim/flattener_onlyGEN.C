@@ -45,10 +45,10 @@ void flattener_onlyGEN(bool isMC){
 
     auto job = [&](int jobIdx){
 
-        std::string filePath1 = "/home/jun502s/DstarAna/DStarAnalysis/Data/output_PbPb_wOnlyGEN.root";
+        std::string filePath1 = "/home/jun502s/DstarAna/DStarAnalysis/Data/MC/d0ana_tree_240.root";
         //std::string filePath2 = "/eos/cms/store/group/phys_heavyions/junseok/DStarAna/MC/DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/DStarKpipiPU/crab_DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/241109_171602/0001";
         //std::string filePath3 = "/eos/cms/store/group/phys_heavyions/junseok/DStarAna/MC/DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/DStarKpipiPU/crab_DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/241109_171602/0002";
-        std::string treeName = "dStarana_mc/VertexCompositeNtuple";
+        std::string treeName = "dStarana_mc/PATCompositeNtuple";
         TChain* chain = new TChain(treeName.c_str());  
         chain->Add(filePath1.c_str());
         // loadRootFilesToTChain(chain,filePath1);

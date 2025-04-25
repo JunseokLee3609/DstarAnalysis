@@ -1,5 +1,6 @@
 void D0pTEtaMap(){
-    const char* filename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_isMC1_noFilter_wOnlyGEN_0_250108.root";
+    //const char* filename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_isMC1_OnlyGEN_0_250108.root";
+    const char* filename = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/ppMC/flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30_0_20250331.root";
 
 	TFile* file = TFile::Open(filename, "READ");
 	if (!file) {

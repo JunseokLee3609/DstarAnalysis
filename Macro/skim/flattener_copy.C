@@ -7,7 +7,11 @@
 
 // #include "src/dataformat/interface/simpleD.hxx"
 #include "../interface/simpleDMC.hxx"
-void loadRootFilesToTChain(TChain* chain, const std::string& folderPath) {
+void loadRootFilesToTChain(TChain* chain, const	if(var.compare("3DDecayLength")==0){
+	nbin=20;
+	down=0;
+	up=0.2;
+	} std::string& folderPath) {
 
     TSystemDirectory dir(folderPath.c_str(), folderPath.c_str());
     TList* files = dir.GetListOfFiles();
@@ -45,10 +49,10 @@ void flattener_copy(bool isMC){
 
     auto job = [&](int jobIdx){
 
-        std::string filePath1 = "/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root";
+        std::string filePath1 = "/home/jun502s/DstarAna/DStarAnalysis/Data/MC/d0ana_tree_240.root";
         //std::string filePath2 = "/eos/cms/store/group/phys_heavyions/junseok/DStarAna/MC/DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/DStarKpipiPU/crab_DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/241109_171602/0001";
         //std::string filePath3 = "/eos/cms/store/group/phys_heavyions/junseok/DStarAna/MC/DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/DStarKpipiPU/crab_DStarAna_MCDstarKpipi_selectionstudy_CMSSW_13_2_11_241109_v2/241109_171602/0002";
-        std::string treeName = "dStarana_mc/VertexCompositeNtuple";
+        std::string treeName = "dStarana_mc/PATCompositeNtuple";
         TChain* chain = new TChain(treeName.c_str());  
         chain->Add(filePath1.c_str());
         // loadRootFilesToTChain(chain,filePath1);

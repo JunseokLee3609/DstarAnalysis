@@ -13,12 +13,18 @@ struct corrParams{
         constexpr static int npt = 14 ;
         constexpr static int ny = 10;
         constexpr static int nphi = 9;
-        constexpr static double pl = 2;
-        constexpr static double ph = 30;
+        constexpr static int ncos = 8;
+        // constexpr static int ny = 2;
+        // constexpr static int nphi = 2;
+        constexpr static double pl = 4;
+        constexpr static double ph = 50;
         constexpr static double yl = -1.0;
         constexpr static double yh = 1.0;
         constexpr static double phil = -1*(TMath::Pi()); 
         constexpr static double phih = TMath::Pi();
+        constexpr static double cosl = -1.0;
+        constexpr static double cosh = 1.0;
+
         // static std::vector<double> pvec(){ return std::vector<double>{0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 15.0, 30.0};}
         static std::vector<double> pvec(){ return std::vector<double>{2.0, 2.4, 2.8, 3.2, 3.6, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 15.0, 30.0};} // 15
         // static std::vector<double> pvec(){ return std::vector<double>{2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 15.0, 30.0};} // 8
