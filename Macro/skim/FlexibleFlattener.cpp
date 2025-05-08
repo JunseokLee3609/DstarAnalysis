@@ -84,6 +84,7 @@ void FlexibleMix(
     int mcSampleRate = 100,               // MC 샘플링 비율 (matchGEN=false인 경우)
     int dataSampleRate = 100,             // 데이터 샘플링 비율
     bool doCent = true,                   // 중앙값 설정 여부 (추가)
+    bool doEvtPlane = false,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleMix job #" << jobIdx << std::endl;
@@ -349,6 +350,7 @@ void FlexibleData(
     const std::string& dataPath,          // 데이터 파일 경로 패턴
     const std::string& treeName,          // 트리 이름
     const std::string& eventInfoTreeName, // Event Info 트리 이름 (추가)
+    const std::string& eventPlaneInfoTreeName,
     const std::string& outputPath,        // 출력 파일 경로
     const std::string& outputPrefix,      // 출력 파일 접두사
     int start,                            // 시작 이벤트
@@ -356,6 +358,7 @@ void FlexibleData(
     int jobIdx,                           // 작업 인덱스
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
     bool doCent = true,                 // 중앙값 설정 여부 (추가)
+    bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleData job #" << jobIdx << std::endl;
@@ -375,6 +378,22 @@ void FlexibleData(
         loadRootFilesRecursively(chainEventInfo.get(), dataPath); // 데이터 경로에서 Event Info 로드
         if (chainEventInfo->GetEntries() > 0) {
             chainEventInfo->SetBranchAddress("centrality", &centrality);
+            std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
+        } else {
+            std::cerr << "Warning: Event info tree '" << eventInfoTreeName << "' not found or empty in data files. Centrality will not be saved." << std::endl;
+            doCent = false; // Centrality 처리 비활성화
+        }
+    }
+    std::unique_ptr<TChain> chainEventPlane = nullptr;
+    Double_t trkQx = -99; // 기본값 초기화
+    Double_t trkQy = -99; // 기본값 초기화
+    Double_t Psi2Raw_Trk = -99; // 기본값 초기화
+    if (doEvtPlane) {
+        chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
+        loadRootFilesRecursively(chainEventPlane.get(), dataPath); // 데이터 경로에서 Event Info 로드
+        if (chainEventPlane->GetEntries() > 0) {
+            chainEventPlane->SetBranchAddress("trkQx", &trkQx);
+            chainEventPlane->SetBranchAddress("trkQy", &trkQy);
             std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
         } else {
             std::cerr << "Warning: Event info tree '" << eventInfoTreeName << "' not found or empty in data files. Centrality will not be saved." << std::endl;
@@ -414,6 +433,15 @@ void FlexibleData(
                       << ") and event info entries (" << nEntriesEventInfo << "). Centrality might be incorrect." << std::endl;
         }
     }
+    if (doEvtPlane && chainEventPlane) {
+        long long nEntriesEventPlane = chainEventPlane->GetEntries();
+        std::cout << "Event Plane entries: " << nEntriesEventPlane << std::endl;
+        if (nEntriesData != nEntriesEventPlane) {
+            std::cerr << "Warning: Mismatch between main data tree entries (" << nEntriesData
+                      << ") and event plane entries (" << nEntriesEventPlane << "). Event plane might be incorrect." << std::endl;
+        }
+        
+    }
 
     // 출력 파일 및 트리 설정
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
@@ -430,6 +458,10 @@ void FlexibleData(
     if (doCent) {
         tskim->Branch("centrality", &centrality, "centrality/S");
         std::cout << "Added 'centrality' branch to output tree." << std::endl;
+    }
+    if (doEvtPlane){
+        tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+        std::cout << "Added 'Psi2Raw_Trk' branch to output tree." << std::endl;
     }
 
     // 처리할 이벤트 수 결정
@@ -455,6 +487,12 @@ void FlexibleData(
         } else {
             centrality = -1.0f; // centrality를 사용하지 않으면 기본값 유지
         }
+        if (doEvtPlane && chainEventPlane) {
+            chainEventPlane->GetEntry(iEvt);
+            Psi2Raw_Trk = atan2(trkQy, trkQx);
+        } else {
+            Psi2Raw_Trk = -1.0f; // Psi2Raw_Trk를 사용하지 않으면 기본값 유지
+        }
 
         // Data 메인 트리 처리
         chainData->GetEntry(iEvt);
@@ -476,6 +514,8 @@ void FlexibleData(
             simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4 || dinData->pTGrandD1[iD1]< 1 || dinData->pTGrandD2[iD1] <1 || dinData->EtaGrandD1[iD1] > 2.4 || dinData->EtaGrandD2[iD1] >2.4) continue;
+                    doutData->isMC = false;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -656,6 +696,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
+                if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->pTGrandD1[iD1]< 1 || dinMC->pTGrandD2[iD1] <1 || dinMC->EtaGrandD1[iD1] > 2.4 || dinMC->EtaGrandD2[iD1] >2.4) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -664,6 +705,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
+                // if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->pTGrandD1[iD1]< 1 || dinMC->pTGrandD2[iD1] <1 || dinMC->EtaGrandD1[iD1] > 2.4 || dinMC->EtaGrandD2[iD1] >2.4) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
@@ -725,9 +767,12 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     int end_ = end;
     int jobIdx_ = idx;
     bool setGEN = true;
-    ParticleType particleType = ParticleType::D0;
+    ParticleType particleType = ParticleType::DStar;
     bool doCent = true;
+    bool doEvtPlane = particleType == ParticleType::DStar ? true : false;
+
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
+    std::string eventPlaneInfoTreeName = "eventplane/EventPlane"; // Event Plane 트리 이름 (추가)
 
     std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/250404_044553/0000/*.root";
     std::string dataPath = "/u/user/jun502s/SE_UserHome/DStarMC/junseok/20250401_v1/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/PPRefZeroBiasPlusForward10/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/250401_130954/0000/*.root";
@@ -738,23 +783,23 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     std::string outputPath;
     std::string outputPrefix;
     std::string treeNameMC = particleType==ParticleType::D0 ? "d0ana_mc/PATCompositeNtuple": "dStarana_mc/PATCompositeNtuple";
-    std::string treeNameData = particleType==ParticleType::D0 ? "d0ana_newreduced/PATCompositeNtuple": "dStarana_mc/PATCompositeNtuple";
+    std::string treeNameData = particleType==ParticleType::D0 ? "d0ana_newreduced/PATCompositeNtuple": "dStarana/PATCompositeNtuple";
 
-    if (type == 0) {
+    if (type == 1) {
 	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppMC/D0" : "./Data/FlatSample/ppMC/DStar";
 	    outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
  	    if(!path.empty()) mcPath = path;
 	    if(!suffix.empty()) outputPrefix += "_"+ suffix;
 		    FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_,particleType, setGEN, doCent, date);
 
-    } else if (type == 1) {
+    } else if (type == 0) {
 	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppData/D0" : "./Data/FlatSample/ppData/DStar";
 	    outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
 
 	    if(!path.empty()) dataPath = path;
 	    if(!suffix.empty()) outputPrefix += "_"+suffix;
 
-	    FlexibleData(dataPath, treeNameData, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, date);
+	    FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date);
 
     } else if (type == 2) {
         outputPath = "./Data/FlatSample/ppMix/";
