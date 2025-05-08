@@ -242,8 +242,8 @@ vector<RooDataSet*> ChunkedRDSMaker(
     }
     
     // 전체 RooDataSet 생성
-    TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
     RooDataSet::setDefaultStorageType(RooAbsData::Tree);
+    TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
     // RooDataSet* fullDataset = new RooDataSet("dataset", "Full Dataset", varSet);
     
     RooRealVar cosThetaCS("cosThetaCS", "CosThetaCS", -1, 1);
@@ -266,8 +266,8 @@ vector<RooDataSet*> ChunkedRDSMaker(
     hxVarSet.add(phiTildeHX);
 
     // 데이터셋 생성
-    TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
-    RooDataSet::setDefaultStorageType(RooAbsData::Tree);
+    // TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
+    // RooDataSet::setDefaultStorageType(RooAbsData::Tree);
     RooDataSet* baseDataset = new RooDataSet("dataset", "Base Dataset", baseVarSet);
     RooDataSet* csDataset = saveCS ? new RooDataSet("datasetCS", "CS Frame Dataset", csVarSet) : nullptr;
     RooDataSet* hxDataset = saveHX ? new RooDataSet("datasetHX", "HX Frame Dataset", hxVarSet) : nullptr;
@@ -438,8 +438,9 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
     vector<VarDef> variables = {
         {"mass", VarType::FLOAT, 1.7, 2.2},
         {"pT", VarType::FLOAT, 0.0, 100.0},
-        {"eta", VarType::FLOAT, -2.5, 2.5},
-        {"phi", VarType::FLOAT, -3.14, 3.14},
+        //{"eta", VarType::FLOAT, -2.5, 2.5},
+    //    {"phi", VarType::FLOAT, -3.14, 3.14},
+	{"Ncoll",VarType::FLOAT,0.0,3000},
         {"y", VarType::FLOAT, -3.14,3.14},
         // {"pTD1", VarType::FLOAT, 0.0, 100.0},
         // {"EtaD1", VarType::FLOAT, -2.5, 2.5},
@@ -448,7 +449,7 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
         // {"pTD2", VarType::FLOAT, 0.0, 100.0},
         // {"EtaD2", VarType::FLOAT, -2.5, 2.5},
         // {"PhiD2", VarType::FLOAT, -3.14, 3.14},
-        {"mva", VarType::FLOAT, 0.90, 1},
+        {"mva", VarType::FLOAT, 0.2, 1},
         // {"dca3D", VarType::FLOAT, 0, 5},
         {"centrality",VarType::SHORT, 0, 200}, // 중앙성 범위 설정
         
