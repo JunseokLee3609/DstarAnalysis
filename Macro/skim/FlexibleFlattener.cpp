@@ -73,7 +73,8 @@ TFile* createOutputFile(const std::string& outputPath, const std::string& prefix
 void FlexibleMix(
     const std::string& mcPath,            // MC 파일 경로 패턴
     const std::string& dataPath,          // 데이터 파일 경로 패턴
-    const std::string& treeName,          // 트리 이름
+    const std::string& treeNameMC,          // 트리 이름
+    const std::string& treeNameData,          // 트리 이름
     const std::string& eventInfoTreeName, // Event Info 트리 이름 (추가)
     const std::string& outputPath,        // 출력 파일 경로
     const std::string& outputPrefix,      // 출력 파일 접두사
@@ -93,8 +94,8 @@ void FlexibleMix(
     std::cout << "Setting doCent: " << (doCent ? "true" : "false") << std::endl;
 
     // MC와 데이터 메인 트리 체인 생성
-    std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
-    std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
+    std::unique_ptr<TChain> chainMC(new TChain(treeNameMC.c_str()));
+    std::unique_ptr<TChain> chainData(new TChain(treeNameData.c_str()));
     loadRootFilesRecursively(chainMC.get(), mcPath);
     loadRootFilesRecursively(chainData.get(), dataPath);
 
@@ -695,30 +696,7 @@ void FlexibleMC(
     std::cout << "FlexibleMC job #" << jobIdx << " completed successfully." << std::endl;
 }
 
-// 간단한 래퍼 함수 - 기본 경로로 호출
-void FlexibleMixDefault(int start, int end, int jobIdx, ParticleType particleType = ParticleType::D0) {
-    std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple"; // 기본 Event Info 트리 이름
-    bool doCent = true; // 기본적으로 Centrality 사용
 
-    FlexibleMix(
-        "/home/jun502s/DstarAna/DStarAnalysis/Data/0000/*.root",  // MC 경로
-        "/home/CMS/Run3_2023/Data/SkimMVA/D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/HIPhysicsRawPrime0/crab_D0tarAna_Data_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_25Feb2025_v1/250225_080651/0000/*.root",  // 데이터 경로
-        "d0ana_newreduced/PATCompositeNtuple",    // 트리 이름
-        eventInfoTreeName,                        // Event Info 트리 이름 (추가)
-        "../../Data",                              // 출력 경로
-        "flatSkimForBDT_Mix_100to1",              // 출력 접두사
-        start,
-        end,
-        jobIdx,
-        particleType,
-        100, // mcSampleRate
-        1,   // dataSampleRate (기존 100에서 변경된 것으로 보임, 확인 필요)
-        doCent // doCent 플래그 (추가)
-        // date는 기본값 사용
-    );
-}
-
-// main 함수 예시
 int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string suffix="") {
 
     int start_ = start;
@@ -729,16 +707,20 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     bool doCent = true;
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
 
-    std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/250404_044553/0000/*.root";
-    std::string dataPath = "/u/user/jun502s/SE_UserHome/DStarMC/junseok/20250401_v1/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/PPRefZeroBiasPlusForward10/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/250401_130954/0000/*.root";
+    //std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step2MVA_D0Kpi_DpT_NonSwap_CMSSW_13_2_13_NoMVACut_04Apr2025_v1/250404_044553/0000/*.root";
+    //std::string dataPath = "/u/user/jun502s/SE_UserHome/DStarMC/junseok/20250401_v1/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/PPRefZeroBiasPlusForward10/DStarAnalysis_PPRef2024_DstarToKpipi_CMSSW_14_1_7_PPRef10_141X_dataRun3_Express_v3_20250401_v1/250401_130954/0000/*.root";
+    std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131426/0000";
+    std::string dataPath = "/u/user/jun502s/SE_UserHome/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/250424_165928/";
 
 
-    std::string date = "";
+    std::string date = "25Apr25";
+    int dataSampleRate =100;
+    int mcSampleRate = 100; 
 
     std::string outputPath;
     std::string outputPrefix;
     std::string treeNameMC = particleType==ParticleType::D0 ? "d0ana_mc/PATCompositeNtuple": "dStarana_mc/PATCompositeNtuple";
-    std::string treeNameData = particleType==ParticleType::D0 ? "d0ana_newreduced/PATCompositeNtuple": "dStarana_mc/PATCompositeNtuple";
+    std::string treeNameData = particleType==ParticleType::D0 ? "d0ana_newreduced/PATCompositeNtuple": "dStarana/PATCompositeNtuple";
 
     if (type == 0) {
 	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppMC/D0" : "./Data/FlatSample/ppMC/DStar";
@@ -759,8 +741,9 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     } else if (type == 2) {
         outputPath = "./Data/FlatSample/ppMix/";
         outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
+	if(!suffix.empty()) outputPrefix += "_"+suffix;
         // FlexibleMix 호출 업데이트 필요 - mcPath, dataPath, treeName, eventInfoTreeName, doCent 등 설정
-        // FlexibleMix(mcPath, dataPath, treeName, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, mcSampleRate, dataSampleRate, doCent, date);
+        FlexibleMix(mcPath, dataPath, treeNameMC,treeNameData, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, mcSampleRate, dataSampleRate, doCent, date);
         std::cout << "FlexibleMix (type 2) is currently commented out. Update parameters and uncomment to run." << std::endl;
 
     } else {
