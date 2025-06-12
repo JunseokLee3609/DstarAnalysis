@@ -32,6 +32,7 @@ struct FitOpt {
     std::string massVar;            // 질량 변수 이름
     std::string ptVar;              // pT 변수 이름
     std::string etaVar;             // eta 변수 이름
+    std::string yVar;
     std::string centVar;            // 중심도 변수 이름
     std::string mvaVar;            // 중심도 변수 이름
     std::string cosVar;            // 중심도 변수 이름
@@ -86,11 +87,14 @@ struct FitOpt {
         massVar("mass"),
         ptVar("pT"),
         etaVar("eta"),
+	yVar("y"),
         centVar("cent"),
         mvaVar("mva"),
         cosVar("cos"),
         massMin(0.0),
         massMax(10.0),
+        centMin(0),
+        centMax(100),
         useDeltaMass(false),
         deltaMassMin(0.0),
         deltaMassMax(1.0),
@@ -157,8 +161,8 @@ struct FitOpt {
         // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
         // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
         // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
-        this->cutMCExpr = Form("eta<1 && eta>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f  && matchGEN==1", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
-        this->cutExpr = Form("eta<1 && eta>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        this->cutMCExpr = Form("y<1 && y>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f  && matchGEN==1", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        this->cutExpr = Form("y<1 && y>-1 && cosThetaHX<%0.2f && cosThetaHX >%0.2f&&  pT<%0.2f && pT>%0.2f", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
         // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
         this->pdfName = "total_pdf";
         this->wsName = Form("ws_%s",this->name.c_str());
@@ -168,11 +172,11 @@ struct FitOpt {
         this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {"sigma_Swap1"};
         
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->constraintParameters= {};
-        // this->outputMCDir="roots/MC/";
-        // this->outputDir="roots/Data/";
+        this->outputMCDir="roots/Data_DStar_ppRef/";
+        this->outputDir="roots/MC_DStar_ppRef/";
         // this->datasetName = "reducedData";
     }
     void D0MCDefault() {
@@ -183,9 +187,9 @@ struct FitOpt {
         // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
         // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
         // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
-        this->cutMCExpr = Form("eta<1 && eta>-1 && Centrality <%0.2f && Centrality > %0.2f&&  pT<%0.2f && pT>%0.2f && mva > %0.9f  && matchGEN==1", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
-        this->cutExpr = Form("eta<1 && eta>-1 && Centrality <%0.2f && Centrality > %0.2f&&  pT<%0.2f && pT>%0.2f && mva > %0.9f", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
-        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->cutMCExpr = Form("y<1 && y>-1 && Centrality <%0.2f && Centrality >= %0.2f&&  pT<%0.2f && pT>=%0.2f && mva >= %0.9f  && matchGEN==1", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
+        this->cutExpr = Form("y<1 && y>-1 && Centrality <%0.2f && Centrality >= %0.2f&&  pT<%0.2f && pT>=%0.2f && mva >= %0.9f", this->centMax, this->centMin, this->pTMax, this->pTMin, this->mvaMin);
+        // this->cutExpr = Form("y<1 && y>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
         this->pdfName = "total_pdf";
         this->wsName = Form("ws_%s",this->name.c_str());
         this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
@@ -198,13 +202,14 @@ struct FitOpt {
         this->constraintParameters= {};
         this->outputMCDir="roots/MC_D0_PbPb/";
         this->outputDir="roots/Data_D0_PbPb/";
+        this->constraintParameters= {"sigma_Swap1"};
         // this->outputMCDir="roots/MC/";
         // this->outputDir="roots/Data/";
         this->datasetName = "dataset";
     }
     std::string convertDotToP(double value) {
         std::ostringstream oss;
-        oss << std::fixed << std::setprecision(9) << value;
+        oss << std::fixed << std::setprecision(3) << value;
         std::string str = oss.str();
         std::replace(str.begin(), str.end(), '.', 'p');
         std::replace(str.begin(), str.end(), '-', 'm');

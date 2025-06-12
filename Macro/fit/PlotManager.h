@@ -17,7 +17,7 @@
 
 class PlotManager {
 public:
-    PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir);
+    PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar);
     void DrawRawDistribution();
     void DrawFittedModel(bool drawPull = false);
 
@@ -31,8 +31,11 @@ private:
     std::string plotName_;
     std::string fileDir_;
     std::string outputDir_;
+    bool isDstar_;
+    bool isPP_;
     TFile* file_;
     RooDataSet* dataset_;
+    FitOpt opt_;
     RooAbsPdf* pdf_;
     RooRealVar* var_;
     RooFitResult* fitResult_;
@@ -42,11 +45,10 @@ private:
 
     void DrawPullFrame(RooPlot* frame);
     RooAbsPdf* ExtractComponent(const std::string& namePattern);
-    void PlotComponents(RooPlot* frame, RooAbsPdf* Pdf);
     void DrawParameterPad();
 };
-PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir)
-    : fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
+PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
+    : opt_(opt), fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar),isPP_(isPP) {
     file_ = TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str()));
     if(file_) cout << "File Opened :: " << Form("roots/MC/%s",filename_.c_str()) <<endl;
     if (!file_ || file_->IsZombie()) {
@@ -111,25 +113,6 @@ void PlotManager::DrawRawDistribution() {
     canvas->SaveAs(Form("%s/RawDist%s",outputDir_.c_str(),plotName_.c_str()));
     delete canvas;
 }
-RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
-    const RooArgSet* components = pdf_->getComponents();
-    RooAbsPdf* foundPdf = nullptr;
-    
-    // Use range-based for loop instead of deprecated iterator
-    for (const auto& obj : *components) {
-        RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(obj);
-        if (pdfComponent && std::string(pdfComponent->GetName()).find(namePattern) != std::string::npos) {
-            foundPdf = pdfComponent;
-            break;
-        }
-    }
-    
-    if (foundPdf) {
-        cout << "foundPdf: " << foundPdf->GetName() << endl;
-    }
-    
-    return foundPdf;
-}
 
 void PlotManager::DrawFittedModel(bool drawPull) {
     if (!dataset_ || !pdf_ || !var_ || !fitResult_) {
@@ -137,13 +120,8 @@ void PlotManager::DrawFittedModel(bool drawPull) {
         return;
     }
 
-    // 범례 엔트리 초기화
-    legendEntries.clear();
-    colorIndex = 1;
-
+    // --- Canvas and Pad Setup ---
     TCanvas* canvas = new TCanvas("canvas", "", 1200, 800);
-
-    // Create pads for main plot, pull distribution, and parameter pad
     TPad* mainPad = new TPad("mainPad", "", 0.0, 0.3, 0.7, 1.0);
     TPad* pullPad = new TPad("pullPad", "", 0.0, 0.0, 0.7, 0.3);
     TPad* paramPad = new TPad("paramPad", "", 0.7, 0.0, 1.0, 1.0);
@@ -158,75 +136,120 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     pullPad->Draw();
     paramPad->Draw();
 
-    // Draw the main plot
+    // --- Main Plot ---
     mainPad->cd();
-    var_->Print("v");
-    RooPlot* frame = var_->frame(RooFit::Bins(120),RooFit::Title(""),RooFit::Range("analysis"));
-    dataset_->plotOn(frame, RooFit::Name("datapoints"));
-    
-    // Plot the total PDF
-    pdf_->plotOn(frame, RooFit::Name("model"), RooFit::NormRange("analysis"),RooFit::Range("analysis"));
-    
-    // 데이터 및 전체 모델 항목 추가
-    legendEntries.push_back(std::make_pair("Data", kBlack));
-    legendEntries.push_back(std::make_pair("Total PDF", kBlue));
+    RooPlot* frame = var_->frame(RooFit::Bins(120), RooFit::Title(""), RooFit::Range("analysis"));
 
-    
-    // Extract and plot background component
-    RooAbsPdf* backgroundPdf = ExtractComponent("tot");
-    if (backgroundPdf) {
-        PlotComponents(frame, backgroundPdf);
+    // 1. Plot Data
+    dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+
+    // 2. Identify and Plot Components (assuming standard naming conventions)
+    RooAbsPdf* signalPdf = ExtractComponent("sig");
+    RooAbsPdf* swappedPdf = ExtractComponent("Swap1");
+    RooAbsPdf* combinatorialPdf = isDstar_ ? ExtractComponent("bkg") : ExtractComponent("comb");
+    if (signalPdf) {
+        pdf_->plotOn(frame, RooFit::Components(*signalPdf), RooFit::Name("signal"),
+                     RooFit::FillColor(kAzure-9), RooFit::FillStyle(3354),
+                     RooFit::DrawOption("F"),
+                     RooFit::LineColor(kAzure-9), RooFit::LineStyle(kDotted), RooFit::LineWidth(2),
+                     RooFit::NormRange("analysis"), RooFit::Range("analysis"));
+        pdf_->plotOn(frame, RooFit::Components(*signalPdf), RooFit::Name("signal_line"),
+                     RooFit::LineColor(kAzure-9), RooFit::LineStyle(kDotted), RooFit::LineWidth(2),
+                     RooFit::NormRange("analysis"), RooFit::Range("analysis"));
     }
-    
+
+
+    // Plot Combinatorial Background (dashed line)
+    if (combinatorialPdf) {
+        pdf_->plotOn(frame, RooFit::Components(*combinatorialPdf), RooFit::Name("combinatorial"),
+                     RooFit::LineColor(kBlue), RooFit::LineStyle(kDashed), RooFit::LineWidth(2),
+                     RooFit::NormRange("analysis"), RooFit::Range("analysis"));
+    }
+
+    // Plot Swapped Component (filled area, solid outline)
+    if (swappedPdf) {
+        pdf_->plotOn(frame, RooFit::Components(*swappedPdf), RooFit::Name("swapped"),
+                     RooFit::FillColor(kGreen + 2), RooFit::FillStyle(3354),
+                     RooFit::DrawOption("F"),
+                     RooFit::LineColor(kGreen + 2), RooFit::LineStyle(kSolid), RooFit::LineWidth(1),
+                     RooFit::NormRange("analysis"), RooFit::Range("analysis"));
+        pdf_->plotOn(frame, RooFit::Components(*swappedPdf), RooFit::Name("swapped_line"),
+                     RooFit::LineColor(kGreen + 2), RooFit::LineStyle(kSolid), RooFit::LineWidth(2),
+                     RooFit::NormRange("analysis"), RooFit::Range("analysis"));
+    }
+
+    // Plot Signal Component (filled area, dotted outline)
+    // 3. Plot Total Fit Line (Solid Red)
+    pdf_->plotOn(frame, RooFit::Name("model"), RooFit::LineColor(kRed), RooFit::LineWidth(2),
+                 RooFit::NormRange("analysis"), RooFit::Range("analysis"));
+
+    // 4. Re-plot Data Points on top
+    dataset_->plotOn(frame, RooFit::Name("datapoints_top"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+
+    frame->GetYaxis()->SetTitleOffset(1.2);
+    frame->GetYaxis()->SetTitle(Form("Entries / (%.3f GeV/c^{2})", var_->getBinWidth(0)));
+    frame->SetTitle("");
     frame->Draw();
-    
-    // 범례 생성 및 그리기
-    TLegend* legend = new TLegend(0.7, 0.7, 0.95, 0.9);
+
+    // --- Legend ---
+    TLegend* legend = new TLegend(0.65, 0.60, 0.93, 0.88);
     legend->SetBorderSize(0);
     legend->SetFillStyle(0);
-    
-    // 데이터 포인트 추가
-    legend->AddEntry(frame->findObject("datapoints"), "Data", "P");
-    
-    // 전체 모델 추가
-    legend->AddEntry(frame->findObject("model"), "Total Fit", "L");
-    
-    // 컴포넌트 추가
-    for (const auto& entry : legendEntries) {
-        // 처음 두 항목(데이터 및 전체 모델)은 이미 추가했으므로 건너뜀
-        if (entry.first != "Data" && entry.first != "Total PDF") {
-            TObject* obj = frame->findObject(entry.first.c_str());
-            if (obj) {
-                // 이름을 보기 좋게 가공 (선택적)
-                std::string displayName = entry.first;
-                // // sig_, bkg_ 등의 접두사 제거
-                // size_t pos = displayName.find("_");
-                // if (pos != std::string::npos) {
-                //     displayName = displayName.substr(pos + 1);
-                // }
-                
-                legend->AddEntry(obj, displayName.c_str(), "L");
-            }
-        }
+    legend->SetTextSize(0.04);
+
+    legend->AddEntry(frame->findObject("datapoints"), "Data", "PE");
+    legend->AddEntry(frame->findObject("model"), "Fit", "L");
+
+    if (signalPdf) {
+        isDstar_ ? legend->AddEntry(frame->findObject("signal"), "D^{*} Signal", "F") : legend->AddEntry(frame->findObject("signal"), "D^{0}+#bar{D}^{0} Signal", "F");
     }
-    
+    if (swappedPdf) {
+        legend->AddEntry(frame->findObject("swapped"), "K-#pi swapped", "F");
+    }
+    if (combinatorialPdf) {
+        legend->AddEntry(frame->findObject("combinatorial"), "Combinatorial", "L");
+    }
+
     legend->Draw();
 
-    // Draw the pull distribution
+    // --- CMS Preliminary Text ---
+    TLatex latex;
+    latex.SetNDC();
+    latex.SetTextFont(61);
+    latex.SetTextSize(0.05);
+    latex.DrawLatex(0.12, 0.90, "CMS");
+    latex.SetTextFont(52);
+    latex.SetTextSize(0.04);
+    latex.DrawLatex(0.20, 0.90, "Preliminary");
+
+    latex.SetTextFont(42);
+    latex.SetTextSize(0.04);
+    latex.SetTextAlign(31);
+    isPP_ ? latex.DrawLatex(0.93, 0.90, "ppRef #sqrt{s_{NN}} = 5.32 TeV") : latex.DrawLatex(0.93, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
+
+    
+    latex.DrawLatex(0.35,0.83, Form(" %.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax));
+    isDstar_ ? latex.DrawLatex(0.35, 0.76, Form("%.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax)) : latex.DrawLatex(0.93, 0.60, Form("mva < %f", opt_.mvaMin));
+    latex.DrawLatex(0.35,0.69,"-1 < |y| < 1");
+
+
+    latex.SetTextAlign(11);
+
+    // --- Pull Plot ---
     if (drawPull) {
         pullPad->cd();
         DrawPullFrame(frame);
     }
 
-    // Draw the fitted parameter values
+    // --- Parameter Pad ---
     paramPad->cd();
     DrawParameterPad();
 
-    createDir(Form("%s/",outputDir_.c_str()));
-    canvas->SaveAs(Form("%s/%s",outputDir_.c_str(),plotName_.c_str()));
+    // --- Save Canvas ---
+    createDir(Form("%s/", outputDir_.c_str()));
+    canvas->SaveAs(Form("%s/%s", outputDir_.c_str(), plotName_.c_str()));
 
     delete canvas;
-    delete legend; // 메모리 누수 방지
 }
 
 void PlotManager::DrawPullFrame(RooPlot* frame) {
@@ -259,54 +282,31 @@ void PlotManager::DrawParameterPad() {
         latex.DrawLatex(0.1, 0.9 - i * 0.05, Form("%s = %.5f #pm %.5f", param->GetName(), param->getVal(), param->getError()));
     }
 }
-void PlotManager::PlotComponents(RooPlot* frame, RooAbsPdf* Pdf) {
-    const RooArgSet* components = Pdf->getComponents();
-    if (components->getSize() > 1) {
-        // Use range-based for loop instead of deprecated iterator
+
+RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
+    if (std::string(pdf_->GetName()).find(namePattern) != std::string::npos) {
+    }
+
+    const RooArgSet* components = pdf_->getComponents();
+    RooAbsPdf* foundPdf = nullptr;
+
+    if (components) {
         for (const auto& obj : *components) {
             RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(obj);
-            if (pdfComponent) {
-                std::string compName = pdfComponent->GetName();
-                if(compName.find("tot") != std::string::npos){ colorIndex++; continue;}
-                if(compName.find("sig")||compName.find("bkg")){
-                    Pdf->plotOn(frame, 
-                        RooFit::Components(*pdfComponent),
-                        RooFit::LineStyle(kDashed),
-                        RooFit::LineColor(colorIndex),
-                        RooFit::Name(compName.c_str()),
-                        RooFit::Range("analysis"),
-                        RooFit::NormRange("analysis"));
-
-                }
-                else{
-                Pdf->plotOn(frame, 
-                          RooFit::Components(*pdfComponent),
-                          RooFit::LineStyle(kDashed),
-                          RooFit::LineColor(colorIndex),
-                          RooFit::Name(compName.c_str()),
-                          RooFit::Range("analysis"),
-                          RooFit::NormRange("analysis"));
-                
-                }
-                // 범례 항목 추가
-                legendEntries.push_back(std::make_pair(compName, colorIndex));
-                colorIndex++;
+                std::cout << "Found component '" << namePattern << "': " << pdfComponent->GetName() << std::endl;
+            if (pdfComponent && std::string(pdfComponent->GetName()).find(namePattern) != std::string::npos) {
+                foundPdf = pdfComponent;
+                // std::cout << "Found component '" << namePattern << "': " << foundPdf->GetName() << std::endl;
+                break;
             }
         }
-    } else {
-        std::string pdfName = Pdf->GetName();
-        Pdf->plotOn(frame, 
-                  RooFit::Components(*Pdf),
-                  RooFit::LineStyle(kDashed),
-                  RooFit::LineColor(colorIndex),
-                  RooFit::Name(pdfName.c_str()),
-                  RooFit::Range("analysis"),
-                  RooFit::NormRange("analysis"));
-        
-        // 범례 항목 추가
-        legendEntries.push_back(std::make_pair(pdfName, colorIndex));
-        colorIndex++;
     }
+
+    if (!foundPdf) {
+         std::cout << "Warning: Component containing '" << namePattern << "' not found." << std::endl;
+    }
+
+    return foundPdf;
 }
 
 #endif // PLOTMANAGER_H

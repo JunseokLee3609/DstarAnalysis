@@ -18,6 +18,9 @@
 #include "TStyle.h" // For gStyle
 #include "TPad.h"   // For gPad
 #include "TH1.h"    // For TH1
+#include "THStack.h" // For THStack
+#include "TLatex.h"  // For CMS label
+#include "Opt.h"
 
 // RooFit includes
 #include "RooRealVar.h"
@@ -39,8 +42,9 @@ using namespace RooFit;
 class DCAFitter {
 public:
     // Constructor
-    DCAFitter(const std::string& name, double dcaMin, double dcaMax, int nBins) :
+    DCAFitter(FitOpt &opt, const std::string& name, double dcaMin, double dcaMax, int nBins) :
         name_(name),
+        opt_(opt),
         ws_(new RooWorkspace(name.c_str(), (name + " Workspace").c_str())),
         dcaMin_(dcaMin),
         dcaMax_(dcaMax),
@@ -50,6 +54,8 @@ public:
         dataSet_(nullptr),
         promptTemplate_(nullptr),
         nonPromptTemplate_(nullptr),
+        promptHist_(nullptr),
+        nonPromptHist_(nullptr),
         promptPdf_(nullptr),
         nonPromptPdf_(nullptr),
         fracPrompt_(nullptr),
@@ -81,13 +87,15 @@ public:
     }
 
     // --- Configuration ---
-    void setMCFile(const std::string& fileName, const std::string& treeName) {
+    void setMCFile(const std::string& fileName, const std::string& datasetName = "") {
         mcFileName_ = fileName;
-        mcTreeName_ = treeName;
+        // mcTreeName_ = treeName;
+        mcRooDatsetName_ = datasetName;
     }
-    void setDataFile(const std::string& fileName, const std::string& treeName) {
+    void setDataFile(const std::string& fileName, const std::string& datasetName = "") {
         dataFileName_ = fileName;
-        dataTreeName_ = treeName;
+        // dataTreeName_ = treeName;
+        dataRooDatsetName_ = datasetName; // Default name for data set
     }
     void setDCABranchName(const std::string& branchName) {
         dcaBranchName_ = branchName;
@@ -126,7 +134,7 @@ public:
     // --- Workflow ---
     bool createTemplatesFromMC() {
         std::cout << "Creating templates from MC file: " << mcFileName_ << std::endl;
-        if (mcFileName_.empty() || mcTreeName_.empty() || dcaBranchName_.empty() || motherPdgIdBranchName_.empty()) {
+        if (mcFileName_.empty() || mcRooDatsetName_.empty() || dcaBranchName_.empty() || motherPdgIdBranchName_.empty()) {
             std::cerr << "Error: MC file, tree name, DCA branch, or Mother PDG ID branch not set." << std::endl;
             return false;
         }
@@ -136,14 +144,7 @@ public:
             std::cerr << "Error: Could not open MC file: " << mcFileName_ << std::endl;
             return false;
         }
-
-        TTree* mcTree = dynamic_cast<TTree*>(mcFile->Get(mcTreeName_.c_str()));
-        if (!mcTree) {
-            std::cerr << "Error: Could not find MC tree: " << mcTreeName_ << " in file: " << mcFileName_ << std::endl;
-            mcFile->Close();
-            delete mcFile;
-            return false;
-        }
+        RooDataSet* mcDataset = dynamic_cast<RooDataSet*>(mcFile->Get(mcRooDatsetName_.c_str()));
 
         // --- Define variables needed from the TTree ---
         // Ensure dcaVar_ uses the correct branch name
@@ -166,7 +167,8 @@ public:
         std::unique_ptr<RooDataSet> fullMCDataSet;
         const char* weightVarName = !weightBranchName_.empty() ? weightBranchName_.c_str() : nullptr;
 
-        fullMCDataSet.reset(new RooDataSet("fullMCDataSet", "Full MC DataSet", mcTree, mcVars, mcCuts_.c_str(), weightVarName));
+        if(mcDataset) fullMCDataSet.reset(mcDataset);
+        else return cout << "Error: Could not find MC dataset: " << mcRooDatsetName_ << " in file: " << mcFileName_ << std::endl, false;
 
 
         if (!fullMCDataSet || fullMCDataSet->numEntries() == 0) {
@@ -239,6 +241,19 @@ public:
         ws_->import(*promptDataSet);
         ws_->import(*nonPromptDataSet);
 
+        promptHist_ = new TH1D("promptHist", "Prompt Histogram", dcaBins_.size() - 1, dcaBins_.data());
+        promptHist_->Sumw2();
+        for (int i = 0; i < promptDataSet->numEntries(); ++i) {
+            const RooArgSet* row = promptDataSet->get(i);
+            promptHist_->Fill(row->getRealValue(dcaVar_->GetName()));
+        }
+        nonPromptHist_ = new TH1D("nonPromptHist", "Non-prompt Histogram", dcaBins_.size() - 1,dcaBins_.data());
+        nonPromptHist_->Sumw2();
+        for (int i = 0; i < nonPromptDataSet->numEntries(); ++i) {
+            const RooArgSet* row = nonPromptDataSet->get(i);
+            nonPromptHist_->Fill(row->getRealValue(dcaVar_->GetName()));
+        }
+
 
         if (!promptDataSet || promptDataSet->numEntries() == 0) {
              std::cerr << "Warning: No prompt MC events found after selection." << std::endl;
@@ -246,7 +261,7 @@ public:
              std::cout << "Prompt MC entries: " << promptDataSet->sumEntries() << " (weighted)" << std::endl;
              // Create binned template (RooDataHist)
              // Ensure the correct ArgSet (just dcaVar_) is used for binning
-             promptTemplate_ = new RooDataHist("promptTemplate", "Prompt MC Template", RooArgSet(*dcaVar_), *promptDataSet);
+             promptTemplate_ = new RooDataHist("promptTemplate", "Prompt MC Template", RooArgSet(*dcaVar_), promptHist_);
              ws_->import(*promptTemplate_); // Import into workspace
              std::cout << "Prompt template created." << std::endl;
         }
@@ -256,7 +271,7 @@ public:
         } else {
              std::cout << "Non-prompt MC entries: " << nonPromptDataSet->sumEntries() << " (weighted)" << std::endl;
              // Create binned template (RooDataHist)
-             nonPromptTemplate_ = new RooDataHist("nonPromptTemplate", "Non-prompt MC Template", RooArgSet(*dcaVar_), *nonPromptDataSet);
+             nonPromptTemplate_ = new RooDataHist("nonPromptTemplate", "Non-prompt MC Template", RooArgSet(*dcaVar_), nonPromptHist_);
              ws_->import(*nonPromptTemplate_); // Import into workspace
              std::cout << "Non-prompt template created." << std::endl;
         }
@@ -273,7 +288,7 @@ public:
 
     bool loadData() {
         std::cout << "Loading data from file: " << dataFileName_ << std::endl;
-        if (dataFileName_.empty() || dataTreeName_.empty() || dcaBranchName_.empty()) {
+        if (dataFileName_.empty() || dataRooDatsetName_.empty() || dcaBranchName_.empty()) {
             std::cerr << "Error: Data file, tree name, or DCA branch not set." << std::endl;
             return false;
         }
@@ -283,14 +298,15 @@ public:
             std::cerr << "Error: Could not open data file: " << dataFileName_ << std::endl;
             return false;
         }
+        RooDataSet* dataDataset = dynamic_cast<RooDataSet*>(dataFile->Get(dataRooDatsetName_.c_str()));
 
-        TTree* dataTree = dynamic_cast<TTree*>(dataFile->Get(dataTreeName_.c_str()));
-        if (!dataTree) {
-            std::cerr << "Error: Could not find data tree: " << dataTreeName_ << " in file: " << dataFileName_ << std::endl;
-            dataFile->Close();
-            delete dataFile;
-            return false;
-        }
+        // TTree* dataTree = dynamic_cast<TTree*>(dataFile->Get(dataTreeName_.c_str()));
+        // if (!dataTree) {
+        //     std::cerr << "Error: Could not find data tree: " << dataTreeName_ << " in file: " << dataFileName_ << std::endl;
+        //     dataFile->Close();
+        //     delete dataFile;
+        //     return false;
+        // }
 
         // Ensure dcaVar_ uses the correct branch name for loading
         dcaVar_->SetName(dcaBranchName_.c_str());
@@ -317,7 +333,10 @@ public:
         }
 
         const char* weightVarName = !weightBranchName_.empty() ? weightBranchName_.c_str() : nullptr;
-        dataSet_ = new RooDataSet("dataSet", "Data Set", dataTree, dataVars, dataCuts_.c_str(), weightVarName);
+        if(dataDataset) 
+            dataSet_ = dynamic_cast<RooDataSet*>(dataDataset);
+        else cout << "Error: Could not find data dataset: " << dataRooDatsetName_ << " in file: " << dataFileName_ << std::endl, false;
+        // else dataSet_ = new RooDataSet("dataSet", "Data Set", dataTree, dataVars, dataCuts_.c_str(), weightVarName);
 
 
         if (!dataSet_ || dataSet_->numEntries() == 0) {
@@ -333,7 +352,7 @@ public:
         ws_->import(*dataSet_); // Import dataset into workspace
 
         dataFile->Close();
-        delete dataFile;
+        // delete dataFile;
         // Restore dcaVar_ name
         dcaVar_->SetName("dca3D");
         return true;
@@ -341,72 +360,72 @@ public:
 
     bool buildModel() {
         std::cout << "Building RooFit model..." << std::endl;
+        
+        // 1. createTemplatesFromMC()에서 생성된 템플릿이 있는지 먼저 확인합니다.
         if (!promptTemplate_ && !nonPromptTemplate_) {
-            std::cerr << "Error: No MC templates available to build the model." << std::endl;
+            std::cerr << "Error: No MC templates (RooDataHist) are available to build the model." << std::endl;
+            std::cerr << "       Please run createTemplatesFromMC() first." << std::endl;
             return false;
         }
-
+        if (!dataSet_) {
+            std::cerr << "Error: Data set is not loaded. Needed for initial yield guess." << std::endl;
+            return false;
+        }
+    
+        // *** 기존의 비어있는 히스토그램과 템플릿을 생성하던 코드를 모두 삭제했습니다. ***
+        // *** 이것이 가장 중요한 수정 사항입니다. ***
+    
+        // --- 2. 확장된(Extended) 모델을 구성합니다 ---
+        // 각 컴포넌트의 수율(yield)을 나타내는 변수들을 만듭니다. 이 값들이 피팅의 대상이 됩니다.
+        double nevt = dataSet_->sumEntries(); // 데이터의 총 이벤트 수를 초기값 추정에 사용
+        
+        // 멤버 변수로 선언된 n_prompt_, n_nonprompt_를 사용합니다. (헤더 파일에 추가 필요)
+        
+        n_prompt_ = new RooRealVar("n_prompt", "Number of prompt events", nevt * 0.8, 0, nevt*0.9);
+        n_nonprompt_ = new RooRealVar("n_nonprompt", "Number of non-prompt events", nevt * 0.01, 0, nevt*0.8);
+    
         RooArgList pdfList;
-        RooArgList fracList;
-
-        // Create PDFs from templates
+        RooArgList yieldList;
+    
+        dcaVar_->SetName("dca3D"); // 일관된 변수 이름 사용
+    
+        // --- 3. 유효한 템플릿으로부터 PDF를 생성하고 리스트에 추가합니다 ---
         if (promptTemplate_) {
-            // Ensure PDF uses the base 'dca' variable name if templates were built correctly
-            dcaVar_->SetName("dca3D"); // Ensure consistency
+            // 보간(interpolation) 옵션(e.g., 2)을 추가하여 더 부드러운 PDF를 만듭니다.
             promptPdf_ = new RooHistPdf("promptPdf", "Prompt PDF", RooArgSet(*dcaVar_), *promptTemplate_);
-            ws_->import(*promptPdf_);
             pdfList.add(*promptPdf_);
-            std::cout << "Prompt PDF created." << std::endl;
+            yieldList.add(*n_prompt_);
+            ws_->import(*promptPdf_);
+            std::cout << "Prompt PDF created from existing template." << std::endl;
         }
-
+    
         if (nonPromptTemplate_) {
-            dcaVar_->SetName("dca3D"); // Ensure consistency
             nonPromptPdf_ = new RooHistPdf("nonPromptPdf", "Non-prompt PDF", RooArgSet(*dcaVar_), *nonPromptTemplate_);
-            ws_->import(*nonPromptPdf_);
             pdfList.add(*nonPromptPdf_);
-            std::cout << "Non-prompt PDF created." << std::endl;
+            yieldList.add(*n_nonprompt_);
+            ws_->import(*nonPromptPdf_);
+            std::cout << "Non-prompt PDF created from existing template." << std::endl;
         }
-
-        // Build combined model
-        if (pdfList.getSize() == 2) {
-            // Both prompt and non-prompt exist
-            fracPrompt_ = new RooRealVar("fracPrompt", "Fraction of prompt", 0.8, 0.0, 1.0); // Initial guess 0.8
-            ws_->import(*fracPrompt_);
-            fracList.add(*fracPrompt_);
-            model_ = new RooAddPdf("model", "Prompt + Non-prompt Model", pdfList, fracList);
-            std::cout << "Created combined model (Prompt + Non-prompt)." << std::endl;
-        } else if (pdfList.getSize() == 1) {
-            // Only one component exists (treat as the full model)
-            // Clone the single PDF as the model. Ensure the name is "model".
-            RooAbsPdf* singlePdf = dynamic_cast<RooAbsPdf*>(pdfList.at(0));
-            if (singlePdf) {
-                 model_ = dynamic_cast<RooAddPdf*>(singlePdf->Clone("model")); // Clone might not yield RooAddPdf, adjust if needed
-                 if (!model_) { // If clone doesn't return RooAddPdf, handle appropriately
-                     // Maybe just assign the single PDF directly if model_ is RooAbsPdf*?
-                     // For now, assuming model_ should be RooAddPdf or compatible
-                     std::cerr << "Warning: Cloning single PDF did not result in expected type. Model might be incomplete." << std::endl;
-                     // Fallback or error handling needed here.
-                     // Let's assume model_ is RooAbsPdf* for flexibility:
-                     // model_ = singlePdf; // If model_ is RooAbsPdf*
-                     // Or create a RooAddPdf with one component and fraction 1.0?
-                     RooRealVar* fracOne = new RooRealVar("fracOne","Fraction=1", 1.0);
-                     fracOne->setConstant(true);
-                     ws_->import(*fracOne); // Import if needed elsewhere
-                     model_ = new RooAddPdf("model", "Single Component Model", RooArgList(*singlePdf), RooArgList(*fracOne));
-
-                 }
-                 std::cout << "Created model with single component: " << singlePdf->GetName() << std::endl;
-            } else {
-                 std::cerr << "Error: Could not cast single component to RooAbsPdf." << std::endl;
-                 return false;
-            }
+    
+        // --- 4. 최종 모델을 생성합니다 (한 컴포넌트만 있어도 작동) ---
+        if (pdfList.getSize() > 0) {
+            model_ = new RooAddPdf("model", "Extended P+NP Model", pdfList, yieldList);
+            ws_->import(*model_);
+            std::cout << "Extended model built successfully with " << pdfList.getSize() << " component(s)." << std::endl;
         } else {
-            std::cerr << "Error: Could not create any PDFs from templates." << std::endl;
+            std::cerr << "Error: No PDFs were created to build the model." << std::endl;
             return false;
         }
-
-        ws_->import(*model_);
-        std::cout << "Model built successfully." << std::endl;
+    
+        // --- 5. (결과 분석용) 분율을 계산하는 RooFormulaVar를 만듭니다 ---
+        // 이 변수는 피팅 파라미터가 아니라, 피팅된 수율로부터 계산되는 값입니다.
+        if (pdfList.getSize() == 2) {
+            // fracPrompt_ 멤버 변수 선언 필요 (RooFormulaVar*)
+            fracPrompt_ = new RooFormulaVar("fracPrompt", "Prompt Fraction", "@0 / (@0 + @1)", RooArgList(*n_prompt_, *n_nonprompt_));
+            ws_->import(*fracPrompt_);
+            std::cout << "Prompt fraction variable (RooFormulaVar) created for post-fit analysis." << std::endl;
+        }
+    
         return true;
     }
 
@@ -419,12 +438,22 @@ public:
         }
         // Ensure dcaVar_ has the standard name 'dca' before fitting
         dcaVar_->SetName("dca3D");
+        TH1D* tempDataHist = new TH1D("tempDataHistForBinning", "Temporary Data Hist for Binning",dcaBins_.size() - 1, dcaBins_.data());
+        // Fill the temporary TH1 from the RooDataSet
+        // Make sure dcaVar_ in dataSet_ has the correct name (dcaBranchName_ or "dca3D")
+        // If dataSet_ was created with dcaVar_ having dcaBranchName_, it should be fine.
+        // If dcaVar_ name was changed after dataSet_ creation, ensure consistency.
+        dataSet_->fillHistogram(tempDataHist, RooArgList(*dcaVar_));
+
+        RooDataHist dataHist("dataHist", "Binned Data", RooArgList(*dcaVar_), tempDataHist);
+        delete tempDataHist; // Clean up temporary TH1
 
 
         // Fit options using RooLinkedList
         RooLinkedList fitOptionsList;
         fitOptionsList.Add(RooFit::Save(true).Clone()); // Save detailed fit result
         fitOptionsList.Add(RooFit::PrintLevel(-1).Clone()); // Reduce verbosity (-1), default is 1
+        fitOptionsList.Add(RooFit::Extended(true).Clone());
 
         if (useMinos) {
             fitOptionsList.Add(RooFit::Minos(true).Clone());
@@ -437,7 +466,7 @@ public:
 
         // Perform the fit using the RooLinkedList
         // Ensure the model is fitted to the dataset using the correct variable ('dca')
-        RooFitResult* fitResult = model_->fitTo(*dataSet_, fitOptionsList);
+        RooFitResult* fitResult = model_->fitTo(dataHist, fitOptionsList);
 
 
         if (fitResult) {
@@ -451,116 +480,116 @@ public:
         } else {
             std::cerr << "Error: Fit failed to produce a result object." << std::endl;
         }
+        if (promptHist_) { // Check if it was created
+            // delete promptHist_;
+            // promptHist_ = nullptr;
+       }
+       if (nonPromptHist_) { // Check if it was created
+            // delete nonPromptHist_;
+            // nonPromptHist_ = nullptr;
+       }
+
 
         return fitResult; // Caller is responsible for deleting this object
     }
-
     void plotResults(RooFitResult* fitResult = nullptr, const std::string& plotName = "dca_fit_plot") {
-        std::cout << "Plotting results..." << std::endl;
+        std::cout << "Plotting results (CMS style)..." << std::endl;
         if (!dcaVar_ || !dataSet_ || !model_) {
             std::cerr << "Error: Cannot plot results. Variables, data, or model missing." << std::endl;
             return;
         }
-        // Ensure dcaVar_ has the standard name 'dca' for plotting
-        dcaVar_->SetName("dca3D");
-
-
-        TCanvas* canvas = new TCanvas(plotName.c_str(), "DCA Fit Results", 800, 600);
-        RooPlot* frame = dcaVar_->frame(Title("DCA Distribution Fit"));
-        frame->GetYaxis()->SetTitle(TString::Format("Events / (%.3f units)", (dcaMax_ - dcaMin_) / nBins_));
-        frame->GetXaxis()->SetTitle(dcaVar_->GetTitle());
-
-
-        // Plot data with appropriate error bars for weighted data
-        RooCmdArg dataPlotArgs = Binning(nBins_);
-        if (dataSet_->isWeighted()) {
-            dataPlotArgs = RooFit::DataError(RooAbsData::SumW2);
-        }
-        dataSet_->plotOn(frame, dataPlotArgs, Name("data"));
-
-
-        // Plot full model
-        model_->plotOn(frame, Name("full_model"), LineColor(kRed));
-
-        // Plot components if they exist
-        if (promptPdf_ && nonPromptPdf_ && fracPrompt_) {
-            model_->plotOn(frame, Components(*promptPdf_), LineStyle(kDashed), LineColor(kBlue), Name("prompt_comp"));
-            model_->plotOn(frame, Components(*nonPromptPdf_), LineStyle(kDashed), LineColor(kGreen + 2), Name("nonprompt_comp"));
-        } else if (promptPdf_) {
-             // Check if model is composite or single PDF
-             if (model_->dependsOn(*promptPdf_)) { // Check dependency
-                 model_->plotOn(frame, Components(*promptPdf_), LineStyle(kDashed), LineColor(kBlue), Name("prompt_comp"));
-             }
-        } else if (nonPromptPdf_) {
-             if (model_->dependsOn(*nonPromptPdf_)) { // Check dependency
-                 model_->plotOn(frame, Components(*nonPromptPdf_), LineStyle(kDashed), LineColor(kGreen + 2), Name("nonprompt_comp"));
-             }
-        }
-
-
+    
+        // --- 새로운 부분: RooPlot을 사용하여 모델 곡선을 가져옵니다 ---
+        RooPlot* frame = dcaVar_->frame(RooFit::Title(" "));
+        
+        // 데이터 플로팅 (bin 너비 보정됨)
+        // *** MODIFIED ***: dataSet_에 RooFit::Binning(nBins_)를 적용하여 binning을 명시적으로 설정할 수 있습니다.
+        // 만약 dcaBins_를 사용하고 싶다면, RooBinning 객체를 만들어 전달합니다.
+        RooBinning binning(dcaBins_.size() - 1, &dcaBins_[0]);
+        dataSet_->plotOn(frame, RooFit::Binning(binning), RooFit::Name("data"));
+    
+        // 모델과 컴포넌트 플로팅
+        model_->plotOn(frame, RooFit::Name("model"), RooFit::LineColor(kRed+1));
+        model_->plotOn(frame, RooFit::Components(*nonPromptPdf_), RooFit::Name("nonprompt"), RooFit::FillStyle(3354), RooFit::FillColor(kBlue-9), RooFit::LineColor(kBlue+1), RooFit::DrawOption("F"));
+        model_->plotOn(frame, RooFit::Components(*promptPdf_),RooFit::AddTo("nonprompt"), RooFit::Name("prompt"), RooFit::FillStyle(3354), RooFit::FillColor(kRed-9), RooFit::LineColor(kRed+1), RooFit::DrawOption("F"));
+        model_->plotOn(frame, RooFit::Components(*nonPromptPdf_), RooFit::Name("nonprompt"), RooFit::FillStyle(3354), RooFit::FillColor(kBlue-9), RooFit::LineColor(kBlue+1), RooFit::DrawOption("F"));
+        
+        // 데이터를 한 번 더 그려서 스택 위에 오도록 합니다.
+        // dataSet_->plotOn(frame, RooFit::Binning(binning), RooFit::Name("data")); 
+    
+        // --- 캔버스 및 스타일링 ---
+        TCanvas* c = new TCanvas(plotName.c_str(), "CMS DCA Fit", 800, 700); // 캔버스 크기 조정
+        c->SetLogy();
+        c->SetLeftMargin(0.15); // Y축 제목 공간 확보
+        
         frame->Draw();
+        
+        // *** MODIFIED ***: Y축 제목을 "Yield per cm"으로 변경
+        frame->GetYaxis()->SetTitle("Yield per cm");
+        frame->GetXaxis()->SetTitle("D^{0} DCA (cm)");
+        frame->GetXaxis()->SetTitleOffset(1.1);
+        frame->GetYaxis()->SetTitleOffset(1.4);
+        frame->SetMinimum(100); // 최소값은 데이터에 맞게 조정
+        frame->SetMaximum(frame->GetMaximum() * 1.5);
+    
+        // --- 범례 (Legend) 생성 ---
+        TLegend* leg = new TLegend(0.55, 0.65, 0.88, 0.88);
+        leg->SetBorderSize(0);
+        leg->SetFillStyle(0);
+        leg->SetTextSize(0.04);
+        
+        // RooPlot에서 객체를 이름으로 찾아와서 범례에 추가합니다.
+        TObject* dataObj = frame->findObject("data");
+        TObject* promptObj = frame->findObject("prompt");
+        TObject* nonPromptObj = frame->findObject("nonprompt");
+        
+        if (dataObj) leg->AddEntry(dataObj, "Data", "pe");
+        if (promptObj) leg->AddEntry(promptObj, "Prompt D^{0}", "f");
+        if (nonPromptObj) leg->AddEntry(nonPromptObj, "Non-Prompt D^{0}", "f");
+        leg->Draw();
+    
+        // --- 텍스트 라벨 (CMS, Kinematics, Fit Result) ---
+        TLatex latex;
+        latex.SetNDC();
+        latex.SetTextFont(42);
+        latex.SetTextSize(0.045);
+        latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
+        latex.SetTextSize(0.04);
+        latex.DrawLatex(0.60, 0.93, "pp #sqrt{s_{NN}} = 5.36 TeV"); // 예시 텍스트
+        
+        latex.SetTextSize(0.035);
+        // latex.DrawLatex(0.55, 0.60, "10.0 < p_{T} < 12.5 GeV/c");
+        // latex.DrawLatex(0.55, 0.60, "|y| < 1.0");
+    
+        // Fit fraction
+        if (fracPrompt_ && fitResult) {
+            double frac_val = fracPrompt_->getVal();
+            double frac_err = fracPrompt_->getPropagatedError(*fitResult);
+            std::cout << "Prompt Fraction = " << frac_val << " +/- " << frac_err << std::endl;
+            
+            latex.SetTextSize(0.038);
+            latex.DrawLatex(0.55, 0.60, Form("Prompt frac. = %.1f #pm %.1f %%", frac_val*100, frac_err*100));
 
-        // Add Legend
-        TLegend* legend = new TLegend(0.65, 0.65, 0.88, 0.88);
-        legend->AddEntry(frame->findObject("data"), "Data", "LEP");
-        legend->AddEntry(frame->findObject("full_model"), "Full Fit", "L");
-        if (frame->findObject("prompt_comp")) legend->AddEntry(frame->findObject("prompt_comp"), "Prompt Component", "L");
-        if (frame->findObject("nonprompt_comp")) legend->AddEntry(frame->findObject("nonprompt_comp"), "Non-prompt Component", "L");
-        legend->SetBorderSize(0);
-        legend->SetFillStyle(0);
-        legend->Draw();
-
-        // Optionally display fit parameters on plot (requires fitResult)
-        if (fitResult) {
-             // Display parameters associated with the model
-             // Use RooArgSet containing parameters you want to show, e.g., fracPrompt_
-             RooArgSet paramsToShow;
-             if (fracPrompt_) paramsToShow.add(*fracPrompt_);
-             // Add other parameters if needed, e.g., shape parameters if they were floated
-
-             if (paramsToShow.getSize() > 0) {
-                 model_->paramOn(frame, Layout(0.6, 0.9, 0.6), Parameters(paramsToShow), Format("NEU", AutoPrecision(2)));
-                 frame->getAttText()->SetTextSize(0.03); // Adjust text size if needed
-                 frame->Draw(); // Redraw frame to show parameters
-             }
+            latex.DrawLatex(0.55, 0.55, Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax));
+            latex.DrawLatex(0.55, 0.50, "|y| < 1");
+            latex.DrawLatex(0.55, 0.45, Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax));
         }
-
-
-        // Save plot if output file is set
+    
+        // --- 파일 저장 ---
+        c->SaveAs((plotName + ".png").c_str());
+        c->SaveAs((plotName + ".pdf").c_str());
         if (!outputFileName_.empty()) {
-            if (!outFile_ || !outFile_->IsOpen()) {
-                 outFile_ = TFile::Open(outputFileName_.c_str(), "UPDATE"); // Try UPDATE first
-                 if (!outFile_ || outFile_->IsZombie()) {
-                     delete outFile_;
-                     outFile_ = TFile::Open(outputFileName_.c_str(), "RECREATE");
-                 }
-            } else {
-                 if (!outFile_->IsWritable()) { // Check if writable
-                     std::string currentFileName = outFile_->GetName();
-                     delete outFile_;
-                     outFile_ = TFile::Open(currentFileName.c_str(), "UPDATE");
-                     if (!outFile_ || outFile_->IsZombie()) {
-                         delete outFile_;
-                         outFile_ = TFile::Open(currentFileName.c_str(), "RECREATE");
-                     }
-                 } else {
-                    outFile_->cd(); // Ensure correct context
-                 }
-            }
-
-            if(outFile_ && outFile_->IsOpen() && outFile_->IsWritable()){
-                 canvas->Write(plotName.c_str());
-                 std::cout << "Fit plot saved to " << outputFileName_ << " as " << plotName << std::endl;
-                 // Don't close file here; let saveResults or destructor handle it.
-            } else {
-                 std::cerr << "Error: Could not open/write to output file " << outputFileName_ << " to save fit plot." << std::endl;
-                 delete canvas; // Clean up canvas if saving failed
-                 return;
+            TFile* fout = outFile_;
+            if (!fout || !fout->IsOpen()) fout = TFile::Open(outputFileName_.c_str(), "UPDATE");
+            if (fout && fout->IsOpen()) {
+                c->Write(plotName.c_str());
+                if (!outFile_) fout->Close();
             }
         }
-
-        // Manage canvas lifetime appropriately (e.g., delete if in batch mode and saved)
-        // delete canvas;
+        
+        delete c;
+        delete frame;
+        delete leg;
     }
 
     void saveResults(RooFitResult* fitResult) {
@@ -611,7 +640,7 @@ public:
 
          // Close the file now that everything is saved
          outFile_->Close();
-         delete outFile_;
+        //  delete outFile_;
          outFile_ = nullptr; // Reset pointer after closing and deleting
          std::cout << "Results saved and file closed." << std::endl;
     }
@@ -627,16 +656,22 @@ private:
     // --- Member Variables ---
     std::string name_;
     RooWorkspace* ws_; // RooFit workspace
+    vector<double> dcaBins_ = {0,0.002,0.004,0.006,0.008,0.01,0.012,0.014,0.016,0.022,0.03,0.038,0.05,0.065,0.08,0.1};
+    FitOpt opt_;
 
     // Variables
     RooRealVar* dcaVar_;    // The DCA variable
     RooRealVar* weights_;   // Optional global weights variable (use with care)
+    RooRealVar* n_prompt_; // Number of prompt events (pointer to object in workspace)
+    RooRealVar* n_nonprompt_; // Number of non-prompt events (pointer to object in workspace)
 
     // Configuration
     std::string mcFileName_;
     std::string mcTreeName_;
+    std::string mcRooDatsetName_;
     std::string dataFileName_;
     std::string dataTreeName_;
+    std::string dataRooDatsetName_;
     std::string dcaBranchName_;
     std::string motherPdgIdBranchName_;
     std::string weightBranchName_; // Name of the weight branch in Trees
@@ -649,12 +684,14 @@ private:
     // Datasets and Templates (Owned by Workspace after import)
     RooDataSet* dataSet_;           // Data to be fitted (pointer to object in workspace)
     RooDataHist* promptTemplate_;   // Prompt MC template (pointer to object in workspace)
+    TH1* promptHist_; // Histogram for prompt template (not owned by workspace)
+    TH1* nonPromptHist_; // Histogram for non-prompt template (not owned by workspace)
     RooDataHist* nonPromptTemplate_; // Non-prompt MC template (pointer to object in workspace)
 
     // PDFs and Model (Owned by Workspace after import)
     RooHistPdf* promptPdf_;         // PDF from prompt template (pointer to object in workspace)
     RooHistPdf* nonPromptPdf_;      // PDF from non-prompt template (pointer to object in workspace)
-    RooRealVar* fracPrompt_;        // Fraction of prompt component (pointer to object in workspace)
+    RooFormulaVar* fracPrompt_;        // Fraction of prompt component (pointer to object in workspace)
     RooAddPdf* model_;              // Combined model (pointer to object in workspace)
 
     // Parameters
@@ -670,14 +707,13 @@ private:
 // --- Implementation of plotRawDataDistribution ---
 // This function now plots normalized prompt and non-prompt MC distributions
 inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
-    std::cout << "Plotting normalized MC template distributions..." << std::endl;
+    gStyle->SetOptStat(0); // Disable statistics box
 
     if (!ws_) {
         std::cerr << "Error: Workspace is not available." << std::endl;
         return;
     }
 
-    // Fetch datasets from workspace
     RooDataSet* promptDataSet = dynamic_cast<RooDataSet*>(ws_->data("promptDataSet"));
     RooDataSet* nonPromptDataSet = dynamic_cast<RooDataSet*>(ws_->data("nonPromptDataSet"));
 
@@ -686,152 +722,178 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
         return;
     }
 
-    // Fetch the variable from the workspace if necessary
     if (!dcaVar_) {
-        dcaVar_ = ws_->var("dca3D"); // Assuming the standard name is 'dca' in the workspace
-        if (!dcaVar_) {
-             // Try the branch name if 'dca' isn't found
-             if (!dcaBranchName_.empty()) dcaVar_ = ws_->var(dcaBranchName_.c_str());
-        }
+        dcaVar_ = ws_->var("dca3D"); // Workspace에서 변수 가져오기
+        if (!dcaVar_ && !dcaBranchName_.empty()) dcaVar_ = ws_->var(dcaBranchName_.c_str());
     }
-     if (!dcaVar_) {
-        std::cerr << "Error: DCA variable not found in workspace or class." << std::endl;
+    if (!dcaVar_) {
+        std::cerr << "Error: DCA variable not found." << std::endl;
         return;
-     }
-     // Ensure variable has standard name for consistency if needed, but use the fetched one
-     // dcaVar_->SetName("dca"); // Optional: Reset name if subsequent operations expect it
+    }
 
+    int nCustomBins = dcaBins_.size() - 1;
+    if (nCustomBins <= 0) {
+        std::cerr << "Error: Invalid binning in dcaBins_." << std::endl;
+        return;
+    }
+    const double* binArray = dcaBins_.data();
 
-    // Create histograms
     TH1* hPrompt = nullptr;
     TH1* hNonPrompt = nullptr;
 
-    // Define binning based on the RooRealVar
-    // Note: createHistogram uses the variable's current binning if set, or defaults.
-    // Ensure dcaVar_ has the desired binning for the plot.
-    dcaVar_->setBins(nBins_); // Explicitly set bins for histogram creation
-
     if (promptDataSet) {
-        hPrompt = promptDataSet->createHistogram("hPrompt", *dcaVar_);
-        if (hPrompt && hPrompt->Integral() > 0) {
-            hPrompt->Scale(1.0 / hPrompt->Integral());
-            hPrompt->SetLineColor(kBlue);
-            hPrompt->SetLineWidth(2);
-            std::cout << "Created and normalized prompt histogram." << std::endl;
+        hPrompt = new TH1F("hPromptRaw", "MC Prompt D^{0}", nCustomBins, binArray);
+        hPrompt->Sumw2();
+        for (int i = 0; i < promptDataSet->numEntries(); ++i) {
+            const RooArgSet* row = promptDataSet->get(i);
+            hPrompt->Fill(row->getRealValue(dcaVar_->GetName()));
+        }
+        if (hPrompt->Integral() > 0) {
+            hPrompt->Scale(1.0/hPrompt->Integral());
+            for (int i = 1; i <= hPrompt->GetNbinsX(); ++i) {
+                double content = hPrompt->GetBinContent(i);
+                double error = hPrompt->GetBinError(i);
+                double width = hPrompt->GetBinWidth(i);
+                if (width > 0) {
+                    hPrompt->SetBinContent(i, content / width);
+                    hPrompt->SetBinError(i, error / width);
+                } else {
+                    hPrompt->SetBinContent(i, 0);
+                    hPrompt->SetBinError(i, 0);
+                }
+            }
+            hPrompt->SetLineColor(kRed);
+            hPrompt->SetMarkerColor(kRed);
+            hPrompt->SetMarkerStyle(20); 
+            hPrompt->SetMarkerSize(1.0);
+            std::cout << "Created and normalized prompt histogram (per cm)." << std::endl;
         } else {
-            std::cerr << "Warning: Could not create or normalize prompt histogram." << std::endl;
-            delete hPrompt;
-            hPrompt = nullptr;
+            delete hPrompt; hPrompt = nullptr;
         }
     }
 
     if (nonPromptDataSet) {
-        hNonPrompt = nonPromptDataSet->createHistogram("hNonPrompt", *dcaVar_);
-        if (hNonPrompt && hNonPrompt->Integral() > 0) {
-            hNonPrompt->Scale(1.0 / hNonPrompt->Integral());
-            hNonPrompt->SetLineColor(kGreen + 2);
-            hNonPrompt->SetLineWidth(2);
-            hNonPrompt->SetLineStyle(kDashed); // Make it visually distinct
-            std::cout << "Created and normalized non-prompt histogram." << std::endl;
+        hNonPrompt = new TH1F("hNonPromptRaw", "MC Non-prompt D^{0}", nCustomBins, binArray);
+        hNonPrompt->Sumw2();
+        for (int i = 0; i < nonPromptDataSet->numEntries(); ++i) {
+            const RooArgSet* row = nonPromptDataSet->get(i);
+            hNonPrompt->Fill(row->getRealValue(dcaVar_->GetName()));
+        }
+        if (hNonPrompt->Integral() > 0) {
+            hNonPrompt->Scale(1.0/hNonPrompt->Integral());
+            for (int i = 1; i <= hNonPrompt->GetNbinsX(); ++i) {
+                double content = hNonPrompt->GetBinContent(i);
+                double error = hNonPrompt->GetBinError(i);
+                double width = hNonPrompt->GetBinWidth(i);
+                if (width > 0) {
+                    hNonPrompt->SetBinContent(i, content / width);
+                    hNonPrompt->SetBinError(i, error / width);
+                } else {
+                    hNonPrompt->SetBinContent(i, 0);
+                    hNonPrompt->SetBinError(i, 0);
+                }
+            }
+            hNonPrompt->SetLineColor(kBlue);
+            hNonPrompt->SetMarkerColor(kBlue);
+            hNonPrompt->SetMarkerStyle(20); 
+            hNonPrompt->SetMarkerSize(1.0);
+            std::cout << "Created and normalized non-prompt histogram (per cm)." << std::endl;
         } else {
-            std::cerr << "Warning: Could not create or normalize non-prompt histogram." << std::endl;
-            delete hNonPrompt;
-            hNonPrompt = nullptr;
+            delete hNonPrompt; hNonPrompt = nullptr;
         }
     }
 
     if (!hPrompt && !hNonPrompt) {
-        std::cerr << "Error: Failed to create any histograms." << std::endl;
+        std::cerr << "Error: Failed to create any histograms for raw data plot." << std::endl;
         return;
     }
 
-    // Create canvas and draw
-    TCanvas* canvas = new TCanvas(plotName.c_str(), "Normalized MC Templates", 800, 600);
-    canvas->SetLogy(); // Set log scale for Y-axis
+    TCanvas* canvas = new TCanvas(plotName.c_str(), "Normalized MC Templates", 700, 600);
+    canvas->SetLogy();
+    canvas->SetLeftMargin(0.15);
+    canvas->SetBottomMargin(0.13);
+    canvas->SetTopMargin(0.10); 
+    canvas->SetRightMargin(0.05);
 
-    // Determine plot range (find max Y value for setting range)
-    double maxY = 0;
-    if (hPrompt) maxY = std::max(maxY, hPrompt->GetMaximum());
-    if (hNonPrompt) maxY = std::max(maxY, hNonPrompt->GetMaximum());
-
-    bool firstDrawn = false;
+    // Y축 범위 결정
+    double minY = 1e9, maxY = -1e9;
     if (hPrompt) {
-        hPrompt->SetTitle("Normalized MC Templates");
-        hPrompt->GetXaxis()->SetTitle(dcaVar_->GetTitle()); // Use title from RooRealVar
-        hPrompt->GetYaxis()->SetTitle("Normalized Events / Bin");
-        hPrompt->SetMaximum(maxY * 1.5); // Add some headroom
-        hPrompt->Draw("HIST");
-        firstDrawn = true;
-    }
-    if (hNonPrompt) {
-        if (!firstDrawn) { // If prompt wasn't drawn, draw non-prompt first
-             hNonPrompt->SetTitle("Normalized MC Templates");
-             hNonPrompt->GetXaxis()->SetTitle(dcaVar_->GetTitle());
-             hNonPrompt->GetYaxis()->SetTitle("Normalized Events / Bin");
-             hNonPrompt->SetMaximum(maxY * 1.5);
-             hNonPrompt->Draw("HIST");
-        } else {
-             hNonPrompt->Draw("HIST SAME"); // Draw on top
+        for(int i=1; i<=hPrompt->GetNbinsX(); ++i) {
+            if(hPrompt->GetBinContent(i) > 0) minY = std::min(minY, hPrompt->GetBinContent(i));
+            maxY = std::max(maxY, hPrompt->GetBinContent(i) + hPrompt->GetBinError(i));
         }
     }
+    if (hNonPrompt) {
+         for(int i=1; i<=hNonPrompt->GetNbinsX(); ++i) {
+            if(hNonPrompt->GetBinContent(i) > 0) minY = std::min(minY, hNonPrompt->GetBinContent(i));
+            maxY = std::max(maxY, hNonPrompt->GetBinContent(i) + hNonPrompt->GetBinError(i));
+        }
+    }
+    if (minY > maxY) { minY = 0.1; maxY = 100; } 
 
-    // Add Legend
-    TLegend* legend = new TLegend(0.60, 0.75, 0.88, 0.88);
-    if (hPrompt) legend->AddEntry(hPrompt, "Prompt MC", "L");
-    if (hNonPrompt) legend->AddEntry(hNonPrompt, "Non-prompt MC", "L");
+    TH1* hAxis = (hPrompt) ? hPrompt : hNonPrompt; 
+    if (hAxis) {
+        hAxis->SetTitle(""); // 그림 제목 제거
+        hAxis->GetXaxis()->SetTitle("D^{0} DCA (cm)");
+        hAxis->GetYaxis()->SetTitle("normalized counts per cm");
+        hAxis->GetXaxis()->SetTitleOffset(1.1);
+        hAxis->GetYaxis()->SetTitleOffset(1.3);
+        hAxis->GetXaxis()->SetLabelSize(0.04);
+        hAxis->GetYaxis()->SetLabelSize(0.04);
+        hAxis->GetXaxis()->SetTitleSize(0.045);
+        hAxis->GetYaxis()->SetTitleSize(0.045);
+        hAxis->SetMinimum(minY * 0.5); 
+        hAxis->SetMaximum(maxY * 2.0); 
+        hAxis->Draw("AXIS"); 
+    }
+
+
+    if (hPrompt) {
+        hPrompt->Draw("E1 SAME"); 
+    }
+    if (hNonPrompt) {
+        hNonPrompt->Draw("E1 SAME"); 
+    }
+     if (hAxis) hAxis->Draw("AXIS SAME"); 
+
+
+    TLegend* legend = new TLegend(0.55, 0.75, 0.93, 0.88); 
+    if (hPrompt) legend->AddEntry(hPrompt, "MC Prompt D^{*}", "pe");
+    if (hNonPrompt) legend->AddEntry(hNonPrompt, "MC Non-prompt D^{*}", "pe");
     legend->SetBorderSize(0);
     legend->SetFillStyle(0);
+    legend->SetTextFont(42);
+    legend->SetTextSize(0.035);
     legend->Draw();
 
-    // Save plot as PNG
+    TLatex latex;
+    latex.SetNDC();
+    latex.SetTextFont(42);
+    latex.SetTextSize(0.03);
+    latex.SetTextAlign(22); 
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.03, Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax));
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.07, "|y| < 1");
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.11, Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax));
+
+
+
     std::string pngFileName = plotName + ".png";
     canvas->SaveAs(pngFileName.c_str());
     std::cout << "Normalized MC plot saved as " << pngFileName << std::endl;
 
-    // Also save to ROOT file if open
-    if (!outputFileName_.empty()) {
-        // Re-use or open the output file (similar logic as before)
-        TFile* tempOutFile = nullptr; // Use a temporary pointer for file handling here
-         if (!outFile_ || !outFile_->IsOpen()) {
-             tempOutFile = TFile::Open(outputFileName_.c_str(), "UPDATE");
-              if (!tempOutFile || tempOutFile->IsZombie()) {
-                  delete tempOutFile;
-                  tempOutFile = TFile::Open(outputFileName_.c_str(), "RECREATE");
-              }
-              // If we opened the file here, assign it to outFile_ if it was null
-              if (!outFile_) outFile_ = tempOutFile;
-              else delete tempOutFile; // Otherwise, delete the temporary handle
-         } else {
-              // Ensure file is writable if already open
-              if (!outFile_->IsWritable()) {
-                  std::string currentFileName = outFile_->GetName();
-                  delete outFile_; // Close and delete
-                  outFile_ = TFile::Open(currentFileName.c_str(), "UPDATE"); // Try opening in UPDATE mode
-                  if (!outFile_ || outFile_->IsZombie()) { // If UPDATE failed, try RECREATE
-                     delete outFile_;
-                     outFile_ = TFile::Open(currentFileName.c_str(), "RECREATE");
-                  }
-              } else {
-                 outFile_->cd(); // Switch context if already open and writable
-              }
-         }
 
 
-        if(outFile_ && outFile_->IsOpen() && outFile_->IsWritable()){
-             canvas->Write(plotName.c_str()); // Save canvas to ROOT file as well
-             std::cout << "Normalized MC plot also saved to " << outputFileName_ << " as " << plotName << std::endl;
-             // Do not close the file here
-        } else {
-             std::cerr << "Warning: Could not open/write to output ROOT file " << outputFileName_ << " to save plot." << std::endl;
-        }
-    }
 
-
-    // Clean up
     delete canvas;
-    delete hPrompt; // Safe even if null
-    delete hNonPrompt; // Safe even if null
-    // Legend is owned by canvas, deleted with it
+    delete hPrompt;
+    delete hNonPrompt;
 }
-
+void Clear(){
+    // Clear the static variables or reset the state if needed
+    // This is a placeholder for any cleanup logic you might need
+    std::cout << "Clearing DCAFitter state..." << std::endl;
+    // Reset member variables, close files, etc.
+    // For example, if you have static members, reset them here
+    // delete dataSet_
+}
 #endif // DCA_FITTER_H

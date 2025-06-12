@@ -7,10 +7,12 @@
 
 using ParamKey = std::pair<double, double>;
 using D0ParamValue = std::pair<PDFParams::GaussianParams, PDFParams::PolynomialBkgParams>;
+using D0MCParamValue = std::pair<PDFParams::DoubleGaussianParams, PDFParams::GaussianParams>;
 using DStarParamValue1 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>;
 using DStarParamValue2 = std::pair<PDFParams::DoubleDBCrystalBallParams, PDFParams::PhenomenologicalParams>;
 using DStarMCParamValue = std::pair<PDFParams::DBCrystalBallParams, PDFParams::DBCrystalBallParams>;
 using D0ParamMap = std::map<ParamKey, D0ParamValue>;
+using D0MCParamMap = std::map<ParamKey, D0MCParamValue>;
 using DStarParamMap1 = std::map<ParamKey, DStarParamValue1>;
 using DStarParamMap2 = std::map<ParamKey, DStarParamValue2>;
 using DStarMCParamMap = std::map<ParamKey, DStarMCParamValue>;
@@ -224,6 +226,38 @@ DStarMCParamMap DStarMCParamMaker(const std::vector<double>& ptBins, const std::
                 value.second.nR = 1.5;
                 value.second.nR_min = 1;
                 value.second.nR_max = 10;
+                
+            params[key] = value;
+        }
+    }
+
+    return params;
+}
+D0MCParamMap D0MCParamMaker(const std::vector<double>& ptBins, const std::vector<double>& etaBins) {
+    D0MCParamMap params;
+
+    for (double pt : ptBins) {
+        for (double eta : etaBins) {
+            ParamKey key = std::make_pair(pt, eta);
+            D0MCParamValue value;
+                value.first.mean = 1.864;        // D* mass in GeV
+                value.first.mean_min = 1.862;
+                value.first.mean_max = 1.868;
+                value.first.sigma1 = 0.001;
+                value.first.sigma1_min = 0.0001;
+                value.first.sigma1_max = 0.02;
+                value.first.sigma2 = 0.005;
+                value.first.sigma2_min = 0.0001;
+                value.first.sigma2_max = 0.03;
+
+                value.second.mean = 1.864;        // D* mass in GeV
+                value.second.mean_min = 1.855;
+                value.second.mean_max = 1.875;
+                value.second.sigma = 0.05;
+                value.second.sigma_min = 0.001;
+                value.second.sigma_max = 0.2;
+
+
                 
             params[key] = value;
         }
