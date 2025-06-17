@@ -140,6 +140,7 @@ vector<RooDataSet*> ChunkedRDSMaker(
             }
             return true;
         };
+        cout << "Checking required branches..." << checkRequiredBranches(variables) <<  endl;
         if (!checkRequiredBranches(variables)) {
             file->Close();
             return {};
@@ -340,8 +341,10 @@ vector<RooDataSet*> ChunkedRDSMaker(
             if (saveCS || saveHX) {
                 TLorentzVector dau1, dau2, dstar;
                 dau1.SetPtEtaPhiM(floatBranchMap["pTD1"], floatBranchMap["EtaD1"], floatBranchMap["PhiD1"], floatBranchMap["massDaugther1"]);
-                dau2.SetPtEtaPhiM(floatBranchMap["pTD2"], floatBranchMap["EtaD2"], floatBranchMap["PhiD2"], 0.14); // 파이온 질량 고정값
+                // cout << "pTD1: " << floatBranchMap["pTD1"] << ", EtaD1: " << floatBranchMap["EtaD1"] << ", PhiD1: " << floatBranchMap["PhiD1"] << ", massDaugther1: " << floatBranchMap["massDaugther1"] << endl;
+                // dau2.SetPtEtaPhiM(floatBranchMap["pTD2"], floatBranchMap["EtaD2"], floatBranchMap["PhiD2"], 0.14); // 파이온 질량 고정값
                 dstar.SetPtEtaPhiM(floatBranchMap["pT"], floatBranchMap["eta"], floatBranchMap["phi"], floatBranchMap["mass"]);
+                // cout << "pT: " << floatBranchMap["pT"] << ", eta: " << floatBranchMap["eta"] << ", phi: " << floatBranchMap["phi"] << ", mass: " << floatBranchMap["mass"] << endl;
 
                 // CS 프레임 계산 및 추가
                 if (saveCS) {
@@ -361,6 +364,7 @@ vector<RooDataSet*> ChunkedRDSMaker(
                 if (saveHX) {
                     TVector3 DstarDau1_HX = DstarDau1Vector_Helicity(dstar, dau1);
                     cosThetaHX.setVal(DstarDau1_HX.CosTheta());
+                    // cout << "CosThetaHX: " << cosThetaHX.getVal() << endl;
                     phiHX.setVal(DstarDau1_HX.Phi() * 180 / TMath::Pi());
                     double phiHXVal = phiHX.getVal();
                     if (cosThetaHX.getVal() < 0) {
@@ -433,28 +437,18 @@ nextEntry:;
 }
 
 // 메인 함수
-void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "", std::string suffix = "") {
+void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string inputPath = "", std::string suffix = "") {
+    RooDataSet::setDefaultStorageType(RooAbsData::Tree);
+    TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
     // 다양한 타입의 변수 정의
     vector<VarDef> variables = {
         {"mass", VarType::FLOAT, 1.7, 2.2},
         {"pT", VarType::FLOAT, 0.0, 100.0},
-        //{"eta", VarType::FLOAT, -2.5, 2.5},
-    //    {"phi", VarType::FLOAT, -3.14, 3.14},
-	{"Ncoll",VarType::FLOAT,0.0,3000},
+        {"eta", VarType::FLOAT, -2.5, 2.5},
+       {"phi", VarType::FLOAT, -3.14, 3.14},
+	// {"Ncoll",VarType::FLOAT,0.0,3000},
         {"y", VarType::FLOAT, -3.14,3.14},
-        // {"pTD1", VarType::FLOAT, 0.0, 100.0},
-        // {"EtaD1", VarType::FLOAT, -2.5, 2.5},
-        // {"PhiD1", VarType::FLOAT, -3.14, 3.14},
-        // {"massDaugther1", VarType::FLOAT, 1.7, 2.0},
-        // {"pTD2", VarType::FLOAT, 0.0, 100.0},
-        // {"EtaD2", VarType::FLOAT, -2.5, 2.5},
-        // {"PhiD2", VarType::FLOAT, -3.14, 3.14},
-        {"mva", VarType::FLOAT, 0.2, 1},
-        // {"dca3D", VarType::FLOAT, 0, 5},
-        {"centrality",VarType::SHORT, 0, 200}, // 중앙성 범위 설정
-        
-        {"Centrality","centrality/2",{"centrality"}}
-        // {"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}},
+        {"dca3D", VarType::FLOAT, 0, 1}
         // {"pT_ratio", "pTD1 / pT", {"pTD1", "pT"}},
         // {"deltaEta", "eta - EtaD1", {"eta", "EtaD1"}}
         
@@ -462,6 +456,15 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
     if(!isD0){
         variables.push_back({"massDaugther1", VarType::FLOAT, 1.7, 2.1});
         variables.push_back({"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}});
+        variables.push_back({"pTD1", VarType::FLOAT, 0.0, 100.0});
+        variables.push_back({"EtaD1", VarType::FLOAT, -2.5, 2.5});
+        variables.push_back({"PhiD1", VarType::FLOAT, -5, 5});
+        variables.push_back({"3DDecayLength", VarType::FLOAT, 0.0, 50});
+        variables.push_back({"3DCosPointingAngle", VarType::FLOAT, -1, 1.0});
+        variables.push_back({"dcaDStar","3DDecayLength * 3DCosPointingAngle", {"3DDecayLength", "3DCosPointingAngle"}});
+        // variables.push_back({"pTD2", VarType::FLOAT, 0.0, 100.0});
+        // variables.push_back({"EtaD2", VarType::FLOAT, -2.5, 2.5});
+        // variables.push_back({"PhiD2", VarType::FLOAT, -3.14, 3.14});
     }
     if (isMC) {
         variables.push_back({"isSwap", VarType::BOOL});
@@ -469,12 +472,19 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
         variables.push_back({"matchGEN", VarType::BOOL});
         variables.push_back({"matchGen_D1ancestorFlavor_", VarType::INT, 0, 5});
     }
+    if(!isPP){
+        variables.push_back({"centrality",VarType::SHORT, 0, 200}); // 중앙성 범위 설정
+        variables.push_back({"Centrality","centrality/2",{"centrality"}});
+        variables.push_back({"mva", VarType::FLOAT, 0.2, 1});
+    }
     // 청크 단위로 RooDataSet 생성
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_DStarMC_ppRef_0_20250320.root"; //Data
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/ppMC/flatSkimForBDT_DStarMC_ppRef_NonSwap_Mar30_0_20250331.root"; //MC
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_07Apr25.root"; //MC
     string inputfilename = !inputPath.empty() ? inputPath : "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppData/flatSkimForBDT_DStar_ppRef_NonSwapData_PbPb_Data_ONNX_0_14Apr25.root"; //MC
     string outputfilename = !isMC ? "RDS_Physics_Data" : "RDS_Physics_MC";
+    outputfilename = outputfilename + (isD0 ? "_D0" : "_DStar");
+    outputfilename = outputfilename + (isPP ? "_ppRef" : "_PbPb");
     if(!suffix.empty()){
         outputfilename = outputfilename +"_" + suffix + ".root";
     }
@@ -485,7 +495,7 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
     string treename = "skimTreeFlat";
     Long64_t chunkSize = 5000000;
     Long64_t maxEntries = -1;
-    bool saveCS = true;
+    bool saveCS = false;
     bool saveHX = true;
     if(isD0) saveCS = false;
     if(isD0) saveHX = false;
@@ -501,8 +511,8 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, std::string inputPath = "",
 
         // 데이터셋 저장
         datasets[0]->Write("dataset");  // 기본 데이터셋
-        if (saveCS && datasets.size() > 1) datasets[1]->Write("datasetCS");  // CS 프레임
-        if (saveHX && datasets.size() > 2) datasets[2]->Write("datasetHX");  // HX 프레임
+        if (saveCS) datasets[1]->Write("datasetCS");  // CS 프레임
+        if (saveHX) datasets[1]->Write("datasetHX");  // HX 프레임
 
         outputFile->Close();
         // delete outputFile;

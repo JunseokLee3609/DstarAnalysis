@@ -22,6 +22,7 @@ struct FitOpt {
     std::string outputMCFile;
     std::string outputMCSwap0File;
     std::string outputMCSwap1File;
+    std::string outputDCAFile;
     std::string pdfName;
     std::string fitResultName;
     std::string wsName;
@@ -172,6 +173,7 @@ struct FitOpt {
         this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%sto%s_%s%s",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->constraintParameters= {"sigma_Swap1"};
         
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
@@ -199,6 +201,7 @@ struct FitOpt {
         this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%sto%s_%s%s",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->constraintParameters= {};
         this->outputMCDir="roots/MC_D0_PbPb/";
         this->outputDir="roots/Data_D0_PbPb/";

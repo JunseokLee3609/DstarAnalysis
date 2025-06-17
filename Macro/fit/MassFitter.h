@@ -63,6 +63,7 @@ public:
     template <typename SigMCSwap1Par, typename SigMCSwap2Par>
     void PerformSwapMCFit(FitOpt opt, RooDataSet* MCdataset, bool inclusive, const std::string pTbin, const std::string etabin, SigMCSwap1Par sigParams1, SigMCSwap2Par sigParams2);
     void ApplyCut(const std::string& cutExpr);
+    void SetData(RooDataSet* dataset);
     
     // Signal PDF 설정 메서드
     void SetSignalPDF(const GaussianParams& params,const std::string &name);
@@ -100,6 +101,7 @@ public:
     // 저장 메서드
     void SaveResults(const std::string& filePath,const std::string& fileName,bool saveWorkspace = false);
     void SaveMCResults(const std::string& filePath,const std::string& fileName, bool saveWorkspace =true);
+    RooWorkspace* GetWorkspace() const { return workspace_; } 
     // void SaveSPlotResults(const std::string& filePath,const std::string& fileName, bool saveWorkspace =true);
     
     // Delta mass 모드 설정 (D* 분석용)
@@ -466,15 +468,15 @@ MassFitter::~MassFitter() {
     delete mass_;
 }
 
-// void MassFitter::SetData(RooDataSet* dataset) {
-//     if (!dataset) {
-//         std::cerr << "Error: Null dataset provided" << std::endl;
-//         return;
-//     }
+void MassFitter::SetData(RooDataSet* dataset) {
+    if (!dataset) {
+        std::cerr << "Error: Null dataset provided" << std::endl;
+        return;
+    }
     
-//     full_data_ = dataset;
-//     reduced_data_ = dataset;  // 초기에는 전체 데이터셋 사용
-// }
+    full_data_ = dataset;
+    reduced_data_ = dataset;  // 초기에는 전체 데이터셋 사용
+}
 
 void MassFitter::ApplyCut(const std::string& cutExpr) {
     if (!full_data_) {
@@ -906,14 +908,14 @@ void MassFitter::PerformFit(FitOpt opt,RooDataSet* dataset, bool inclusive, cons
     //     return;
     // }
     // // Set the dataset
-    // SetData(dataset);
+    SetData(dataset);
     
     // // Apply cuts based on inclusive flag
-    if (inclusive) {
-        ApplyCut(opt.cutExpr);
-    } else {
-        ApplyCut(opt.cutExpr + "&&" + pTbin + "&&" + etabin);
-    }
+    // if (inclusive) {
+    //     ApplyCut(opt.cutExpr);
+    // } else {
+    //     ApplyCut(opt.cutExpr + "&&" + pTbin + "&&" + etabin);
+    // }
 
     // Create and set PDFs
     SetSignalPDF(sigParams, "");

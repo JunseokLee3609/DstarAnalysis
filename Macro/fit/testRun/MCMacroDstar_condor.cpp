@@ -64,7 +64,8 @@ void MCMacroDstar_condor(bool doReFit= false, bool plotFit = true,bool useCUDA=t
     // std::vector<double> mvabin = {-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9};
     // std::string filepath = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_D0DATAMVA.root";
     // std::string filepathMC = "/home/jun502s/DstarAna/DstarAna_real/DDbarpPb/data/DstarMC_Rds_PbPb_250110.root";
-    std::string filepathMC = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_Jun11_v1.root";
+    // std::string filepathMC = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_Jun11_v1.root";
+    std::string filepathMC = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_Mix_Jun17_v1.root";
     std::string filepathData = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_Jun11_v1.root";
     std::string datasetName = "datasetHX";
 
@@ -197,7 +198,7 @@ void MCMacroDstar_condor(bool doReFit= false, bool plotFit = true,bool useCUDA=t
 
     // --- DCAFitter 객체 생성 ---
     // DCAFitter(이름, DCA 최소값, DCA 최대값, 히스토그램 빈 개수)
-    DCAFitter DCAfitter(D0opt,"dcaFitter", 0.0, 0.1, 100);
+    DCAFitter DCAfitter(D0opt,"dcaFitter",D0opt.massVar, 0.0, 0.1, 100);
 
     // --- 파일 및 트리/브랜치 이름 설정 ---
     DCAfitter.setMCFile((D0opt.outputMCDir+"/"+D0opt.outputMCFile).c_str(), "reducedData");
@@ -222,7 +223,7 @@ void MCMacroDstar_condor(bool doReFit= false, bool plotFit = true,bool useCUDA=t
     DCAfitter.setOutputFile(D0opt.outputDir+"DCAFit_Results.root");
     std::cout << "Step 1: Creating templates from MC..." << std::endl;
     if (DCAfitter.createTemplatesFromMC()) {
-        DCAfitter.plotRawDataDistribution("plots/Data_DStar_ppRef/" + subDir+"MC_Templates_Normalized");
+        DCAfitter.plotRawDataDistribution("plots/Data_DStar_ppRef/" + subDir+D0opt.outputDCAFile+"_MC_Templates_Normalized");
 
         std::cout << "\nStep 2: Loading data..." << std::endl;
         if (DCAfitter.loadData()) {
@@ -237,7 +238,7 @@ void MCMacroDstar_condor(bool doReFit= false, bool plotFit = true,bool useCUDA=t
                 if (fitResult) {
                     std::cout << "\nStep 5: Plotting and saving results..." << std::endl;
                     // 피팅 결과를 시각화
-                    DCAfitter.plotResults(fitResult,"plots/Data_DStar_ppRef/" + subDir+ "DCA_Fit_Result_Plot");
+                    DCAfitter.plotResults(fitResult,"plots/Data_DStar_ppRef/" + subDir+D0opt.outputDCAFile+"_DCA_Fit_Result_Plot");
 
                     // 워크스페이스, 피팅 결과, 그림 등을 ROOT 파일에 저장
                     DCAfitter.saveResults(fitResult);
