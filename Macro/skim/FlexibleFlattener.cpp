@@ -85,7 +85,6 @@ void FlexibleMix(
     int mcSampleRate = 100,               // MC 샘플링 비율 (matchGEN=false인 경우)
     int dataSampleRate = 100,             // 데이터 샘플링 비율
     bool doCent = true,                   // 중앙값 설정 여부 (추가)
-    bool doEvtPlane = false,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250320"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleMix job #" << jobIdx << std::endl;
@@ -515,7 +514,7 @@ void FlexibleData(
             simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4 || dinData->pTGrandD1[iD1]< 1 || dinData->pTGrandD2[iD1] <1 || dinData->EtaGrandD1[iD1] > 2.4 || dinData->EtaGrandD2[iD1] >2.4) continue;
+                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 1 || dinData->pTGrandD2[iD1] <1 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
                     doutData->isMC = false;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
@@ -697,7 +696,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
-                if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->pTGrandD1[iD1]< 1 || dinMC->pTGrandD2[iD1] <1 || dinMC->EtaGrandD1[iD1] > 2.4 || dinMC->EtaGrandD2[iD1] >2.4) continue;
+                if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pT[iD1] < 4  || abs(dinMC->EtaD1[iD1]) >2.4 || abs(dinMC->EtaD2[iD1]) >2.4 || dinMC->pTGrandD1[iD1]< 1 || dinMC->pTGrandD2[iD1] <1 || abs(dinMC->EtaGrandD1[iD1]) > 2.4 || abs(dinMC->EtaGrandD2[iD1])>2.4) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -746,8 +745,9 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     int jobIdx_ = idx;
     bool setGEN = true;
     ParticleType particleType = ParticleType::DStar;
-    bool doCent = true;
+    bool doCent = false;
     bool doEvtPlane = particleType == ParticleType::DStar ? true : false;
+    doEvtPlane=false;
 
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
     std::string eventPlaneInfoTreeName = "eventplane/EventPlane"; // Event Plane 트리 이름 (추가)
@@ -758,7 +758,7 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     std::string dataPath = "/u/user/jun502s/SE_UserHome/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/250424_165928/";
 
 
-    std::string date = "25Apr25";
+    std::string date = "";
     int dataSampleRate =100;
     int mcSampleRate = 100; 
 
