@@ -1,3 +1,13 @@
+// DCAFitter.h - Optimized version with smart pointers and modern C++ features
+// Key optimizations:
+// 1. Smart pointers (unique_ptr) for automatic memory management
+// 2. Type aliases for cleaner code readability  
+// 3. constexpr for compile-time constants
+// 4. const member functions for better encapsulation
+// 5. RAII pattern for resource management
+// 6. Improved constructor with proper member initialization
+// 7. Simplified destructor relying on smart pointer cleanup
+
 #ifndef DCA_FITTER_H
 #define DCA_FITTER_H
 
@@ -5,7 +15,7 @@
 #include <vector>
 #include <map>
 #include <iostream> // Added for output
-#include <memory>   // Added for smart pointers (optional but good practice)
+#include <memory>   // Added for smart pointers
 
 // ROOT includes
 #include "TFile.h"
@@ -22,6 +32,7 @@
 #include "TLatex.h"  // For CMS label
 #include "Opt.h"
 #include "PlotManager.h"
+#include "Helper.h" 
 
 // RooFit includes
 #include "RooRealVar.h"
@@ -41,8 +52,15 @@
 
 #include "MassFitter.h"
 #include "Params.h"
-
+#include "Helper.h"
 using namespace RooFit;
+
+// Type aliases for cleaner code
+using RooRealVarPtr = std::unique_ptr<RooRealVar>;
+using RooWorkspacePtr = std::unique_ptr<RooWorkspace>;
+using RooDataSetPtr = std::unique_ptr<RooDataSet>;
+using TH1DPtr = std::unique_ptr<TH1D>;
+using TFilePtr = std::unique_ptr<TFile>;
 
 class DCAFitter {
 public:
@@ -50,14 +68,10 @@ public:
     DCAFitter(FitOpt &opt, const std::string& name, const std::string& massVarName, double dcaMin, double dcaMax, int nBins) :
         name_(name),
         opt_(opt),
-        ws_(new RooWorkspace(Form("ws_%s",opt.name.c_str()), (name + " Workspace").c_str())),
         dcaMin_(dcaMin),
         dcaMax_(dcaMax),
         nBins_(nBins),
-        massVarName_( massVarName ),
-        dcaVar_(nullptr),
-        massVar_(nullptr),
-        weights_(nullptr),
+        massVarName_(massVarName),
         dataSet_(nullptr),
         promptTemplate_(nullptr),
         nonPromptTemplate_(nullptr),
@@ -67,29 +81,26 @@ public:
         nonPromptPdf_(nullptr),
         fracPrompt_(nullptr),
         model_(nullptr),
-        outFile_(nullptr)
+        outFile_(nullptr),
+        dcaBins_(opt.dcaBins)
     {
-        // Define the primary variable
-        dcaVar_ = new RooRealVar("dca3D", "Distance of Closest Approach", dcaMin_, dcaMax_, "cm"); // Add units if known
-        massVar_= new RooRealVar(opt.massVar.c_str(), "Mass Variable", opt.massMin, opt.massMax, "GeV/c^{2}"); // Assuming GeV/c^2 for mass
+        ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt.name.c_str()), (name + " Workspace").c_str());
+        
+        dcaVar_ = std::make_unique<RooRealVar>("dca3D", "Distance of Closest Approach", dcaMin_, dcaMax_, "cm");
+        massVar_ = std::make_unique<RooRealVar>(opt.massVar.c_str(), "Mass Variable", opt.massMin, opt.massMax, "GeV/c^{2}");
+        // massVar_ = std::make_unique<RooRealVar>("massDaugther1", "Mass Variable", 1.75, 2.0, "GeV/c^{2}");
+        
         ws_->import(*dcaVar_);
+        ws_->import(*massVar_);
+        
         std::cout << "DCAFitter instance created: " << name_ << std::endl;
     }
 
     // Destructor
     virtual ~DCAFitter() {
-        // RooWorkspace owns the objects imported into it, so it handles their deletion
-        delete ws_; // Deleting workspace deletes imported objects like dcaVar_, pdfs, datasets if imported
-
-        // Delete objects not owned by the workspace (or manage with smart pointers)
-        // Note: RooFitResult is usually owned by the caller or managed separately
-        if (outFile_ && outFile_->IsOpen()) {
-            outFile_->Close();
-            delete outFile_;
-        }
-        // Pointers like dcaVar_, promptPdf_, etc., are managed by ws_ if imported.
-        // If not imported or managed differently, delete them here.
-        // Example: delete dcaVar_; (Only if NOT imported or managed by ws_)
+        
+        // delete promptHist_;
+        // delete nonPromptHist_;
 
         std::cout << "DCAFitter instance destroyed: " << name_ << std::endl;
     }
@@ -119,14 +130,13 @@ public:
     void setNonPromptPdgIds(const std::vector<int>& pdgIds) {
         nonpromptPdgIds_ = pdgIds;
     }
+    void plotSignalAndSidebandDCAFromHist(const std::string& plotName = "dca_sig_vs_sb_hist_plot");
     void setWeightBranchName(const std::string& branchName = "") {
         weightBranchName_ = branchName;
-        if (!weightBranchName_.empty() && !weights_) {
-            weights_ = new RooRealVar(weightBranchName_.c_str(), "Event Weight", 1.0); // Default weight is 1
-            // Don't import weights_ into workspace directly unless needed globally
-        } else if (weightBranchName_.empty() && weights_) {
-            delete weights_;
-            weights_ = nullptr;
+        if (!weightBranchName_.empty()) {
+            weights_ = std::make_unique<RooRealVar>(weightBranchName_.c_str(), "Event Weight", 1.0);
+        } else {
+            weights_.reset(); 
         }
     }
     void setMCCuts(const std::string& cuts) {
@@ -137,6 +147,19 @@ public:
     }
     void setOutputFile(const std::string& fileName) {
         outputFileName_ = fileName;
+        if (outFile_) {
+            outFile_.reset();
+        }
+    }
+    
+    // Helper function for safe file opening
+    TFilePtr openFile(const std::string& fileName, const std::string& mode = "READ") {
+        auto file = std::unique_ptr<TFile>(TFile::Open(fileName.c_str(), mode.c_str()));
+        if (!file || file->IsZombie()) {
+            std::cerr << "Error: Could not open file " << fileName << std::endl;
+            return nullptr;
+        }
+        return file;
     }
 
     // --- Workflow ---
@@ -164,7 +187,7 @@ public:
         if (!weightBranchName_.empty()) {
             // Create a temporary RooRealVar for loading weights if weights_ isn't already set up
             // or if its range/properties might differ from the global weights_
-             tempWeights.reset(new RooRealVar(weightBranchName_.c_str(), "Event Weight", 1.0));
+             tempWeights = std::make_unique<RooRealVar>(weightBranchName_.c_str(), "Event Weight", 1.0);
              mcVars.add(*tempWeights);
              // If using a global weights_ variable:
              // if (weights_) mcVars.add(*weights_);
@@ -172,7 +195,7 @@ public:
 
 
         // --- Load full MC dataset ---
-        std::unique_ptr<RooDataSet> fullMCDataSet;
+        // std::unique_ptr<RooDataSet> fullMCDataSet;
         const char* weightVarName = !weightBranchName_.empty() ? weightBranchName_.c_str() : nullptr;
 
         if(mcDataset) fullMCDataSet.reset(mcDataset);
@@ -265,6 +288,8 @@ public:
             // cout << row->getRealValue(dcaVar_->GetName()) << endl;
             // cout << dcaVar_->GetName() << endl;
         }
+        // promptHist_->Scale(1.0, "width"); // Scale by bin width
+        // nonPromptHist_->Scale(1.0, "width"); // Scale by bin width
 
 
         if (!promptDataSet || promptDataSet->numEntries() == 0) {
@@ -369,64 +394,11 @@ public:
         dcaVar_->SetName("dca3D");
         return true;
     }
-    template <typename SigFitParams, typename BkgFitParams>
-    bool fitMassInSliceAndGetYield(RooDataSet* sliceData, RooRealVar* massVar,
-                                   double& yield, double& yieldError,
-                                   const std::string& sliceName, // 플롯 저장 등을 위한 이름
-                                   const SigFitParams& sigParams, // 시그널 PDF 파라미터
-                                   const BkgFitParams& bkgParams  // 배경 PDF 파라미터
-                                   ) {
-        if (!sliceData || sliceData->numEntries() == 0) {
-            std::cout << "No data in slice " << sliceName << " to fit." << std::endl;
-            yield = 0;
-            yieldError = 0;
-            return false;
-        }
-        std::cout << "Fitting mass for DCA slice: " << sliceName << " with " << sliceData->sumEntries() << " weighted entries." << std::endl;
 
-        // MassFitter 인스턴스 생성
-        // MassFitter 생성자는 (const std::string& name, std::string& massvar, double massMin, double massMax) 형태
-        // std::string fitterName = "massFit_" + name_ + "_" + sliceName;
-        std::string massVarNameStr = massVar->GetName(); // RooRealVar 이름에서 std::string 얻기
-
-        MassFitter massFitter(opt_.name, massVarNameStr, massVar->getMin(), massVar->getMax());
-        // MassFitter.loadDataSet(sliceData); // 슬라이스된 데이터셋을 MassFitter에 전달
-
-        // MassFitter에 필요한 FitOpt 객체 설정 (DCAFitter의 opt_를 사용하거나 새로 생성)
-        FitOpt massFitOpt = opt_; // DCAFitter의 FitOpt를 복사하여 사용
-        massFitOpt.outputDir = opt_.outputDir + "/mass_fits_" + name_ + "/"; // 슬라이스별 하위 디렉토리
-        massFitOpt.outputFile = "massfit_" + sliceName + ".root";
-        massFitOpt.plotName = "massfit_plot_" + sliceName; // MassFitter 내부 플롯 이름
-        // massFitOpt.cutExpr = ""; // MassFitter에는 이미 슬라이스된 데이터가 전달되므로 추가 컷은 필요 없을 수 있음
-        // MassFitter.SetData(sliceData);
-        // std::string filePath = "plots/Data_DStar_ppRef/" + "mass_fits_" + name_ + "/";
-        
-
-        // MassFitter::PerformFit 호출
-        // MassFitter.h의 PerformFit 템플릿 시그니처:
-        // template <typename SigPar, typename BkgPar>
-        // void PerformFit(FitOpt opt, RooDataSet* dataset, bool inclusive, const std::string pTbin,const std::string etabin, SigPar sigParams, BkgPar bkgParams);
-        // 여기서는 inclusive=true, pTbin/etabin은 빈 문자열로 전달 (이미 슬라이스됨)
-        massFitter.PerformFit<SigFitParams, BkgFitParams>(massFitOpt, sliceData, true, "", "", sigParams, bkgParams);
-        
-
-        if (massFitter.GetSignalYield() >= 0) { // 유효한 수율 값인지 확인 (음수가 아님)
-            yield = massFitter.GetSignalYield();
-            yieldError = massFitter.GetSignalYieldError();
-            std::cout << "Slice " << sliceName << ": Yield = " << yield << " +/- " << yieldError << std::endl;
-            return true;
-        } else {
-            std::cerr << "Warning: Mass fit for slice " << sliceName << " did not produce a valid yield." << std::endl;
-            yield = 0;
-            yieldError = 0; // 또는 매우 큰 값으로 설정하여 문제 표시
-            return false;
-        }
-    }
-
-        bool buildModel() { // 데이터 기반 템플릿 사용 여부 플래그 추가
+        bool buildModel() { 
         std::cout << "Building RooFit model..." << std::endl;
 
-        if (!dataSet_) { // dataSet_은 data를 로드할 때 ws_에 "dataSet"으로 저장됨
+        if (!dataSet_) { 
              dataSet_ = (RooDataSet*)ws_->data("dataSet");
              if (!dataSet_){
                 std::cerr << "Error: Data set is not loaded. Cannot build model." << std::endl;
@@ -448,58 +420,41 @@ public:
             return false;
         }
 
-        RooRealVar* dca = ws_->var(dcaVar_->GetName()); // 표준 DCA 변수
+        RooRealVar* dca = ws_->var(dcaVar_->GetName());
         if (!dca) {
-            // 생성자에서 dcaVar_가 "dca"로 생성되었으므로 이를 사용
-            dca = dcaVar_;
+            dca = dcaVar_.get();
             if (!dca) {
                  std::cerr << "Error: Standard 'dca' variable not found in workspace or dcaVar_." << std::endl;
                  return false;
             }
-            ws_->import(*dca, RooFit::RecycleConflictNodes()); // 워크스페이스에 dcaVar_를 "dca"로 import
+            ws_->import(*dca); 
         }
 
 
             std::cout << "Building model using data-driven DCA templates from mass fits." << std::endl;
-            // RooRealVar* mass = ws_->var(massVarName_.c_str()); // 설정된 질량 변수 이름으로 가져오기
+            // RooRealVar* mass = ws_->var(massVarName_.c_str()); 
             // RooRealVar* mass = new RooRealVar(mass)
             // if (!mass) {
             //     std::cerr << "Error: Mass variable '" << massVarName_ << "' not found in workspace." << std::endl;
             //     return false;
             // }
 
-            // 1. DCA 수율 히스토그램 생성 (TH1D)
-            delete dataYieldHist_;
-            dataYieldHist_ = new TH1D("dataYieldHist", "DCA Yield from Mass Fits", dcaBins_.size() - 1, dcaBins_.data());
+            dataYieldHist_.reset(); 
+            dataYieldHist_ = std::make_unique<TH1D>("dataYieldHist", "DCA Yield from Mass Fits", dcaBins_.size() - 1, dcaBins_.data());
             dataYieldHist_->Sumw2();
-
-            // --- MassFitter에 전달할 PDF 파라미터 정의 (예시) --
-            // bkgExpParams.lambda = -1.0; bkgExpParams.lambda_min = -10.0; bkgExpParams.lambda_max = -0.01;
-            // ... 다른 배경 PDF 파라미터 타입 사용 가능 ...
-            // 예: PDFParams::ChebychevBkgParams bkgChebParams;
-            //     bkgChebParams.coefficients = {0.1, -0.05}; ...
-
-            // --- 실제 사용할 파라미터 타입으로 아래 템플릿 인자 수정 필요 ---
-            // 예를 들어 CrystalBall과 Chebychev를 사용한다면:
-            // PDFParams::CrystalBallParams sigFitParams; /* 값 설정 */
-            // PDFParams::ChebychevBkgParams bkgFitParams; /* 값 설정 */
-            // 그리고 fitMassInSliceAndGetYield<PDFParams::CrystalBallParams, PDFParams::ChebychevBkgParams>(...) 호출
-
-            // 여기서는 Gaussian과 Exponential을 예시로 사용합니다.
-            // 실제 분석에 맞는 파라미터 값으로 채워야 합니다.
-            // DCAFitter의 opt_ 멤버를 통해 pT, eta 등의 정보를 얻어와서
-            // 파라미터 초기값을 설정하는 로직을 추가할 수 있습니다.
-            // 예: if (opt_.particle == "D0") { sigGaussParams.mean = 1.8648; ... }
-
-            // 2. 각 DCA 빈에 대해 질량 피팅 수행
             for (size_t i = 0; i < dcaBins_.size() - 1; ++i) {
+                cout << "Processing DCA bin " << i << ": [" << dcaBins_[i] << ", " << dcaBins_[i+1] << "]" << endl;
                 double dcaLow = dcaBins_[i];
                 double dcaHigh = dcaBins_[i+1];
+                    DCASliceInfo sliceInfo(dcaLow, dcaHigh, static_cast<int>(i), 
+                          Form("DCA_%.4f_%.4f", dcaLow, dcaHigh));
+                     BinInfo currentBin = createBinInfoFromFitOpt(opt_, dcaLow, dcaHigh);
                 std::string sliceName = Form("dca_%.3f_%.3f", dcaLow, dcaHigh);
-                std::replace(sliceName.begin(), sliceName.end(), '.', 'p'); // 파일 이름용으로 '.'을 'p'로 변경
+                std::replace(sliceName.begin(), sliceName.end(), '.', 'p'); 
 
                 TString dcaCut = TString::Format("%s >= %f && %s < %f", dca->GetName(), dcaLow, dca->GetName(), dcaHigh);
-                RooDataSet* dcaSliceData = dynamic_cast<RooDataSet*>(dataSet_->reduce(RooArgSet(*massVar_, *dca), dcaCut.Data()));
+                RooDataSet* dcaSliceData = dynamic_cast<RooDataSet*>(dataSet_->reduce(dcaCut.Data()));
+                RooDataSet* dcaSliceMC = dynamic_cast<RooDataSet*>(fullMCDataSet->reduce(dcaCut.Data()));
 
                 double yield = 0;
                 double yieldError = 0;
@@ -507,25 +462,30 @@ public:
 
                 if (dcaSliceData && dcaSliceData->numEntries() > 0) {
                     
-                    // Plotting the mass distribution for the current slice (기존 코드)
                     // RooPlot* massFrameBeforeFit = massVar_->frame(RooFit::Title(Form("Mass Distribution for %s (Before Fit)", sliceName.c_str())));
                     // dcaSliceData->plotOn(massFrameBeforeFit); 
 
                     // TCanvas* cSliceMassBeforeFit = new TCanvas(Form("cSliceMassBeforeFit_%s", sliceName.c_str()), Form("Mass Distribution for %s (Before Fit)", sliceName.c_str()), 800, 600);
                     // massFrameBeforeFit->Draw();
 
-                    std::string plotDir = opt_.outputDir + "/mass_fits_" + name_ + "/slice_mass_distributions/";
+                    std::string plotDir = opt_.outputPlotDir + "/mass_fits_" + name_ + "/slice_mass_distributions/";
                     gSystem->mkdir(plotDir.c_str(), kTRUE); 
-                    // std::string plotFileNameBeforeFit = plotDir + "mass_dist_before_fit_" + sliceName + ".png"; 
+                    // std::string plotFileNameBeforeFit = plotDir + "mass_dist_before_fit_" + sliceName + ".png"ㅈ 
                     // cSliceMassBeforeFit->SaveAs(plotFileNameBeforeFit.c_str());
                     // delete cSliceMassBeforeFit;
                     // delete massFrameBeforeFit;
                     // End of plotting before fit
+
+                    // auto params = DStarParamMaker1({0},{0});
+                    auto params = D0ParamMaker({0},{0},3);
                     
-                    PDFParams::DBCrystalBallParams sigDBCBParams; // 예시: DBCrystalBall 시그널
+                    PDFParams::DBCrystalBallParams sigDBCBParams; 
                     sigDBCBParams.mean = 0.1455;        // D* mass in GeV
                     sigDBCBParams.mean_min = 0.1452;
                     sigDBCBParams.mean_max = 0.1458;
+                    sigDBCBParams.sigma = 0.0005; // D* sigma in GeV
+                    sigDBCBParams.sigma_min = 0.0001;
+                    sigDBCBParams.sigma_max = 0.01;
                     sigDBCBParams.sigmaR = 0.0005;
                     sigDBCBParams.sigmaR_min = 0.0001;
                     sigDBCBParams.sigmaR_max = 0.01;
@@ -533,43 +493,49 @@ public:
                     sigDBCBParams.sigmaL_min = 0.0001;
                     sigDBCBParams.sigmaL_max = 0.01;
                     
-                    sigDBCBParams.alphaL = 2.;
-                    sigDBCBParams.alphaL_min = 0.0001;
-                    sigDBCBParams.alphaL_max = 10;
-                    sigDBCBParams.nL = 1.5;
-                    sigDBCBParams.nL_min = 1;
-                    sigDBCBParams.nL_max = 10;
+                    sigDBCBParams.alphaL = 1.1;
+                    sigDBCBParams.alphaL_min = 0.01;
+                    sigDBCBParams.alphaL_max = 5;
+                    sigDBCBParams.nL = 1.2;
+                    sigDBCBParams.nL_min = 1.1;
+                    sigDBCBParams.nL_max = 20;
                     
-                    sigDBCBParams.alphaR = 2.;
-                    sigDBCBParams.alphaR_min = 0.0001;
-                    sigDBCBParams.alphaR_max = 10.;
-                    sigDBCBParams.nR = 1.5;
-                    sigDBCBParams.nR_min = 1;
-                    sigDBCBParams.nR_max = 10;
+                    sigDBCBParams.alphaR = 1.1;
+                    sigDBCBParams.alphaR_min = 0.01;
+                    sigDBCBParams.alphaR_max = 5.;
+                    sigDBCBParams.nR = 1.85;
+                    sigDBCBParams.nR_min = 1.1;
+                    sigDBCBParams.nR_max = 20;
                     
                     
-                    PDFParams::PhenomenologicalParams bkgD0dstParams; // 예시: 지수 배경
+                    PDFParams::PhenomenologicalParams bkgD0dstParams; 
 
-                    bkgD0dstParams.p0 = 0.1;
-                    bkgD0dstParams.p0_min = 0.0;
-                    bkgD0dstParams.p0_max = 5.0;
-                    bkgD0dstParams.p1 = 2;
-                    bkgD0dstParams.p1_min = -10.0;
+                    bkgD0dstParams.p0 = 0.01;
+                    bkgD0dstParams.p0_min = 0.001;
+                    bkgD0dstParams.p0_max = 0.1;
+                    bkgD0dstParams.p1 = 1;
+                    bkgD0dstParams.p1_min = -10;
                     bkgD0dstParams.p1_max = 10.0;
-                    bkgD0dstParams.p2 = -2;
-                    bkgD0dstParams.p2_min = -10.0;
-                    bkgD0dstParams.p2_max = 10.0;
+                    bkgD0dstParams.p2 = 1;
+                    bkgD0dstParams.p2_min = 10.0;
+                    bkgD0dstParams.p2_max = 10;
 
                     std::cout << "Attempting to fit mass for slice: " << sliceName << std::endl;
                     
-                    // --- MassFitter 인스턴스 생성 (fitMassInSliceAndGetYield 내부 로직을 일부 가져옴) ---
                     std::string massVarNameStr = massVar_->GetName();
                     MassFitter massFitter(opt_.name + "_" + sliceName, massVarNameStr, massVar_->getMin(), massVar_->getMax());
                     FitOpt massFitOpt = opt_;
-                    massFitOpt.outputDir = opt_.outputDir + "/mass_fits_" + name_ + "/" + sliceName + "/"; // MassFitter용 상세 출력 경로
+                    // opt_.massVar = "massDaugther1"; 
+                    // opt_.massMin = massVar_->getMin();
+                    // opt_.massMax = massVar_->getMax();
+                    massFitOpt.outputDir = opt_.outputDir + "/mass_fits_" + name_ + "/" + sliceName + "/"; 
                     gSystem->mkdir(massFitOpt.outputDir.c_str(), kTRUE);
-                    massFitOpt.outputFile = "massfit_details.root"; // MassFitter가 상세 정보를 저장할 파일
+                    massFitOpt.outputFile = Form("massfit_details_%s.root",sliceName.c_str()); 
                     massFitOpt.plotName = "massfit_detail_plot";
+                    massFitOpt.outputMCDir = opt_.outputMCDir + "/mass_fits_" + name_ + "/" + sliceName + "/";
+                    gSystem->mkdir(massFitOpt.outputMCDir.c_str(), kTRUE);
+                    massFitOpt.cutExpr = ""; 
+                    // massFitter.SetData(dcasliceData); 
 
 
                     // --- fitMassInSliceAndGetYield 호출 ---
@@ -577,88 +543,89 @@ public:
                     //     dcaSliceData, massVar_, yield, yieldError, sliceName, sigDBCBParams, bkgD0dstParams
                     // );
                     // --- 직접 MassFitter의 PerformFit 호출 (fitMassInSliceAndGetYield 함수 대신) ---
-                    massFitter.PerformFit<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>(
-                        massFitOpt, dcaSliceData, true, "", "", sigDBCBParams, bkgD0dstParams
+                    // massFitter.PerformDCAConstraintFit<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>(
+                    //     massFitOpt, dcaSliceData,dcaSliceMC, true, "", "", sigDBCBParams, bkgD0dstParams
+                    // );
+                    massFitter.PerformDCAConstraintFit(
+                        massFitOpt, dcaSliceData,dcaSliceMC, true, "", "", params[{0,0}].first,params[{0,0}].second
                     );
+
 
                     if (massFitter.GetSignalYield() >= 0) {
                         yield = massFitter.GetSignalYield();
                         yieldError = massFitter.GetSignalYieldError();
-                        fitSuccess = true;
                         std::cout << "Mass fit SUCCESS for DCA slice " << sliceName << ": Yield = " << yield << " +/- " << yieldError << std::endl;
 
-                        // --- 피팅 결과 간략 플로팅 ---
-                        // MassFitter가 내부 Workspace에 "model"과 "data"를 저장했다고 가정
-                        // 또는 MassFitter에 GetModel(), GetData(), GetFitResult() 같은 getter가 필요
-                        RooWorkspace* mfWs = massFitter.GetWorkspace(); // MassFitter에 GetWorkspace() 메서드가 있다고 가정!
-                        if (mfWs) {
-                            RooAbsPdf* sliceModel = mfWs->pdf("total_pdf"); // MassFitter 내부 모델 이름 가정
-                            // RooAbsData* sliceDataForPlot = dcaSliceData; // MassFitter 내부 데이터 이름 가정
-                            RooRealVar* sliceMassVar = mfWs->var(massVar_->GetName());
+                        // dataYieldHist_->SetBinContent(dataYieldHist_->GetXaxis()->FindBin((dcaLow + dcaHigh) / 2.0), yield);
+                        // dataYieldHist_->SetBinError(dataYieldHist_->GetXaxis()->FindBin((dcaLow + dcaHigh) / 2.0), yieldError);
 
+                        RooWorkspace* mfWs = massFitter.GetWorkspace();
+                        RooFitResult* mfFitResult = massFitter.GetFitResult();
+                        RooFitResult* mfFitResultMC = massFitter.GetMCFitResult();
+                        RooWorkspace* mfWsMC = massFitter.GetMCWorkspace();
 
-                            if (sliceModel &&  sliceMassVar) {
-                                RooPlot* massFrameAfterFit = sliceMassVar->frame(RooFit::Title(Form("Mass Fit for %s", sliceName.c_str())));
-                                dcaSliceData->plotOn(massFrameAfterFit, RooFit::Name("data_slice"));
-                                sliceModel->plotOn(massFrameAfterFit, RooFit::Name("model_slice"), RooFit::LineColor(kRed));
-                                // 필요시 컴포넌트 플로팅
-                                // if (mfWs->pdf("signal")) mfWs->pdf("signal")->plotOn(massFrameAfterFit, RooFit::LineStyle(kDashed), RooFit::LineColor(kGreen+2));
-                                // if (mfWs->pdf("background")) mfWs->pdf("background")->plotOn(massFrameAfterFit, RooFit::LineStyle(kDashed), RooFit::LineColor(kBlue+2));
+                        if (mfWs && mfFitResult) {
+                            // RooAbsPdf* sliceModel = mfWs->pdf("total_pdf"); 
+                            // RooAbsData* sliceDataForPlot = dcaSliceData; 
+                            // RooRealVar* sliceMassVar = mfWs->var(massVar_->GetName());
 
+                            notifyDCASliceFit(currentBin, sliceInfo, mfFitResult, "DCA_Mass_Slice");
 
-                                TCanvas* cSliceFit = new TCanvas(Form("cSliceFit_%s", sliceName.c_str()), Form("Mass Fit for %s", sliceName.c_str()), 700, 500);
-                                massFrameAfterFit->Draw();
-                                
-                                // 간단한 범례 추가
-                                TLegend* legSlice = new TLegend(0.65, 0.75, 0.88, 0.88);
-                                legSlice->AddEntry(massFrameAfterFit->findObject("data_slice"), "Data", "pe");
-                                legSlice->AddEntry(massFrameAfterFit->findObject("model_slice"), "Total Fit", "l");
-                                legSlice->SetBorderSize(0);
-                                legSlice->SetFillStyle(0);
-                                legSlice->Draw();
+                            plotDir += Form("pt%.0f_%.0f_cos%2f_%2f/", opt_.pTMin, opt_.pTMax,opt_.cosMin*100,opt_.cosMax*100);
+                            std::string detailedPlotOutputDir = plotDir; 
+                            
+                            // --- Prepare strings for the plot labels ---
+                            std::string particleTypeLabel = "D^{*+}";
+                            std::string energyLabel = "ppRef #sqrt{s_{NN}} = 5.36 TeV"; // Adjust as needed
+                            // Use legend strings from opt_ struct instead of hardcoded strings
+                            std::string ptLabel = opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend;
+                            std::string yLabel = opt_.etaLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.etaLegend;
+                            std::string analysisCutLabel = opt_.centLegend.empty() ? Form("%.2f < cos#theta_{HX} < %.2f", opt_.cosMin, opt_.cosMax) : opt_.centLegend;
+                            std::string dcaLabel = opt_.dcaLegend.empty() ? Form("%.3f < DCA < %.3f cm", dcaLow, dcaHigh) : opt_.dcaLegend;
 
-                                std::string fitPlotFileName = plotDir + "mass_fit_overview_" + sliceName + ".png";
-                                cSliceFit->SaveAs(fitPlotFileName.c_str());
-                                std::cout << "Saved mass fit overview for slice " << sliceName << " to " << fitPlotFileName << std::endl;
-                                delete legSlice;
-                                delete cSliceFit;
-                                delete massFrameAfterFit;
-                            } else {
-                                std::cerr << "Could not retrieve model/data/var from MassFitter's workspace for slice " << sliceName << std::endl;
-                            }
+                            // --- Call the new plotting function ---
+                                         plotSliceFitDetails(dcaSliceData, mfWs, mfFitResult, massVar_.get(),
+                                                sliceName, massFitOpt, detailedPlotOutputDir,false,
+                                                particleTypeLabel, energyLabel, ptLabel, yLabel, analysisCutLabel, dcaLabel);
+                                         plotSliceFitDetails(dcaSliceMC, mfWsMC, mfFitResultMC, massVar_.get(),
+                                                sliceName, massFitOpt, detailedPlotOutputDir,true,
+                                                particleTypeLabel, energyLabel, ptLabel, yLabel, analysisCutLabel, dcaLabel);
+
+                            // Store path for the final summary plot
+                            // std::string detailedPlotFileName = detailedPlotOutputDir + "mass_fit_detailed_" + sliceName + ".png"; 
+                            // detailedPlotPaths_.push_back(detailedPlotFileName);
                         } else {
-                             std::cerr << "Could not retrieve MassFitter's workspace for slice " << sliceName << std::endl;
+                            std::cerr << "Error: Could not retrieve workspace or fit result from MassFitter for slice " << sliceName << std::endl;
                         }
-                        // --- 간략 플로팅 끝 ---
-
-                    } else {
+                    }
+                     else {
+                                FitStatus failedStatus(-998, "DCA_Mass_Slice", "Slice fit failed", -1, -1, sliceInfo.sliceName);
+        addFitStatus(currentBin, failedStatus);
                         std::cout << "Mass fit FAILED for DCA slice " << sliceName << ". Yield set to 0." << std::endl;
                         yield = 0; 
                         yieldError = 0; 
                         fitSuccess = false;
                     }
-                    // --- MassFitter 호출 및 결과 처리 끝 ---
-
-
-                } else {
-                     std::cout << "No data in DCA slice: " << dcaLow << " - " << dcaHigh << ". Yield set to 0." << std::endl;
-                     yield = 0; yieldError = 0;
-                     fitSuccess = false; 
                 }
+                
+                     else {
+                             std::cerr << "Could not retrieve MassFitter's workspace for slice " << sliceName << std::endl;
+                        }
+                    
 
-                if (fitSuccess) {
-                    dataYieldHist_->SetBinContent(i + 1, yield);
+                // if (fitSuccess) {
+                    dataYieldHist_->SetBinContent(i + 1, yield); 
                     dataYieldHist_->SetBinError(i + 1, yieldError);
-                } else {
-                    dataYieldHist_->SetBinContent(i + 1, 0);
-                    dataYieldHist_->SetBinError(i + 1, 1e9); // 피팅 실패 시 큰 오차
-                }
+                // } else {
+                    // dataYieldHist_->SetBinContent(i + 1, 0);
+                    // dataYieldHist_->SetBinError(i + 1, 1e9); 
+                // }
                 delete dcaSliceData;
-            } // End of DCA bin loop
+            }
+             // End of DCA bin loop
 
-            // 3. 생성된 수율 히스토그램으로 RooDataHist (템플릿) 생성
             delete dataDrivenTemplate_;
-            dataDrivenTemplate_ = new RooDataHist("dataDrivenTemplate", "Data-driven DCA Template", RooArgList(*dca), dataYieldHist_);
+            dataDrivenTemplate_ = new RooDataHist("dataDrivenTemplate", "Data-driven DCA Template", RooArgList(*dca), dataYieldHist_.get());
             ws_->import(*dataDrivenTemplate_, RooFit::RecycleConflictNodes());
             std::cout << "Data-driven DCA template (RooDataHist) created from mass fits." << std::endl;
 
@@ -675,18 +642,18 @@ public:
             int a =0;
             
             // RooDataSet* dataForYieldEstimate = (RooDataSet*)ws_->data("dataSet");
-            // double nevt = dataForYieldEstimate ? dataForYieldEstimate->sumEntries() : 1000; // 데이터셋이 있으면 그것으로, 없으면 임의의 값
-            double nevt = dataYieldHist_->Integral(); // 데이터셋이 있으면 그것으로, 없으면 임의의 값
+            // double nevt = dataForYieldEstimate ? dataForYieldEstimate->sumEntries() : 1000; 
+            double nevt = dataYieldHist_->Integral();
             if (nevt <=0) nevt = 1000;
-            cout << a++ << endl;
+            cout << "Estimated number of events for yield: " << nevt << endl;
 
 
             // delete n_prompt_;
-            n_prompt_ = new RooRealVar("n_prompt", "Number of prompt events", nevt * 0.8, 0, nevt * 1.5);
-            ws_->import(*n_prompt_, RooFit::RecycleConflictNodes());
+            n_prompt_ = std::make_unique<RooRealVar>("n_prompt", "Number of prompt events", nevt * 0.8, 0, nevt * 1);
+            ws_->import(*n_prompt_);
             // delete n_nonprompt_;
-            n_nonprompt_ = new RooRealVar("n_nonprompt", "Number of non-prompt events", nevt * 0.2, 0, nevt * 1.5);
-            ws_->import(*n_nonprompt_, RooFit::RecycleConflictNodes());
+            n_nonprompt_ = std::make_unique<RooRealVar>("n_nonprompt", "Number of non-prompt events", nevt * 0.2, 0.1, nevt * 1);
+            ws_->import(*n_nonprompt_);
             cout << a++ << endl;
 
             RooArgList pdfList;
@@ -697,6 +664,7 @@ public:
             if (promptTemplate_) {
                 delete promptPdf_;
                 promptPdf_ = new RooHistPdf("promptPdf", "Prompt PDF from MC", RooArgSet(*dca), *promptTemplate_);
+        promptFunc_ = new RooHistFunc("promptFunc", "Prompt Function from MC", RooArgSet(*dca), *promptTemplate_);
                 ws_->import(*promptPdf_, RooFit::RecycleConflictNodes());
                 pdfList.add(*promptPdf_);
                 yieldList.add(*n_prompt_);
@@ -706,6 +674,7 @@ public:
             if (nonPromptTemplate_) {
                 delete nonPromptPdf_;
                 nonPromptPdf_ = new RooHistPdf("nonPromptPdf", "Non-prompt PDF from MC", RooArgSet(*dca), *nonPromptTemplate_);
+        nonPromptFunc_ = new RooHistFunc("nonPromptFunc", "Non-prompt Function from MC", RooArgSet(*dca), *nonPromptTemplate_);
                 ws_->import(*nonPromptPdf_, RooFit::RecycleConflictNodes());
                 pdfList.add(*nonPromptPdf_);
                 yieldList.add(*n_nonprompt_);
@@ -730,6 +699,178 @@ public:
         
         return true;
     }
+        bool buildModelwSideband() { 
+        std::cout << "Building RooFit sideband and signal model..." << std::endl;
+
+        if (!dataSet_) { 
+             dataSet_ = (RooDataSet*)ws_->data("dataSet");
+             if (!dataSet_){
+                std::cerr << "Error: Data set is not loaded. Cannot build model." << std::endl;
+                return false;
+             }
+        }
+         if (!dataSet_ && !ws_->data("promptDataSetMC") && !ws_->data("nonPromptDataSetMC")){
+            std::cerr << "Error: No MC templates and no data loaded. Cannot build model." << std::endl;
+            return false;
+        }
+
+
+        if (massVarName_.empty()) {
+            std::cerr << "Error: Mass variable name not set. Cannot build data-driven templates." << std::endl;
+            return false;
+        }
+        if (dcaBins_.empty() || dcaBins_.size() < 2) {
+            std::cerr << "Error: dcaBins_ not properly set." << std::endl;
+            return false;
+        }
+
+        RooRealVar* dca = ws_->var(dcaVar_->GetName()); 
+        if (!dca) {
+            dca = dcaVar_.get();
+            if (!dca) {
+                 std::cerr << "Error: Standard 'dca' variable not found in workspace or dcaVar_." << std::endl;
+                 return false;
+            }
+            ws_->import(*dca); 
+        }
+
+
+	std::cout << "Building model using data-driven DCA templates from mass fits." << std::endl;
+
+	// delete sigYieldHist_;
+	sigYieldHist_ = std::make_unique<TH1D>("sigYieldHist", "Signal DCA Yield from Mass Fits", dcaBins_.size() - 1, dcaBins_.data());
+	sigYieldHist_->Sumw2();
+	// delete sbYieldHist_;
+	sbYieldHist_ = std::make_unique<TH1D>("sbYieldHist", "Sideband DCA Yield from Mass Fits", dcaBins_.size() - 1, dcaBins_.data());
+	sbYieldHist_->Sumw2();
+
+
+	// double sbLow = 0.002;
+	// double sbHigh = 0.004;
+	double sbLow = 0.04;
+	double sbHigh = 0.08;
+	// std::string sbCut = Form("abs(%f-mass) > %f && abs(%f-mass) < %f ", deltaM_PDG, sbLow, deltaM_PDG, sbHigh);
+	// std::string sigCut = Form("abs(%f-mass) < %f ", deltaM_PDG, sbLow);
+    // TString sbCut = TString::Format("abs(%s-%f) < %f && abs(%s-%f) > %f", massVar_->GetName(),deltaM_PDG, sbHigh, massVar_->GetName(),deltaM_PDG, sbLow);
+    // TString sigCut = TString::Format("abs(%f-%s) < %f", deltaM_PDG,massVar_->GetName(), sbLow);
+    for(int i =0; i < dcaBins_.size() - 1; ++i) {
+        cout << "Processing DCA bin " << i << ": [" << dcaBins_[i] << ", " << dcaBins_[i+1] << "]" << endl;
+        double dcaLow = dcaBins_[i];
+        double dcaHigh = dcaBins_[i+1];
+    TString dcaCut = TString::Format("%s >= %f && %s < %f", dca->GetName(), dcaLow, dca->GetName(), dcaHigh);
+    TString sbCut = TString::Format("abs(%s-%f) < %f && abs(%s-%f) > %f", massVar_->GetName(),D0_PDG, sbHigh, massVar_->GetName(),D0_PDG, sbLow);
+    TString sigCut = TString::Format("abs(%f-%s) < %f", D0_PDG,massVar_->GetName(), sbLow);
+    // TString sigCut = TString::Format("%s < %f && %s > %f", massVar_->GetName(), sbLow, massVar_->GetName(), sbHigh);
+    // TString sbCut = TString::Format("%s < 0.148 && %s > 0.144",massVar_->GetName(), massVar_->GetName());
+    // TString sigCut = TString::Format("%s < 0.148 && %s > 0.144",massVar_->GetName(), massVar_->GetName());
+
+	RooDataSet* SliceSig = dynamic_cast<RooDataSet*>(dataSet_->reduce((dcaCut+"&&" +sigCut).Data()));
+	RooDataSet* SliceSB = dynamic_cast<RooDataSet*>(dataSet_->reduce((dcaCut+"&&"+sbCut).Data()));
+    cout << "sliceSig Cut " << dcaCut << " && " << sigCut << endl;
+    cout << "sliceSB Cut " << dcaCut << " && " << sbCut << endl;
+    cout << " DCA bin: " << i << " has " << SliceSig->numEntries() << " signal entries and " << SliceSB->numEntries() << " sideband entries." << endl;
+    double yieldsig = SliceSig ? SliceSig->sumEntries() : 0;
+    double yieldsigError = SliceSig ? sqrt(SliceSig->sumEntries()) : 0;
+                    sigYieldHist_->SetBinContent(i + 1, yieldsig);
+                    sigYieldHist_->SetBinError(i + 1, yieldsigError);
+    double yieldsb = SliceSB ? SliceSB->sumEntries() : 0;
+    double yieldsbError = SliceSB ? sqrt(SliceSB->sumEntries()) : 0;
+                    sbYieldHist_->SetBinContent(i + 1, yieldsb); 
+                    sbYieldHist_->SetBinError(i + 1, yieldsbError);
+
+        // for (int i = 0; i < SliceSig->numEntries(); ++i) {
+        //     const RooArgSet* row = SliceSig->get(i);
+        //     sigYieldHist_->Fill(row->getRealValue(dcaVar_->GetName()));
+        // }
+    //     for (int i = 0; i < SliceSB->numEntries(); ++i) {
+	// const RooArgSet* row = SliceSB->get(i);
+	// sbYieldHist_->Fill(row->getRealValue(dcaVar_->GetName()));
+	// }
+}
+    // sbYieldHist_->Scale(1/2.0); // Scale sideband yield to match signal yield
+    // sbYieldHist_->Scale(1.0, "width"); 
+    // sigYieldHist_->Scale(1.0, "width"); // DCA bin 폭
+    dataYieldHist_.reset(static_cast<TH1D*>(sigYieldHist_->Clone()));
+    dataYieldHist_->Add(sbYieldHist_.get(), -1);
+    // dataYieldHist_->Scale(1.0, "width"); 
+    sbDrivenTemplate_ = new RooDataHist("sbDrivenTemplate", "Sideband Driven DCA Template", RooArgSet(*dca), sbYieldHist_.get());
+    ws_->import(*sbDrivenTemplate_);
+    sigDrivenTemplate_ = new RooDataHist("sigDrivenTemplate", "Signal Driven DCA Template", RooArgSet(*dca), sigYieldHist_.get());
+    ws_->import(*sigDrivenTemplate_);
+    plotSignalAndSidebandDCAFromHist(Form("dca_sig_vs_sb_hist_plot_pT%.1f_%.1f_cos_%3f_%3f", (opt_.pTMin), (opt_.pTMax), opt_.cosMin*100, opt_.cosMax*100));
+    dataDrivenTemplate_= new RooDataHist("dataDrivenTemplate", "Data Driven DCA Template", RooArgSet(*dca), dataYieldHist_.get()); 
+    cout << "Data-driven DCA template created with " << dataYieldHist_->GetEntries() << " entries." << endl;
+    cout << "Signal DCA template created with " << sigYieldHist_->GetEntries() << " entries." << endl;
+    cout << "Sideband DCA template created with " << sbYieldHist_->GetEntries() << " entries." << endl;
+    
+
+
+	promptTemplate_ = static_cast<RooDataHist*>(ws_->data("promptTemplate"));
+	nonPromptTemplate_ = static_cast<RooDataHist*>(ws_->data("nonPromptTemplate"));
+
+	if (!promptTemplate_ && !nonPromptTemplate_) {
+		std::cerr << "Error: No MC templates (RooDataHist) are available to build the model." << std::endl;
+		std::cerr << "       Please run createTemplatesFromMC() first if you intend to use MC templates." << std::endl;
+		return false;
+	}
+	int a =0;
+	double nevt = dataYieldHist_->Integral();
+	if (nevt <=0) nevt = 1000;
+
+
+	// delete n_prompt_;
+	n_prompt_ = std::make_unique<RooRealVar>("n_prompt", "Number of prompt events", nevt * 0.5, 0, nevt * 1);
+	ws_->import(*n_prompt_, RooFit::RecycleConflictNodes());
+	// delete n_nonprompt_;
+	n_nonprompt_ = std::make_unique<RooRealVar>("n_nonprompt", "Number of non-prompt events", nevt * 0.5, 0, nevt * 1);
+	ws_->import(*n_nonprompt_, RooFit::RecycleConflictNodes());
+
+	RooArgList pdfList;
+	RooArgList yieldList;
+
+
+	if (promptTemplate_) {
+		delete promptPdf_;
+		promptPdf_ = new RooHistPdf("promptPdf", "Prompt PDF from MC", RooArgSet(*dca), *promptTemplate_);
+        promptFunc_ = new RooHistFunc("promptFunc", "Prompt Function from MC", RooArgSet(*dca), *promptTemplate_);
+		ws_->import(*promptPdf_, RooFit::RecycleConflictNodes());
+		pdfList.add(*promptPdf_);
+		yieldList.add(*n_prompt_);
+		std::cout << "Prompt PDF created from MC template." << std::endl;
+	}
+
+	if (nonPromptTemplate_) {
+		delete nonPromptPdf_;
+		nonPromptPdf_ = new RooHistPdf("nonPromptPdf", "Non-prompt PDF from MC", RooArgSet(*dca), *nonPromptTemplate_);
+        nonPromptFunc_ = new RooHistFunc("nonPromptFunc", "Non-prompt Function from MC", RooArgSet(*dca), *nonPromptTemplate_);
+		ws_->import(*nonPromptPdf_, RooFit::RecycleConflictNodes());
+		pdfList.add(*nonPromptPdf_);
+		yieldList.add(*n_nonprompt_);
+		std::cout << "Non-prompt PDF created from MC template." << std::endl;
+	}
+
+	if (pdfList.getSize() > 0) {
+		// delete model_;
+		model_ = new RooAddPdf("model", "Extended P+NP Model from MC", pdfList, yieldList);
+		ws_->import(*model_);
+		std::cout << "Extended model built successfully with " << pdfList.getSize() << " MC component(s)." << std::endl;
+	} else {
+		std::cerr << "Error: No MC PDFs were created to build the model." << std::endl;
+		return false;
+	}
+
+	if (pdfList.getSize() == 2 && n_prompt_ && n_nonprompt_) {
+		// delete fracPrompt_;
+		fracPrompt_ = new RooFormulaVar("fracPrompt", "Prompt Fraction from MC fit", "@0 / (@0 + @1)", RooArgList(*n_prompt_, *n_nonprompt_));
+		ws_->import(*fracPrompt_);
+	}
+    if(nonPromptFunc_ && promptFunc_) {
+        ws_->import(*promptFunc_);
+        ws_->import(*nonPromptFunc_);
+    }
+
+	return true;
+	}
     RooFitResult* performFit(bool useMinos = false) {
         std::cout << "Performing fit..." << std::endl;
         if (!model_ || !dataSet_) {
@@ -738,15 +879,11 @@ public:
         }
         // Ensure dcaVar_ has the standard name 'dca' before fitting
         dcaVar_->SetName("dca3D");
-        TH1D* tempDataHist = new TH1D("tempDataHistForBinning", "Temporary Data Hist for Binning",dcaBins_.size() - 1, dcaBins_.data());
-        // Fill the temporary TH1 from the RooDataSet
-        // Make sure dcaVar_ in dataSet_ has the correct name (dcaBranchName_ or "dca3D")
-        // If dataSet_ was created with dcaVar_ having dcaBranchName_, it should be fine.
-        // If dcaVar_ name was changed after dataSet_ creation, ensure consistency.
-        dataSet_->fillHistogram(tempDataHist, RooArgList(*dcaVar_));
+        //TH1D* tempDataHist = new TH1D("tempDataHistForBinning", "Temporary Data Hist for Binning",dcaBins_.size() - 1, dcaBins_.data());
+        //dataSet_->fillHistogram(tempDataHist, RooArgList(*dcaVar_));
 
-        RooDataHist dataHist("dataHist", "Binned Data", RooArgList(*dcaVar_), tempDataHist);
-        delete tempDataHist; // Clean up temporary TH1
+        //RooDataHist dataHist("dataHist", "Binned Data", RooArgList(*dcaVar_), tempDataHist);
+        //delete tempDataHist; // Clean up temporary TH1
 
 
         // Fit options using RooLinkedList
@@ -754,20 +891,57 @@ public:
         fitOptionsList.Add(RooFit::Save(true).Clone()); // Save detailed fit result
         fitOptionsList.Add(RooFit::PrintLevel(-1).Clone()); // Reduce verbosity (-1), default is 1
         fitOptionsList.Add(RooFit::Extended(true).Clone());
+        fitOptionsList.Add(RooFit::Minimizer("Minuit", "Minimuzer").Clone()); // Use Minuit2 with Migrad algorithm
+        fitOptionsList.Add(RooFit::Hesse(true).Clone()); // Use Hesse to compute errors
+        fitOptionsList.Add(RooFit::Optimize(true).Clone()); // Use Minuit2 with Migrad algorithm
+        fitOptionsList.Add(RooFit::SumW2Error(true).Clone()); // Use weighted likelihood / correct errors
+        RooFitResult* fitResult = model_->fitTo(*dataDrivenTemplate_, fitOptionsList);
+        fitResult->Print("v");
+
+
+            int ntry = 0;
+    while(((fitResult->statusCodeHistory(0) != 0) || (fitResult->statusCodeHistory(1) != 0)) && (ntry)<3){
+    delete fitResult;
+    RooLinkedList fitOptstemp = fitOptionsList;;
+    // fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(24)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
+    // #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
+    // fitOptstemp.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
+    // #endif
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Extended(true)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Save(true)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Minos(useMinos)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Optimize(true)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Hesse(useHesse)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
+    // fitOptstemp.Add(new RooCmdArg(RooFit::Range("analysis")));
+    fitOptstemp.Add(new RooCmdArg(RooFit::Strategy(2-ntry))); 
+        std::cout << "Initial fit failed with status " << fitResult->statusCodeHistory(0) << " and " << fitResult->statusCodeHistory(1)
+                  << ". Retrying..." << std::endl;
+        RooFitResult* fitResult = model_->fitTo(*dataDrivenTemplate_, fitOptstemp);
+    cout << " #### Fit attempt " << ntry + 1 << " completed with status: " << fitResult->status() << "####" << std::endl;
+        fitResult->Print("v");
+        ntry++;
+    }
+        coef_prompt_ = new RooRealVar("coef_prompt", "Prompt Coefficient", fracPrompt_->getVal()/promptTemplate_->sum(false));
+        coef_nonprompt_ = new RooRealVar("coef_nonprompt", "Non-Prompt Coefficient", (1 - fracPrompt_->getVal())/nonPromptTemplate_->sum(false));
+
+        sumFunc_ = new RooRealSumFunc("sumFunc", "Sum of Prompt and Non-Prompt Functions", RooArgList(*promptFunc_, *nonPromptFunc_), RooArgList(*coef_prompt_, *coef_nonprompt_));
+
+
 
         // if (useMinos) {
         //     fitOptionsList.Add(RooFit::Minos(true).Clone());
         //     std::cout << "Using MINOS for error estimation." << std::endl;
         // }
         // if (dataSet_->isWeighted()) {
-             fitOptionsList.Add(RooFit::SumW2Error(true).Clone()); // Use weighted likelihood / correct errors
         //      std::cout << "Using SumW2Error(true) for weighted dataset." << std::endl;
         // }
 
         // Perform the fit using the RooLinkedList
         // Ensure the model is fitted to the dataset using the correct variable ('dca')
-        RooFitResult* fitResult = model_->fitTo(*dataDrivenTemplate_, fitOptionsList);
 
+        fitOptionsList.Add(RooFit::Strategy(2).Clone()); // Set strategy to 2 for better convergence
 
         if (fitResult) {
             fitResult->Print("v"); // Print verbose fit results
@@ -780,206 +954,361 @@ public:
         } else {
             std::cerr << "Error: Fit failed to produce a result object." << std::endl;
         }
-        if (promptHist_) { // Check if it was created
-            // delete promptHist_;
-            // promptHist_ = nullptr;
-       }
-       if (nonPromptHist_) { // Check if it was created
-            // delete nonPromptHist_;
-            // nonPromptHist_ = nullptr;
-       }
+    //     if (promptHist_) { // Check if it was created
+    //         promptHist->Scale(1.0, "width"); // Scale prompt histogram by bin width
+    //         // delete promptHist_;
+    //         // promptHist_ = nullptr;
+    //    }
+    //    if (nonPromptHist_) { // Check if it was created
+    //         nonPromptHist->Scale(1.0, "width"); // Scale non-prompt histogram by bin width
+    //         // delete nonPromptHist_;
+    //         // nonPromptHist_ = nullptr;
+    //    }
 
 
         return fitResult; // Caller is responsible for deleting this object
     }
-    void plotResults(RooFitResult* fitResult = nullptr, const std::string& plotName = "dca_fit_plot", bool useDataTemplates = true) {
-        std::cout << "Plotting results (CMS style)..." << std::endl;
-        RooRealVar* dca = ws_->var("dca3D"); // 표준 dca 변수
+   void plotResults(RooFitResult* fitResult = nullptr, const std::string& plotName = "dca_fit_plot", bool useDataTemplates = true) {
+    std::cout << "Plotting results with pull distribution (CMS style)..." << std::endl;
+    RooRealVar* dca = ws_->var("dca3D"); 
+    if (!dca) {
+        dca = dcaVar_.get(); 
         if (!dca) {
-            dca = dcaVar_; // 생성자에서 만들어진 dcaVar_ 사용
-            if (!dca) {
-                 std::cerr << "Error: Standard 'dca' variable not found in workspace or dcaVar_ for plotting." << std::endl;
-                 return;
-            }
+             std::cerr << "Error: Standard 'dca' variable not found in workspace or dcaVar_ for plotting." << std::endl;
+             return;
         }
+    }
 
-        if (!model_) {
-            std::cerr << "Error: Model not available for plotting." << std::endl;
+    if (!model_) {
+        std::cerr << "Error: Model not available for plotting." << std::endl;
+        return;
+    }
+
+    TCanvas* c = new TCanvas(plotName.c_str(), "DCA Fit Results with Pull", 800, 800);
+    
+    TPad* mainPad = new TPad("mainPad", "Main Plot", 0.0, 0.25, 1.0, 1.0);
+    mainPad->SetBottomMargin(0.02);
+    mainPad->SetLeftMargin(0.15);
+    mainPad->SetRightMargin(0.05);
+    mainPad->SetTopMargin(0.08);
+    mainPad->SetLogy();
+    
+    TPad* pullPad = new TPad("pullPad", "Pull Distribution", 0.0, 0.0, 1.0, 0.25);
+    pullPad->SetTopMargin(0.02);
+    pullPad->SetBottomMargin(0.4);
+    pullPad->SetLeftMargin(0.15);
+    pullPad->SetRightMargin(0.05);
+    
+    TPad* ratioPad = new TPad("ratioPad", "Data/Fit Ratio", 0.0, 0.0, 1.0, 0.25);
+    ratioPad->SetTopMargin(0.04);
+    ratioPad->SetBottomMargin(0.4);
+    ratioPad->SetLeftMargin(0.15);
+    ratioPad->SetRightMargin(0.05);
+    
+    mainPad->Draw();
+    pullPad->Draw();
+    ratioPad->Draw();
+
+    mainPad->cd();
+    // dca->setBinning(RooBinning(dcaBins_.size() - 1, dcaBins_.data()));
+    RooPlot* frame = dca->frame(RooFit::Title(" "));
+    RooBinning customBinning(dcaBins_.size() - 1, dcaBins_.data());
+    // frame->setBinning(customBinning);
+
+    if (useDataTemplates) {
+        if (!dataDrivenTemplate_) {
+            std::cerr << "Error: dataDrivenTemplate_ (data yield histogram) not available for plotting." << std::endl;
+            delete c;
             return;
         }
+        TH1* h_density = dataDrivenTemplate_->createHistogram("h_density", *dca);
+        h_density->Scale(1.0, "width");
+        // h_density->Scale(1.0 / h_density->Integral() * dataSet_->sumEntries()); // Normalize to unit area
+        RooHist* rh_density=new RooHist(*h_density, 0.0, 1, RooAbsData::SumW2, 1.0, "P");
+        frame->addPlotable(rh_density, "P");
+        
+        // dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning),RooFit::Density(true), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
+        // dataDrivenTemplate_->plotOn(frame, RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
 
-        RooPlot* frame = dca->frame(RooFit::Title(" "));
-        RooBinning customBinning(dcaBins_.size() - 1, dcaBins_.data());
+        RooAbsPdf* mcPromptPdf = ws_->pdf("promptPdf"); // MC prompt PDF
+        RooAbsPdf* mcNonPromptPdf = ws_->pdf("nonPromptPdf"); // MC non-prompt PDF
+        
+        // dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
+        // dataSet_->plotOn(frame, RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
+        
+        model_->plotOn(frame,RooFit::Name("model_fit_to_mc"), RooFit::LineColor(kRed + 1));
 
-        if (useDataTemplates) {
-            // 데이터 기반 템플릿 (dataDrivenTemplate_)과 MC 템플릿으로 피팅한 결과를 플로팅
-            if (!dataDrivenTemplate_) {
-                std::cerr << "Error: dataDrivenTemplate_ (data yield histogram) not available for plotting." << std::endl;
+        if (mcNonPromptPdf) {
+            model_->plotOn(frame, RooFit::Components(*mcNonPromptPdf), RooFit::Name("mc_nonprompt_comp"), 
+                          RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9), RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
+        }
+        if (mcPromptPdf) {
+            model_->plotOn(frame, RooFit::Components(*mcPromptPdf), RooFit::Name("mc_prompt_comp"), 
+                          RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
+        }
+        // sumFunc_->plotOn(frame, RooFit::Name("model_fit_to_mc"),Normalization(dataDrivenTemplate_->sum(false)), RooFit::LineColor(kRed + 1));
+        // if (nonPromptFunc_) {
+        //     nonPromptFunc_->plotOn(frame, RooFit::Components(*nonPromptFunc_), RooFit::Name("mc_nonprompt_comp"),Normalization(coef_nonprompt_->getVal()*dataDrivenTemplate_->sum(false)), 
+        //                   RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9), RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
+        // }
+        // if (promptFunc_) {
+        //     promptFunc_->plotOn(frame, RooFit::Components(*promptFunc_), RooFit::Name("mc_prompt_comp"),Normalization(coef_prompt_->getVal()*dataDrivenTemplate_->sum(false)), 
+        //                   RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
+        // }
+        
+        // dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
+
+    } else { 
+        if (!dataSet_) {
+            dataSet_ = static_cast<RooDataSet*>(ws_->data("dataSet"));
+            if (!dataSet_) {
+                std::cerr << "Error: Original dataset not available for plotting." << std::endl;
+                delete c;
                 return;
             }
-            // 1. dataDrivenTemplate_ (질량 피팅으로 얻은 수율 히스토그램) 플로팅
-            dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
-
-            // 2. MC 템플릿 기반 모델 (model_)과 그 컴포넌트 플로팅
-            model_->plotOn(frame, RooFit::Name("model_mc_fit"), RooFit::LineColor(kRed + 1));
-
-            RooAbsPdf* mcPromptPdf = ws_->pdf("promptPdf"); // MC prompt PDF
-            RooAbsPdf* mcNonPromptPdf = ws_->pdf("nonPromptPdf"); // MC non-prompt PDF
-
-            if (mcNonPromptPdf) {
-                model_->plotOn(frame, RooFit::Components(*mcNonPromptPdf), RooFit::Name("mc_nonprompt_comp"), RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9), RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
-            }
-            if (mcPromptPdf) {
-                 // AddTo를 사용하여 스택 형태로 그리기
-                model_->plotOn(frame, RooFit::Components(*mcPromptPdf), RooFit::Name("mc_prompt_comp"), RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
-            }
-            // 데이터를 다시 그려서 맨 위에 오도록 함
-            dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
-
-
-        } else { // MC 템플릿을 사용하여 원본 데이터를 피팅한 경우 (기존 로직과 유사)
-            if (!dataSet_) {
-                dataSet_ = static_cast<RooDataSet*>(ws_->data("dataSet"));
-                if (!dataSet_) {
-                    std::cerr << "Error: Original dataset not available for plotting." << std::endl;
-                    return;
-                }
-            }
-            // 1. 원본 데이터 플로팅
-            dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
-
-            // 2. 모델과 컴포넌트 플로팅
-            model_->plotOn(frame, RooFit::Name("model_fit_to_data"), RooFit::LineColor(kRed + 1));
-
-            RooAbsPdf* promptPdf = ws_->pdf("promptPdf"); // 또는 멤버 변수 promptPdf_
-            RooAbsPdf* nonPromptPdf = ws_->pdf("nonPromptPdf"); // 또는 멤버 변수 nonPromptPdf_
-
-            if (nonPromptPdf) {
-                model_->plotOn(frame, RooFit::Components(*nonPromptPdf), RooFit::Name("nonprompt_comp"), RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9), RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
-            }
-            if (promptPdf) {
-                // model_->plotOn(frame, RooFit::Components(*promptPdf), RooFit::AddTo("model_fit_to_data", nonPromptPdf ? "nonprompt_comp" : "model_fit_to_data"), RooFit::Name("prompt_comp"), RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
-            }
-            // 데이터를 다시 그려서 맨 위에 오도록 함
-            dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
         }
+        
+        dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
 
-        TCanvas* c = new TCanvas(plotName.c_str(), "DCA Fit Results", 800, 700);
-        c->SetLogy();
-        c->SetLeftMargin(0.15);
+        model_->plotOn(frame, RooFit::Name("model_fit_to_data"), RooFit::LineColor(kRed + 1));
 
-        frame->Draw();
-        // Y축 제목: dataYieldHist_의 Y축 제목을 사용하거나, 빈 너비로 정규화된 형태로 설정
-        if (dataYieldHist_ && useDataTemplates) {
-             frame->GetYaxis()->SetTitle(Form("Yield / (%.3f cm)", dataYieldHist_->GetBinWidth(1)));
-        } else if (dataSet_ && !useDataTemplates) {
-            // 원본 데이터를 플로팅할 때의 Y축 제목 (예: Candidates / (bin width))
-            // dcaBins_를 사용하므로 첫 번째 빈의 너비를 가져올 수 있음
-            if (!dcaBins_.empty() && dcaBins_.size() > 1) {
-                 frame->GetYaxis()->SetTitle(Form("Candidates / (%.3f cm)", dcaBins_[1] - dcaBins_[0]));
-            } else {
-                 frame->GetYaxis()->SetTitle("Candidates");
-            }
-        } else {
-            frame->GetYaxis()->SetTitle("Entries");
+        RooAbsPdf* promptPdf = ws_->pdf("promptPdf");
+        RooAbsPdf* nonPromptPdf = ws_->pdf("nonPromptPdf");
+
+        if (nonPromptPdf) {
+            model_->plotOn(frame, RooFit::Components(*nonPromptPdf), RooFit::Name("nonprompt_comp"), 
+                          RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9), RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
         }
-
-        frame->GetXaxis()->SetTitle(Form("%s (%s)", dca->GetTitle(), dca->getUnit()));
-        frame->GetXaxis()->SetTitleOffset(1.1);
-        frame->GetYaxis()->SetTitleOffset(1.4);
-        frame->SetMinimum(0.1); // 최소값은 데이터에 맞게 조정
-        frame->SetMaximum(frame->GetMaximum() * 1.8);
-
-        TLegend* leg = new TLegend(0.55, 0.65, 0.88, 0.88);
-        leg->SetBorderSize(0);
-        leg->SetFillStyle(0);
-        leg->SetTextSize(0.04);
-
-        if (useDataTemplates) {
-            TObject* dataYieldObj = frame->findObject("data_yield_hist");
-            TObject* modelFitObj = frame->findObject("model_mc_fit");
-            TObject* mcPromptObj = frame->findObject("mc_prompt_comp");
-            TObject* mcNonPromptObj = frame->findObject("mc_nonprompt_comp");
-
-            if (dataYieldObj) leg->AddEntry(dataYieldObj, "Data Yield (from Mass Fit)", "pe");
-            if (modelFitObj) leg->AddEntry(modelFitObj, "Total MC Fit", "l");
-            if (mcPromptObj) leg->AddEntry(mcPromptObj, "Prompt D^{0} (MC)", "f");
-            if (mcNonPromptObj) leg->AddEntry(mcNonPromptObj, "Non-Prompt D^{0} (MC)", "f");
-        } else {
-            TObject* dataOrigObj = frame->findObject("data_original");
-            TObject* modelFitToDataObj = frame->findObject("model_fit_to_data");
-            TObject* promptCompObj = frame->findObject("prompt_comp");
-            TObject* nonPromptCompObj = frame->findObject("nonprompt_comp");
-
-            if (dataOrigObj) leg->AddEntry(dataOrigObj, "Data", "pe");
-            if (modelFitToDataObj) leg->AddEntry(modelFitToDataObj, "Total Fit", "l");
-            if (promptCompObj) leg->AddEntry(promptCompObj, "Prompt D^{0} (MC)", "f");
-            if (nonPromptCompObj) leg->AddEntry(nonPromptCompObj, "Non-Prompt D^{0} (MC)", "f");
+        if (promptPdf) {
+            model_->plotOn(frame, RooFit::Components(*promptPdf), RooFit::Name("prompt_comp"), 
+                          RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
         }
-        leg->Draw();
+        
+        dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
 
-        TLatex latex;
-        latex.SetNDC();
-        latex.SetTextFont(42);
-        latex.SetTextSize(0.045);
-        latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
-        latex.SetTextSize(0.04);
-        latex.DrawLatex(0.60, 0.93, "pp #sqrt{s_{NN}} = 5.36 TeV"); // 예시 텍스트
-
-        latex.SetTextSize(0.035);
-        // Fit fraction (fracPrompt_는 useDataTemplates 여부에 따라 다른 이름으로 저장될 수 있음)
-        // RooFormulaVar* currentFracPrompt = nullptr;
-        // if (useDataTemplates) {
-        //     currentFracPrompt = static_cast<RooFormulaVar*>(ws_->obj("fracPrompt_mc_fit_to_data_yields"));
-        // } else {
-            // currentFracPrompt = static_cast<RooFormulaVar*>(ws_->obj("fracPrompt"));
-        // }
-
-        if (fitResult) {
-            double frac_val = fracPrompt_->getVal();
-            // 에러 전파는 n_prompt와 n_nonprompt가 fitResult에 의해 업데이트 되었을 때 의미가 있음
-            double frac_err = 0;
-            RooRealVar* np = ws_->var("n_prompt");
-            RooRealVar* nnp = ws_->var("n_nonprompt");
-            if (np && nnp && np->isConstant() == kFALSE && nnp->isConstant() == kFALSE) { // 피팅 파라미터일 경우
-                 frac_err = fracPrompt_->getPropagatedError(*fitResult);
-            } else if (np && nnp) { // 파라미터가 고정되어 있다면, 해당 값으로 계산된 에러 (주로 0)
-                 frac_err = fracPrompt_->getPropagatedError(*fitResult); // 시도해볼 수 있음
-            }
-
-
-            latex.SetTextSize(0.038);
-            latex.DrawLatex(0.55, 0.60, Form("Prompt frac. = %.1f #pm %.1f %%", frac_val*100, frac_err*100));
-        }
-        latex.DrawLatex(0.55, 0.55, Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax));
-        latex.DrawLatex(0.55, 0.50, "|y| < 1");
-        // latex.DrawLatex(0.55, 0.45, Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax));
-
-
-        c->SaveAs((plotName + ".png").c_str());
-        c->SaveAs((plotName + ".pdf").c_str());
-        if (!outputFileName_.empty()) {
-            TFile* fout = outFile_; // 멤버 변수 outFile_ 사용
-            bool closeFileAfterWrite = false;
-            if (!fout || !fout->IsOpen()) {
-                fout = TFile::Open(outputFileName_.c_str(), "UPDATE");
-                closeFileAfterWrite = true; // 이 함수 내에서 열었으면 닫아줘야 함
-            }
-            if (fout && fout->IsOpen()) {
-                fout->cd(); // 파일의 루트 디렉토리로 이동
-                c->Write((name_ + "_" + plotName).c_str(), TObject::kOverwrite); // 고유한 이름으로 저장
-                if (closeFileAfterWrite) {
-                    fout->Close();
-                    delete fout; // 여기서 열었으면 여기서 닫고 삭제
-                    if (outFile_ == fout) outFile_ = nullptr; // 멤버 변수도 업데이트
-                }
-            }
-        }
-
-        delete c;
-        delete frame;
-        delete leg;
     }
+
+    frame->Draw();
+    
+    if (dataYieldHist_ && useDataTemplates) {
+         frame->GetYaxis()->SetTitle(Form("Yield / (%.3f cm)", dataYieldHist_->GetBinWidth(1)));
+    } else if (dataSet_ && !useDataTemplates) {
+        if (!dcaBins_.empty() && dcaBins_.size() > 1) {
+             frame->GetYaxis()->SetTitle(Form("Candidates / (%.3f cm)", dcaBins_[1] - dcaBins_[0]));
+        } else {
+             frame->GetYaxis()->SetTitle("Candidates");
+        }
+    } else {
+        frame->GetYaxis()->SetTitle("Entries");
+    }
+
+    frame->GetXaxis()->SetLabelSize(0);
+    frame->GetXaxis()->SetTitleSize(0); 
+    frame->GetYaxis()->SetTitleOffset(1.4);
+    frame->GetYaxis()->SetTitleSize(0.05);
+    frame->GetYaxis()->SetLabelSize(0.04);
+    frame->SetMinimum(1);
+    frame->SetMaximum(frame->GetMaximum() * 1.8);
+
+    // 범례 추가
+    TLegend* leg = new TLegend(0.55, 0.65, 0.88, 0.88);
+    leg->SetBorderSize(0);
+    leg->SetFillStyle(0);
+    leg->SetTextSize(0.04);
+
+    if (useDataTemplates) {
+        TObject* dataYieldObj = frame->findObject("data_yield_hist");
+        TObject* modelFitObj = frame->findObject("model_fit_to_mc");
+        TObject* mcPromptObj = frame->findObject("mc_prompt_comp");
+        TObject* mcNonPromptObj = frame->findObject("mc_nonprompt_comp");
+
+        if (dataYieldObj) leg->AddEntry(dataYieldObj, "Data Yield (from Mass Fit)", "pe");
+        if (modelFitObj) leg->AddEntry(modelFitObj, "Total MC Fit", "l");
+        if (mcPromptObj) leg->AddEntry(mcPromptObj, "Prompt D^{*} (MC)", "f");
+        if (mcNonPromptObj) leg->AddEntry(mcNonPromptObj, "Non-Prompt D^{*} (MC)", "f");
+    } else {
+        TObject* dataOrigObj = frame->findObject("data_original");
+        TObject* modelFitToDataObj = frame->findObject("model_fit_to_data");
+        TObject* promptCompObj = frame->findObject("prompt_comp");
+        TObject* nonPromptCompObj = frame->findObject("nonprompt_comp");
+
+        if (dataOrigObj) leg->AddEntry(dataOrigObj, "Data", "pe");
+        if (modelFitToDataObj) leg->AddEntry(modelFitToDataObj, "Total Fit", "l");
+        if (promptCompObj) leg->AddEntry(promptCompObj, "Prompt D^{*} (MC)", "f");
+        if (nonPromptCompObj) leg->AddEntry(nonPromptCompObj, "Non-Prompt D^{*} (MC)", "f");
+    }
+    leg->Draw();
+
+    TLatex latex;
+    latex.SetNDC();
+    latex.SetTextFont(42);
+    latex.SetTextSize(0.045);
+    latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
+    latex.SetTextSize(0.04);
+    latex.SetTextAlign(31); // Align right
+    latex.DrawLatex(0.94, 0.93, "PP #sqrt{s_{NN}} = 5.32 TeV"); // 예제 그림의 텍스트
+
+    latex.SetTextAlign(11); // Align left
+    latex.SetTextSize(0.035);
+    // latex.DrawLatex(0.55, 0.67, opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
+    // latex.DrawLatex(0.55, 0.62, opt_.centLegend.empty() ? Form("%.1f < cos#Theta_{HX} < %.1f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
+    // latex.DrawLatex(0.55, 0.57, opt_.etaLegend.empty() ? Form("|y| < 1", opt_.etaMax) : opt_.etaLegend.c_str());
+
+    pullPad->cd();
+    RooPlot* pullFrame = dca->frame(RooFit::Title(" "));
+    
+    std::string dataName = useDataTemplates ? "data_yield_hist" : "data_original";
+    std::string modelName = useDataTemplates ? "model_fit_to_mc" : "model_fit_to_data";
+    
+    RooHist* hpull = frame->pullHist(dataName.c_str(), modelName.c_str(), true); // normalized residuals (pulls)
+    
+    if (hpull) {
+        pullFrame->addPlotable(hpull, "P");
+        pullFrame->SetMinimum(-3.9);
+        pullFrame->SetMaximum(3.9);
+        
+        pullFrame->GetYaxis()->SetTitle("Pull");
+        pullFrame->GetYaxis()->SetTitleSize(0.15);
+        pullFrame->GetYaxis()->SetLabelSize(0.12);
+        pullFrame->GetYaxis()->SetTitleOffset(0.5);
+        pullFrame->GetYaxis()->SetNdivisions(505);
+        
+        pullFrame->GetXaxis()->SetTitle(Form("%s (cm)", dca->GetTitle()));
+        pullFrame->GetXaxis()->SetTitleSize(0.15);
+        pullFrame->GetXaxis()->SetLabelSize(0.12);
+        pullFrame->GetXaxis()->SetTitleOffset(1.0);
+        
+        pullFrame->Draw();
+        
+        TLine* lineAtZero = new TLine(dca->getMin(), 0, dca->getMax(), 0);
+        lineAtZero->SetLineColor(kRed);
+        lineAtZero->SetLineStyle(kDashed);
+        lineAtZero->SetLineWidth(1);
+        lineAtZero->Draw("same");
+        
+        TLine* lineAtPlus3 = new TLine(dca->getMin(), 3, dca->getMax(), 3);
+        lineAtPlus3->SetLineColor(kGray);
+        lineAtPlus3->SetLineStyle(kDotted);
+        lineAtPlus3->Draw("same");
+        
+        TLine* lineAtMinus3 = new TLine(dca->getMin(), -3, dca->getMax(), -3);
+        lineAtMinus3->SetLineColor(kGray);
+        lineAtMinus3->SetLineStyle(kDotted);
+        lineAtMinus3->Draw("same");
+    } else {
+        std::cerr << "Warning: Could not create pull histogram" << std::endl;
+        pullFrame->SetMinimum(-3.9);
+        pullFrame->SetMaximum(3.9);
+        pullFrame->GetYaxis()->SetTitle("Pull");
+        pullFrame->GetYaxis()->SetTitleSize(0.15);
+        pullFrame->GetYaxis()->SetLabelSize(0.12);
+        pullFrame->GetYaxis()->SetTitleOffset(0.5);
+        pullFrame->GetXaxis()->SetTitle(Form("%s (cm)", dca->GetTitle()));
+        pullFrame->GetXaxis()->SetTitleSize(0.15);
+        pullFrame->GetXaxis()->SetLabelSize(0.12);
+        pullFrame->Draw();
+    }
+
+    // Ratio 그리기
+    ratioPad->cd();
+    RooPlot* ratioFrame = dca->frame(RooFit::Title(" "));
+
+    // Get the histogram for data and the curve for the fit
+    RooHist* h_data = (RooHist*)frame->findObject(dataName.c_str());
+    RooCurve* c_fit = (RooCurve*)frame->findObject(modelName.c_str());
+
+    if (h_data && c_fit) {
+        TGraphAsymmErrors* g_ratio = new TGraphAsymmErrors(h_data->GetN());
+        g_ratio->SetName("ratio");
+
+        for (int i = 0; i < h_data->GetN(); ++i) {
+            double x, y;
+            h_data->GetPoint(i, x, y);
+            double ey_low = h_data->GetErrorYlow(i);
+            double ey_high = h_data->GetErrorYhigh(i);
+            double ex = h_data->GetErrorX(i);
+
+            double fit_val = c_fit->Eval(x);
+
+            if (fit_val > 1e-9) { // Avoid division by zero or very small numbers
+                g_ratio->SetPoint(i, x, y / fit_val);
+                g_ratio->SetPointError(i, ex, ex, ey_low / fit_val, ey_high / fit_val);
+            } else {
+                g_ratio->SetPoint(i, x, 0);
+                g_ratio->SetPointError(i, ex, ex, 0, 0);
+            }
+        }
+        
+        g_ratio->SetMarkerStyle(20);
+        g_ratio->SetMarkerSize(0.8);
+        g_ratio->SetMarkerColor(kBlack);
+        g_ratio->SetLineColor(kBlack);
+
+        ratioFrame->addObject(g_ratio, "P");
+        ratioFrame->SetMinimum(0);
+        ratioFrame->SetMaximum(2);
+
+        // Style the ratio plot
+        ratioFrame->GetYaxis()->SetTitle("Data / Fit");
+        ratioFrame->GetYaxis()->SetTitleSize(0.15);
+        ratioFrame->GetYaxis()->SetLabelSize(0.12);
+        ratioFrame->GetYaxis()->SetTitleOffset(0.5);
+        ratioFrame->GetYaxis()->SetNdivisions(505);
+
+        ratioFrame->GetXaxis()->SetTitle(Form("%s (cm)", dca->GetTitle()));
+        ratioFrame->GetXaxis()->SetTitleSize(0.15);
+        ratioFrame->GetXaxis()->SetLabelSize(0.12);
+        ratioFrame->GetXaxis()->SetTitleOffset(1.0);
+
+        ratioFrame->Draw();
+
+        // Draw a line at 1
+        TLine* lineAtOne = new TLine(dca->getMin(), 1.0, dca->getMax(), 1.0);
+        lineAtOne->SetLineColor(kRed);
+        lineAtOne->SetLineStyle(kDashed);
+        lineAtOne->SetLineWidth(2);
+        lineAtOne->Draw("same");
+    } else {
+        std::cerr << "Warning: Could not create ratio plot. Data or fit curve not found." << std::endl;
+        // Draw an empty frame if ratio cannot be calculated
+        ratioFrame->SetMinimum(0.5);
+        ratioFrame->SetMaximum(1.5);
+        ratioFrame->GetYaxis()->SetTitle("Data / Fit");
+        ratioFrame->GetYaxis()->SetTitleSize(0.15);
+        ratioFrame->GetYaxis()->SetLabelSize(0.12);
+        ratioFrame->GetYaxis()->SetTitleOffset(0.5);
+        ratioFrame->GetXaxis()->SetTitle(Form("%s (cm)", dca->GetTitle()));
+        ratioFrame->GetXaxis()->SetTitleSize(0.15);
+        ratioFrame->GetXaxis()->SetLabelSize(0.12);
+        ratioFrame->Draw();
+    }
+
+    // 파일 저장
+    c->SaveAs((plotName + ".png").c_str());
+    c->SaveAs((plotName + ".pdf").c_str());
+    
+    if (!outputFileName_.empty()) {
+        TFile* fout = outFile_.get();
+        bool closeFileAfterWrite = false;
+        if (!fout || !fout->IsOpen()) {
+            fout = TFile::Open(outputFileName_.c_str(), "UPDATE");
+            closeFileAfterWrite = true;
+        }
+        if (fout && fout->IsOpen()) {
+            fout->cd();
+            c->Write((name_ + "_" + plotName).c_str(), TObject::kOverwrite);
+            if (closeFileAfterWrite) {
+                fout->Close();
+                if (outFile_.get() == fout) outFile_.reset();
+            }
+        }
+    }
+
+    delete c;
+    delete frame;
+    delete pullFrame;
+    delete leg;
+}
 
     void saveResults(RooFitResult* fitResult) {
          std::cout << "Saving results to " << outputFileName_ << std::endl;
@@ -992,24 +1321,23 @@ public:
          if (outFile_ && outFile_->IsOpen()) {
              if (!outFile_->IsWritable()) {
                  std::string currentFileName = outFile_->GetName();
-                 delete outFile_; // Close existing handle
-                 outFile_ = TFile::Open(currentFileName.c_str(), "RECREATE"); // Reopen fresh
+                 outFile_.reset(); 
+                 outFile_.reset(TFile::Open(currentFileName.c_str(), "RECREATE"));
              } else {
                  // If already open and writable (e.g., from plotting), ensure we are in the root directory
                  outFile_->cd();
              }
          } else {
              // If not open, open in RECREATE mode
-             delete outFile_; // Delete potential null or closed pointer
-             outFile_ = TFile::Open(outputFileName_.c_str(), "RECREATE");
+             outFile_.reset(); 
+             outFile_.reset(TFile::Open(outputFileName_.c_str(), "RECREATE"));
          }
 
 
          if (!outFile_ || !outFile_->IsOpen() || !outFile_->IsWritable()) {
              std::cerr << "Error: Could not open or write to output file: " << outputFileName_ << std::endl;
              // Clean up potential zombie file object
-             delete outFile_;
-             outFile_ = nullptr;
+             outFile_.reset(); 
              return;
          }
 
@@ -1041,20 +1369,260 @@ public:
 private:
     // --- Internal Helper Methods ---
     // loadDataSet helper is integrated into createTemplatesFromMC and loadData for clarity
+    RooAbsPdf* ExtractComponent(RooAbsPdf* pdf_, const std::string& namePattern) {
+    if (std::string(pdf_->GetName()).find(namePattern) != std::string::npos) {
+    }
+
+    const RooArgSet* components = pdf_->getComponents();
+    RooAbsPdf* foundPdf = nullptr;
+
+    if (components) {
+        for (const auto& obj : *components) {
+            RooAbsPdf* pdfComponent = dynamic_cast<RooAbsPdf*>(obj);
+                std::cout << "Found component '" << namePattern << "': " << pdfComponent->GetName() << std::endl;
+            if (pdfComponent && std::string(pdfComponent->GetName()).find(namePattern) != std::string::npos) {
+                foundPdf = pdfComponent;
+                // std::cout << "Found component '" << namePattern << "': " << foundPdf->GetName() << std::endl;
+                break;
+            }
+        }
+    }
+
+    if (!foundPdf) {
+         std::cout << "Warning: Component containing '" << namePattern << "' not found." << std::endl;
+    }
+
+    return foundPdf;
+}
+        void plotSliceFitDetails(
+        RooDataSet* sliceData,
+        RooWorkspace* fitWs, // Workspace from MassFitter for this slice
+        RooFitResult* sliceFitResult,
+        RooRealVar* massVar, // The mass variable (e.g., DCAFitter::massVar_)
+        const std::string& sliceName,
+        const FitOpt& fitOptForSlice, // The FitOpt used by MassFitter for this slice
+        const std::string& outputDir,
+        bool isMC,
+        const std::string& particleType, // e.g., "D^{*+}", "D^{0}"
+        const std::string& energyStr,    // e.g., "pp #sqrt{s_{NN}} = 5.36 TeV"
+        const std::string& ptRangeStr,   // e.g., "10.0 < p_{T} < 20.0 GeV/c"
+        const std::string& yRangeStr,    // e.g., "|y| < 1.0"
+        const std::string& analysisCutStr, // e.g., MVA cut or cos(theta) cut
+        const std::string& dcaRangeStr,     // e.g., "0.002 < DCA < 0.004 cm"
+        RooDataSet* sliceMCData = nullptr,  // Optional: MC data for the same slice
+        RooWorkspace* mcFitWs = nullptr,    // Optional: MC fit workspace
+        RooFitResult* mcFitResult = nullptr // Optional: MC fit result
+    ) {
+        // --- Initial Checks ---
+        RooAbsPdf* sliceModel = fitWs->pdf("total_pdf");
+        RooRealVar* sliceMassVar = fitWs->var(massVar->GetName());
+        if(!sliceFitResult)
+        {
+            std::cerr << "Error: Fit result not provided for slice " << sliceName << std::endl; 
+            return;
+        }
+        if (!sliceData) {
+            std::cerr << "Error: Slice data not provided for slice " << sliceName << std::endl;
+            return;
+        }
+        if (!sliceModel) {
+            std::cerr << "Error: Model not found in workspace for slice " << sliceName << std::endl;
+            return;
+        }
+
+        // if (!sliceModel || !sliceMassVar || !sliceFitResult) {
+        //     std::cerr << "Error in plotSliceFitDetails: Model, Mass Variable, or Fit Result not found for slice " << sliceName << std::endl;
+        //     return;
+        // }
+
+        // --- Canvas and Pad Setup ---
+        TCanvas* canvas = new TCanvas(Form("c_slice_detail_%s", sliceName.c_str()), Form("Detailed Mass Fit for %s", sliceName.c_str()), 1000, 800);
+        
+        // [ Main Plot Pad | Parameter Pad ]
+        // [   Pull Pad    | Parameter Pad ]
+        TPad* mainPad = new TPad(Form("mainPad_%s", sliceName.c_str()), "", 0.0, 0.25, 0.75, 1.0);
+        TPad* pullPad = new TPad(Form("pullPad_%s", sliceName.c_str()), "", 0.0, 0.0, 0.75, 0.25);
+        TPad* paramPad = new TPad(Form("paramPad_%s", sliceName.c_str()), "", 0.75, 0.0, 1.0, 1.0);
+
+        mainPad->SetMargin(0.15, 0.02, 0.03, 0.1); // L, R, B, T
+        pullPad->SetMargin(0.15, 0.02, 0.35, 0.02);
+        paramPad->SetMargin(0.1, 0.1, 0.05, 0.05);
+
+        mainPad->Draw();
+        pullPad->Draw();
+        paramPad->Draw();
+
+        // --- Main Plot ---
+        mainPad->cd();
+        RooPlot* frame = sliceMassVar->frame(RooFit::Title(""));
+        
+        // Plot data points
+        sliceData->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8), RooFit::DataError(RooAbsData::SumW2));
+
+        // Get model components from the MassFitter's workspace
+
+        RooAbsPdf* sigComponent = ExtractComponent(sliceModel, "sig");
+        RooAbsPdf* bkgComponent = ExtractComponent(sliceModel, "bkg");
+
+        // RooAbsPdf* bkgComponent = fitWs->pdf("bkg_pdf");
+        // RooAbsPdf* sigComponent = fitWs->pdf("sig_pdf");
+        
+        // Plot components first (background, then signal)
+        if (bkgComponent) {
+            sliceModel->plotOn(frame, RooFit::Components(*bkgComponent), RooFit::Name("background"),
+                               RooFit::LineStyle(kDashed), RooFit::LineColor(kBlue + 2), RooFit::LineWidth(2));
+        }
+        if (sigComponent) {
+            sliceModel->plotOn(frame, RooFit::Components(*sigComponent), RooFit::Name("signal"),
+                               RooFit::FillColor(kAzure - 9), RooFit::FillStyle(3354), RooFit::DrawOption("F"),
+                               RooFit::LineColor(kAzure - 9), RooFit::VLines()); // VLines removes border
+        }
+
+        // Plot total fit line over the components
+        sliceModel->plotOn(frame, RooFit::Name("model"), RooFit::LineColor(kRed), RooFit::LineWidth(2));
+
+        // Re-plot data points on top of the filled areas
+        sliceData->plotOn(frame, RooFit::Name("datapoints_top"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8), RooFit::DataError(RooAbsData::SumW2));
+
+        // Formatting the frame
+        double binWidth = sliceData->get()->getRealValue(sliceMassVar->GetName(), 0, 1) - sliceData->get()->getRealValue(sliceMassVar->GetName(), 0, 0);
+        if(frame->GetXaxis()->GetBinWidth(1) > 0) binWidth = frame->GetXaxis()->GetBinWidth(1);
+
+        frame->GetYaxis()->SetTitle(Form("Entries / (%.3f GeV/c^{2})", binWidth));
+        frame->GetYaxis()->SetTitleOffset(1.4);
+        frame->GetYaxis()->SetTitleSize(0.055);
+        frame->GetYaxis()->SetLabelSize(0.045);
+        frame->GetXaxis()->SetLabelSize(0); // Hide X-axis labels on main plot
+        frame->GetXaxis()->SetTitleSize(0); // Hide X-axis title on main plot
+        frame->SetTitle("");
+        frame->Draw();
+
+        // --- Legend ---
+        TLegend* legend = new TLegend(0.58, 0.60, 0.95, 0.88);
+        legend->SetBorderSize(0); legend->SetFillStyle(0); legend->SetTextSize(0.045);
+        legend->AddEntry(frame->findObject("datapoints_top"), "Data", "PE");
+        legend->AddEntry(frame->findObject("model"), "Fit", "L");
+        if (sigComponent) legend->AddEntry(frame->findObject("signal"), Form("%s Signal", particleType.c_str()), "F");
+        if (bkgComponent) legend->AddEntry(frame->findObject("background"), "Combinatorial", "L");
+        legend->Draw();
+
+        // --- CMS and Kinematic Labels ---
+        TLatex latex; latex.SetNDC(); latex.SetTextFont(42);
+        latex.SetTextSize(0.05);
+        latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
+
+        latex.SetTextSize(0.045);
+        latex.SetTextAlign(31); // Align right
+        latex.DrawLatex(0.97, 0.92, energyStr.c_str());
+        
+        latex.SetTextAlign(11); // Align left
+        latex.SetTextSize(0.04);
+        float currentY = 0.83;
+        latex.DrawLatex(0.18, currentY, ptRangeStr.c_str());    currentY -= 0.05;
+        latex.DrawLatex(0.18, currentY, yRangeStr.c_str());     currentY -= 0.05;
+        latex.DrawLatex(0.18, currentY, analysisCutStr.c_str()); currentY -= 0.05;
+        latex.DrawLatex(0.18, currentY, dcaRangeStr.c_str());
+
+        // --- Pull Plot ---
+        pullPad->cd();
+        RooPlot* pullFrame = sliceMassVar->frame(RooFit::Title(""));
+        RooHist* hpull = frame->pullHist("datapoints_top", "model", true); // Use normalized residuals
+        if (hpull) {
+            pullFrame->addPlotable(hpull, "P");
+            pullFrame->SetMinimum(-3.9); pullFrame->SetMaximum(3.9);
+            pullFrame->GetYaxis()->SetTitle("Pull");
+            pullFrame->GetYaxis()->SetTitleSize(0.12);
+            pullFrame->GetYaxis()->SetLabelSize(0.1);
+            pullFrame->GetYaxis()->SetTitleOffset(0.5);
+            pullFrame->GetYaxis()->SetNdivisions(505);
+            pullFrame->GetXaxis()->SetTitle(Form("%s (GeV/c^{2})", sliceMassVar->GetTitle()));
+            pullFrame->GetXaxis()->SetTitleSize(0.12);
+            pullFrame->GetXaxis()->SetLabelSize(0.1);
+            pullFrame->GetXaxis()->SetTitleOffset(1.1);
+            pullFrame->SetTitle("");
+            pullFrame->Draw();
+
+            TLine *lineAtZero = new TLine(sliceMassVar->getMin(), 0, sliceMassVar->getMax(), 0);
+            lineAtZero->SetLineColor(kRed); lineAtZero->SetLineStyle(kDashed);
+            lineAtZero->Draw("same");
+        }
+        
+        // --- Parameter Pad ---
+        paramPad->cd();
+        TLatex paramLatex; paramLatex.SetNDC(); paramLatex.SetTextFont(42);
+        paramLatex.SetTextSize(0.06);
+        paramLatex.SetTextAlign(12); // Align left, center Y
+        
+        float y_pos = 0.90f;
+        
+        // Display chi-squared / NDF
+        double chi2ndf = frame->chiSquare("model", "datapoints_top", sliceFitResult->floatParsFinal().getSize());
+        paramLatex.DrawLatex(0.1, y_pos, Form("#chi^{2}/NDF = %.2f", chi2ndf));
+        y_pos -= 0.08;
+        paramLatex.DrawLatex(0.1, y_pos, Form("%s : %d, %s : %d", sliceFitResult->statusLabelHistory(0), 
+                                                sliceFitResult->statusCodeHistory(0),
+                                                sliceFitResult->statusLabelHistory(1), 
+                                                sliceFitResult->statusCodeHistory(1))); 
+                                                // sliceFitResult->statusLabelHistory(2),
+                                                // sliceFitResult->statusCodeHistory(2)));
+
+                                                // sliceFitResult->statusCodeHistory(2)));
+        y_pos -= 0.08;
+
+        // Display Signal and Background Yields
+        const RooArgList& finalParams = sliceFitResult->floatParsFinal();
+        RooRealVar* nsig = dynamic_cast<RooRealVar*>(finalParams.find("nsig"));
+        if (nsig) {
+             paramLatex.DrawLatex(0.1, y_pos, Form("N_{sig} = %.0f #pm %.0f", nsig->getVal(), nsig->getError()));
+             y_pos -= 0.08;
+        }
+        RooRealVar* nbkg = dynamic_cast<RooRealVar*>(finalParams.find("nbkg"));
+         if (nbkg) {
+             paramLatex.DrawLatex(0.1, y_pos, Form("N_{bkg} = %.0f #pm %.0f", nbkg->getVal(), nbkg->getError()));
+             y_pos -= 0.08;
+        }
+
+        // Display other floating parameters
+        paramLatex.SetTextSize(0.05);
+        for (int i = 0; i < finalParams.getSize(); ++i) {
+            RooRealVar* var = dynamic_cast<RooRealVar*>(finalParams.at(i));
+            if (var) {
+                std::string varName = var->GetName();
+                // Don't re-print yields
+                if (varName == "nsig" || varName == "nbkg") continue;
+                if (y_pos < 0.1) break; // Stop if we run out of space
+                paramLatex.DrawLatex(0.1, y_pos, Form("%s = %.3g #pm %.1e", var->GetTitle(), var->getVal(), var->getError()));
+                y_pos -= 0.06;
+            }
+        }
+
+        // --- Save Canvas ---
+        gSystem->mkdir(outputDir.c_str(), kTRUE); // Ensure output directory exists
+        std::string canvasName = outputDir + "mass_fit_detailed_" + sliceName + "_" +std::to_string(isMC) + ".png";
+        canvas->SaveAs(canvasName.c_str());
+        std::cout << "Saved detailed mass fit for slice " << sliceName << " to " << canvasName << std::endl;
+
+        // --- Clean up memory ---
+        delete canvas;
+        delete frame;
+        delete pullFrame;
+        delete legend;
+        // hpull is owned by pullFrame, no need to delete
+    }
 
     // --- Member Variables ---
     std::string name_;
-    RooWorkspace* ws_; // RooFit workspace
-    vector<double> dcaBins_ = {0,0.002,0.004,0.006,0.008,0.01,0.012,0.014,0.016,0.022,0.03,0.038,0.05,0.065,0.08,0.1};
+    RooWorkspacePtr ws_; // RooFit workspace
+    std::vector<double> dcaBins_ = {0,0.001,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.1};
     // vector<double> dcaBins_ = {0,0.1};
     FitOpt opt_;
 
-    // Variables
-    RooRealVar* dcaVar_;    // The DCA variable
-    RooRealVar* massVar_; // The mass variable (pointer to object in workspace)
-    RooRealVar* weights_;   // Optional global weights variable (use with care)
-    RooRealVar* n_prompt_; // Number of prompt events (pointer to object in workspace)
-    RooRealVar* n_nonprompt_; // Number of non-prompt events (pointer to object in workspace)
+    // Variables (using smart pointers for better memory management)
+    RooRealVarPtr dcaVar_;    // The DCA variable
+    RooRealVarPtr massVar_; // The mass variable
+    RooRealVarPtr weights_;   // Optional global weights variable
+    RooRealVarPtr n_prompt_; // Number of prompt events
+    RooRealVarPtr n_nonprompt_; // Number of non-prompt events
 
 
     // Configuration
@@ -1072,37 +1640,185 @@ private:
     std::string mcCuts_;
     std::string dataCuts_;
     std::string outputFileName_;
+    static constexpr double deltaM_PDG = 0.1454258; 
+    static constexpr double D0_PDG = 1.86483; 
 
-    // Datasets and Templates (Owned by Workspace after import)
-    RooDataSet* dataSet_;           // Data to be fitted (pointer to object in workspace)
-    RooDataHist* promptTemplate_;   // Prompt MC template (pointer to object in workspace)
-    TH1* promptHist_; // Histogram for prompt template (not owned by workspace)
-    TH1* nonPromptHist_; // Histogram for non-prompt template (not owned by workspace)
-    RooDataHist* nonPromptTemplate_; // Non-prompt MC template (pointer to object in workspace)
+    // Datasets and Templates (managed by smart pointers and workspace)
+    RooDataSet* dataSet_;           // Data to be fitted (external reference)
+    RooDataSetPtr fullMCDataSet; // Full MC dataset
+    RooDataHist* promptTemplate_;   // Prompt MC template (workspace managed)
+    TH1* promptHist_; // Histogram for prompt template (manually managed)
+    TH1* nonPromptHist_; // Histogram for non-prompt template (manually managed)
+    RooDataHist* nonPromptTemplate_; // Non-prompt MC template (workspace managed)
     std::string massVarName_;
     double massMin_;
     double massMax_;
     std::string massUnit_;
 
 
-    // PDFs and Model (Owned by Workspace after import)
-    RooHistPdf* promptPdf_;         // PDF from prompt template (pointer to object in workspace)
-    RooHistPdf* nonPromptPdf_;      // PDF from non-prompt template (pointer to object in workspace)
-    RooFormulaVar* fracPrompt_;        // Fraction of prompt component (pointer to object in workspace)
-    RooAddPdf* model_;              // Combined model (pointer to object in workspace)
+    // PDFs and Model (managed by smart pointers and workspace)
+    RooHistPdf* promptPdf_;         // PDF from prompt template (workspace managed)
+    RooHistPdf* nonPromptPdf_;      // PDF from non-prompt template (workspace managed)  
+    RooRealVar* coef_prompt_;
+    RooRealVar* coef_nonprompt_;
+    RooHistFunc* promptFunc_;         // PDF from prompt template (workspace managed)
+    RooHistFunc* nonPromptFunc_;      // PDF from non-prompt template (workspace managed)  
+    RooRealSumFunc *sumFunc_;
+    RooFormulaVar* fracPrompt_;        // Fraction of prompt component (workspace managed)
+    RooAddPdf* model_;              // Combined model (workspace managed)
 
     // Parameters
     double dcaMin_;
     double dcaMax_;
     int nBins_;
-    TH1D* dataYieldHist_ = nullptr;
+    TH1DPtr dataYieldHist_;
+    TH1DPtr sigYieldHist_;
+    TH1DPtr sbYieldHist_;
     RooDataHist* dataDrivenTemplate_ = nullptr;
-    RooHistPdf* dataDrivenPdf_ = nullptr;
-    RooRealVar* n_totalData_ = nullptr;
+    RooDataHist* sigDrivenTemplate_ = nullptr;
+    RooDataHist* sbDrivenTemplate_ = nullptr;
+    RooRealVarPtr n_totalData_;
 
-    // ROOT Objects
-    TFile* outFile_; // File handle for output
+    // ROOT Objects (using smart pointers for better memory management)
+    TFilePtr outFile_;
+
+    void Clear() {
+        std::cout << "Clearing DCAFitter state..." << std::endl;
+        
+        dcaVar_.reset();
+        massVar_.reset();
+        weights_.reset();
+        n_prompt_.reset();
+        n_nonprompt_.reset();
+        n_totalData_.reset();
+        fullMCDataSet.reset();
+        dataYieldHist_.reset();
+        sigYieldHist_.reset();
+        sbYieldHist_.reset();
+        outFile_.reset();
+        
+        ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt_.name.c_str()), (name_ + " Workspace").c_str());
+        
+        dataSet_ = nullptr;
+        promptTemplate_ = nullptr;
+        nonPromptTemplate_ = nullptr;
+        promptPdf_ = nullptr;
+        nonPromptPdf_ = nullptr;
+        fracPrompt_ = nullptr;
+        model_ = nullptr;
+        dataDrivenTemplate_ = nullptr;
+        sigDrivenTemplate_ = nullptr;
+        sbDrivenTemplate_ = nullptr;
+        
+        delete promptHist_;
+        delete nonPromptHist_;
+        promptHist_ = nullptr;
+        nonPromptHist_ = nullptr;
+    }
+
+    // Const getter methods for better encapsulation
+    const std::string& getName() const { return name_; }
+    double getDCAMin() const { return dcaMin_; }
+    double getDCAMax() const { return dcaMax_; }
+    int getNBins() const { return nBins_; }
+    const std::vector<double>& getDCABins() const { return dcaBins_; }
+    const std::string& getMCFileName() const { return mcFileName_; }
+    const std::string& getDataFileName() const { return dataFileName_; }
+    const std::string& getOutputFileName() const { return outputFileName_; }
+    static constexpr double getDeltaMPDG() { return deltaM_PDG; }
+    
+    // Check if objects are properly initialized
+    bool isInitialized() const {
+        return dcaVar_ && massVar_ && ws_;
+    }
+    
+    bool hasData() const {
+        return dataSet_ != nullptr;
+    }
+    
+    bool hasTemplates() const {
+        return promptTemplate_ != nullptr && nonPromptTemplate_ != nullptr;
+    }
 };
+inline void DCAFitter::plotSignalAndSidebandDCAFromHist(const std::string& plotName) {
+    std::cout << "Using existing histograms to plot DCA distribution for signal and sideband regions..." << std::endl;
+    RooRealVar* dca = ws_->var("dca3D"); 
+    if (!dca) {
+        std::cerr << "Error: dca3D variable not found in workspace." << std::endl;
+        return;
+    }
+    gStyle->SetOptStat(0); 
+
+    if (!sigDrivenTemplate_) {
+        std::cerr << "Error: Signal yield histogram 'sigDrivenTemplate_' is not available." << std::endl;
+        return;
+    }
+    if (!sbYieldHist_) {
+        std::cerr << "Error: Sideband yield histogram 'sbYieldHist_' is not available." << std::endl;
+        return;
+    }
+    // RooPlot* frame = dca->frame(RooFit::Title("DCA Distribution for Signal and Sideband Regions"));
+    // auto frame = std::make_unique<RooPlot>(dca->frame(RooFit::Title("DCA Distribution for Signal and Sideband Regions")));
+    RooPlot* frame = dca->frame(RooFit::Title(" "));
+    // auto c = std::make_unique<TCanvas>(plotName.c_str(), "DCA Signal vs Sideband (from Histograms)", 800, 700);
+    RooBinning customBinning(dcaBins_.size() - 1, dcaBins_.data());
+    RooLinkedList sbPlotOpts_line;
+    sbPlotOpts_line.Add(RooFit::Binning(customBinning).Clone());
+    sbPlotOpts_line.Add(RooFit::LineWidth(2).Clone());
+    sbPlotOpts_line.Add(RooFit::LineColor(kBlue).Clone());
+    sbPlotOpts_line.Add(RooFit::MarkerColor(kBlue).Clone());
+    sbPlotOpts_line.Add(RooFit::Name("sb_yield_hist").Clone()); //  
+    // sbPlotOpts_line.Add(RooFit::DrawOption("HIST").Clone());
+    
+    sigDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
+    sbDrivenTemplate_->plotOn(frame,sbPlotOpts_line);
+    
+
+    TCanvas * c = new TCanvas(" ", " ", 800, 700);
+    c->SetLogy();
+    c->SetLeftMargin(0.15);
+        c->SetBottomMargin(0.13);
+
+    frame->GetYaxis()->SetTitle("counts per cm");
+    frame->GetYaxis()->SetTitleOffset(1.4);
+    frame->GetXaxis()->SetTitle("D^{0} DCA (cm)");
+
+    frame->Draw();
+
+    // auto leg = std::make_unique<TLegend>(0.55, 0.72, 0.93, 0.88);
+    auto leg = new TLegend(0.55, 0.72, 0.93, 0.88);
+    leg->SetBorderSize(0);
+    leg->SetFillStyle(0);
+    leg->SetTextSize(0.04);
+    TObject* dataObj = frame->findObject("data_yield_hist");
+    TObject* sbObj = frame->findObject("sb_yield_hist");
+    if (dataObj) leg->AddEntry(dataObj, "D^{0} candidate", "pe");
+    if (sbObj) leg->AddEntry(sbObj, "Side band", "l"); 
+    leg->Draw();
+
+    TLatex latex;
+    latex.SetNDC();
+    latex.SetTextFont(42);
+    latex.SetTextSize(0.045);
+    latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
+    latex.SetTextSize(0.04);
+    latex.SetTextAlign(31); // Align right
+    latex.DrawLatex(0.94, 0.93, "PP #sqrt{s_{NN}} = 5.32 TeV"); 
+
+    latex.SetTextAlign(11); // Align left
+    latex.SetTextSize(0.035);
+    latex.DrawLatex(0.55, 0.67, opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
+    latex.DrawLatex(0.55, 0.62, opt_.centLegend.empty() ? Form("%.1f < cos#Theta_{HX} < %.1f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
+    latex.DrawLatex(0.55, 0.57, opt_.etaLegend.empty() ? Form("|y| < 1", opt_.etaMax) : opt_.etaLegend.c_str());
+
+    // 5. 플롯 저장
+    // std::string plotDir = opt_.outputPlotDir + "/mass_fits_" + name_ + "/slice_mass_distributions/";
+    std::string outputPath = opt_.outputPlotDir.empty() ? "" : (opt_.outputPlotDir + "/");
+    gSystem->mkdir(outputPath.c_str(), kTRUE);
+    c->SaveAs((outputPath + plotName + ".png").c_str());
+    // c->SaveAs((outputPath + plotName + ".pdf").c_str());
+}
+
 
 
 // --- Implementation of plotRawDataDistribution ---
@@ -1124,8 +1840,12 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     }
 
     if (!dcaVar_) {
-        dcaVar_ = ws_->var("dca3D"); // Workspace에서 변수 가져오기
-        if (!dcaVar_ && !dcaBranchName_.empty()) dcaVar_ = ws_->var(dcaBranchName_.c_str());
+        RooRealVar* dcaFromWs = ws_->var("dca3D"); 
+        if (!dcaFromWs && !dcaBranchName_.empty()) dcaFromWs = ws_->var(dcaBranchName_.c_str());
+        
+        if (dcaFromWs) {
+            std::cerr << "Warning: DCA variable found in workspace but dcaVar_ is not set. Using workspace variable." << std::endl;
+        }
     }
     if (!dcaVar_) {
         std::cerr << "Error: DCA variable not found." << std::endl;
@@ -1149,20 +1869,23 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
             const RooArgSet* row = promptDataSet->get(i);
             hPrompt->Fill(row->getRealValue(dcaVar_->GetName()));
         }
+        // hprompt->Scale(1.0, "width");
         if (hPrompt->Integral() > 0) {
             hPrompt->Scale(1.0/hPrompt->Integral());
-            for (int i = 1; i <= hPrompt->GetNbinsX(); ++i) {
-                double content = hPrompt->GetBinContent(i);
-                double error = hPrompt->GetBinError(i);
-                double width = hPrompt->GetBinWidth(i);
-                if (width > 0) {
-                    hPrompt->SetBinContent(i, content / width);
-                    hPrompt->SetBinError(i, error / width);
-                } else {
-                    hPrompt->SetBinContent(i, 0);
-                    hPrompt->SetBinError(i, 0);
-                }
-            }
+            // hPrompt->Scale(1.0/hPrompt->Integral());
+            hPrompt->Scale(1.0, "width");
+            // for (int i = 1; i <= hPrompt->GetNbinsX(); ++i) {
+            //     double content = hPrompt->GetBinContent(i);
+            //     double error = hPrompt->GetBinError(i);
+            //     double width = hPrompt->GetBinWidth(i);
+            //     if (width > 0) {
+            //         hPrompt->SetBinContent(i, content / width);
+            //         hPrompt->SetBinError(i, error / width);
+            //     } else {
+            //         hPrompt->SetBinContent(i, 0);
+            //         hPrompt->SetBinError(i, 0);
+            //     }
+            // }
             hPrompt->SetLineColor(kRed);
             hPrompt->SetMarkerColor(kRed);
             hPrompt->SetMarkerStyle(20); 
@@ -1182,18 +1905,20 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
         }
         if (hNonPrompt->Integral() > 0) {
             hNonPrompt->Scale(1.0/hNonPrompt->Integral());
-            for (int i = 1; i <= hNonPrompt->GetNbinsX(); ++i) {
-                double content = hNonPrompt->GetBinContent(i);
-                double error = hNonPrompt->GetBinError(i);
-                double width = hNonPrompt->GetBinWidth(i);
-                if (width > 0) {
-                    hNonPrompt->SetBinContent(i, content / width);
-                    hNonPrompt->SetBinError(i, error / width);
-                } else {
-                    hNonPrompt->SetBinContent(i, 0);
-                    hNonPrompt->SetBinError(i, 0);
-                }
-            }
+            hNonPrompt->Scale(1.0, "width");
+            // hNonPrompt->Scale(1.0/hNonPrompt->Integral());
+            // for (int i = 1; i <= hNonPrompt->GetNbinsX(); ++i) {
+            //     double content = hNonPrompt->GetBinContent(i);
+            //     double error = hNonPrompt->GetBinError(i);
+            //     double width = hNonPrompt->GetBinWidth(i);
+            //     if (width > 0) {
+            //         hNonPrompt->SetBinContent(i, content / width);
+            //         hNonPrompt->SetBinError(i, error / width);
+            //     } else {
+            //         hNonPrompt->SetBinContent(i, 0);
+            //         hNonPrompt->SetBinError(i, 0);
+            //     }
+            // }
             hNonPrompt->SetLineColor(kBlue);
             hNonPrompt->SetMarkerColor(kBlue);
             hNonPrompt->SetMarkerStyle(20); 
@@ -1216,7 +1941,6 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     canvas->SetTopMargin(0.10); 
     canvas->SetRightMargin(0.05);
 
-    // Y축 범위 결정
     double minY = 1e9, maxY = -1e9;
     if (hPrompt) {
         for(int i=1; i<=hPrompt->GetNbinsX(); ++i) {
@@ -1234,7 +1958,7 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
 
     TH1* hAxis = (hPrompt) ? hPrompt : hNonPrompt; 
     if (hAxis) {
-        hAxis->SetTitle(""); // 그림 제목 제거
+        hAxis->SetTitle(""); 
         hAxis->GetXaxis()->SetTitle("D^{0} DCA (cm)");
         hAxis->GetYaxis()->SetTitle("normalized counts per cm");
         hAxis->GetXaxis()->SetTitleOffset(1.1);
@@ -1272,9 +1996,9 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     latex.SetTextFont(42);
     latex.SetTextSize(0.03);
     latex.SetTextAlign(22); 
-    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.03, Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax));
-    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.07, "|y| < 1");
-    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.11, Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax));
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.03, opt_.pTLegend.empty() ? Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.07, opt_.etaLegend.empty() ? "|y| < 1" : opt_.etaLegend.c_str());
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.11, opt_.centLegend.empty() ? Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
 
 
 
@@ -1289,13 +2013,5 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     delete hPrompt;
     delete hNonPrompt;
 }
-void Clear(){
-    // Clear the static variables or reset the state if needed
-    // This is a placeholder for any cleanup logic you might need
-    std::cout << "Clearing DCAFitter state..." << std::endl;
-    // Reset member variables, close files, etc.
-    // For example, if you have static members, reset them here
-    // delete dataSet_
-    // delete massVar_;
-}
+
 #endif // DCA_FITTER_H

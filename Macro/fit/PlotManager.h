@@ -50,7 +50,7 @@ private:
 PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
     : opt_(opt), fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar),isPP_(isPP) {
     file_ = TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str()));
-    if(file_) cout << "File Opened :: " << Form("roots/MC/%s",filename_.c_str()) <<endl;
+    if(file_) cout << "File Opened :: " << Form("%s/%s",fileDir_.c_str(), filename_.c_str()) <<endl;
     if (!file_ || file_->IsZombie()) {
         std::cerr << "Error: Failed to open file " << filename_ << std::endl;
         return;
@@ -144,9 +144,9 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
 
     // 2. Identify and Plot Components (assuming standard naming conventions)
-    RooAbsPdf* signalPdf = ExtractComponent("sig");
+    RooAbsPdf* signalPdf = ExtractComponent("sig") ? ExtractComponent("sig") : ExtractComponent("total_pdf");
     RooAbsPdf* swappedPdf = ExtractComponent("Swap1");
-    RooAbsPdf* combinatorialPdf = isDstar_ ? ExtractComponent("bkg") : ExtractComponent("comb");
+    RooAbsPdf* combinatorialPdf = isDstar_ ? ExtractComponent("bkg") : ExtractComponent("bkg");
     if (signalPdf) {
         pdf_->plotOn(frame, RooFit::Components(*signalPdf), RooFit::Name("signal"),
                      RooFit::FillColor(kAzure-9), RooFit::FillStyle(3354),
@@ -193,6 +193,7 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // --- Legend ---
     TLegend* legend = new TLegend(0.65, 0.60, 0.93, 0.88);
+    // TLegend* legend = new TLegend(0.65, 0.08, 0.93, 0.36);
     legend->SetBorderSize(0);
     legend->SetFillStyle(0);
     legend->SetTextSize(0.04);
@@ -224,13 +225,15 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     latex.SetTextFont(42);
     latex.SetTextSize(0.04);
-    latex.SetTextAlign(31);
-    isPP_ ? latex.DrawLatex(0.93, 0.90, "ppRef #sqrt{s_{NN}} = 5.32 TeV") : latex.DrawLatex(0.93, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
+    latex.SetTextAlign(11);
+    isPP_ ? latex.DrawLatex(0.55, 0.90, "ppRef #sqrt{s_{NN}} = 5.32 TeV") : latex.DrawLatex(0.55, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
+    // isPP_ ? latex.DrawLatex(0.55, 0.90, "Proton-Oxygen #sqrt{s_{NN}} = 9.62 TeV") : latex.DrawLatex(0.93, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
 
-    
-    latex.DrawLatex(0.35,0.83, Form(" %.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax));
-    isDstar_ ? latex.DrawLatex(0.35, 0.76, Form("%.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax)) : latex.DrawLatex(0.93, 0.60, Form("mva < %f", opt_.mvaMin));
-    latex.DrawLatex(0.35,0.69,"-1 < |y| < 1");
+    double x_pos = 0.13;
+    double y_pos = 0.80;
+    latex.DrawLatex(x_pos,y_pos, Form(" %.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax));
+    latex.DrawLatex(x_pos,y_pos - 0.07,"-1 < |y| < 1");
+    isDstar_ ? latex.DrawLatex(x_pos,y_pos-0.14, Form("%.2f < |cos#theta_{HX}| < %0.2f", opt_.cosMin, opt_.cosMax)) : latex.DrawLatex(0.93, 0.60, Form("mva < %f", opt_.mvaMin));
 
 
     latex.SetTextAlign(11);
@@ -275,11 +278,16 @@ void PlotManager::DrawParameterPad() {
     TLatex latex;
     latex.SetNDC();
     latex.SetTextSize(0.03);
+    latex.DrawLatex(0.1, 0.9, Form("STATUS %s : %d, %s : %d", fitResult_->statusLabelHistory(0), 
+                                      fitResult_->statusCodeHistory(0),
+                                      fitResult_->statusLabelHistory(1), 
+                                      fitResult_->statusCodeHistory(1)));
+    
 
     const RooArgList& params = fitResult_->floatParsFinal();
     for (int i = 0; i < params.getSize(); ++i) {
         RooRealVar* param = (RooRealVar*)params.at(i);
-        latex.DrawLatex(0.1, 0.9 - i * 0.05, Form("%s = %.5f #pm %.5f", param->GetName(), param->getVal(), param->getError()));
+        latex.DrawLatex(0.1, 0.85 - i * 0.05, Form("%s = %.5f #pm %.5f", param->GetName(), param->getVal(), param->getError()));
     }
 }
 
