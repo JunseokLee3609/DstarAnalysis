@@ -1623,6 +1623,7 @@ dca3D=evt.dca3D[idx];
 // isMC=isMC;
         };
     };
+    // simpleDStarDataTreeevt 구조체에 event plane 변수들 추가
     struct simpleDStarDataTreeevt{
         protected:
             static const int MAXCAND = __MAXCAND_MC__;
@@ -1699,6 +1700,36 @@ dca3D=evt.dca3D[idx];
    Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
    Float_t         mva[MAXCAND];   //[candSize]
    Float_t        dca3D[MAXCAND];   //[candSize]
+
+    // Event plane 관련 변수들 추가
+    Float_t         ephfpAngle[3];
+    Float_t         ephfmAngle[3];
+    Float_t         ephfpQ[3];
+    Float_t         ephfmQ[3];
+    Float_t         ephfpSumW;
+    Float_t         ephfmSumW;
+    Float_t         ephfAngle[2];
+    Float_t         ephfAngleoff[2];
+    Float_t         ephfmAngleoff[2];
+    Float_t         ephfpAngleoff[2];
+    Float_t         ephfAngleRaw[2];
+    Float_t         ephfmAngleRaw[2];
+    Float_t         ephfpAngleRaw[2];
+    Float_t         ephfQ[2];
+    Float_t         ephfSumW;
+    Float_t         ephfmsumCosRaw[2];
+    Float_t         ephfmsumSinRaw[2];
+    Float_t         ephfmsumPtOrEt[2];
+    Float_t         ephfpsumCosRaw[2];
+    Float_t         ephfpsumSinRaw[2];
+    Float_t         ephfpsumPtOrEt[2];
+    Float_t         ephfsumCosRaw[2];
+    Float_t         ephfsumSinRaw[2];
+    Float_t         ephfsumSin[2];
+    Float_t         ephfsumCos[2];
+    Float_t         ephfsumPtOrEt[2];
+    Float_t         dca3DErr[MAXCAND];   //[candSize]
+
    TBranch        *b_Ntrkoffline;   //!
    TBranch        *b_Npixel;   //!
    TBranch        *b_HFsumETPlus;   //!
@@ -1771,6 +1802,35 @@ dca3D=evt.dca3D[idx];
     TBranch        *b_Trk3DDCAErr;   //!
     TBranch        *b_mva;   //!
     TBranch        *b_dca3D;   //!
+
+    // 대응하는 TBranch 포인터들 추가
+    TBranch        *b_ephfpAngle;   //!
+    TBranch        *b_ephfmAngle;   //!
+    TBranch        *b_ephfpQ;   //!
+    TBranch        *b_ephfmQ;   //!
+    TBranch        *b_ephfpSumW;   //!
+    TBranch        *b_ephfmSumW;   //!
+    TBranch        *b_ephfAngle;   //!
+    TBranch        *b_ephfAngleoff;   //!
+    TBranch        *b_ephfmAngleoff;   //!
+    TBranch        *b_ephfpAngleoff;   //!
+    TBranch        *b_ephfAngleRaw;   //!
+    TBranch        *b_ephfmAngleRaw;   //!
+    TBranch        *b_ephfpAngleRaw;   //!
+    TBranch        *b_ephfQ;   //!
+    TBranch        *b_ephfSumW;   //!
+    TBranch        *b_ephfmsumCosRaw;   //!
+    TBranch        *b_ephfmsumSinRaw;   //!
+    TBranch        *b_ephfmsumPtOrEt;   //!
+    TBranch        *b_ephfpsumCosRaw;   //!
+    TBranch        *b_ephfpsumSinRaw;   //!
+    TBranch        *b_ephfpsumPtOrEt;   //!
+    TBranch        *b_ephfsumCosRaw;   //!
+    TBranch        *b_ephfsumSinRaw;   //!
+    TBranch        *b_ephfsumSin;   //!
+    TBranch        *b_ephfsumCos;   //!
+    TBranch        *b_ephfsumPtOrEt;   //!
+    TBranch        *b_dca3DErr;   //!
 
     simpleDStarDataTreeevt* getEventHandle(){ return this;}
     template <typename T>
@@ -1847,7 +1907,113 @@ dca3D=evt.dca3D[idx];
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
     fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
+
+        // Event plane 관련 branch 추가
+        fChain->SetBranchAddress("ephfpAngle", ephfpAngle, &b_ephfpAngle);
+        fChain->SetBranchAddress("ephfmAngle", ephfmAngle, &b_ephfmAngle);
+        fChain->SetBranchAddress("ephfpQ", ephfpQ, &b_ephfpQ);
+        fChain->SetBranchAddress("ephfmQ", ephfmQ, &b_ephfmQ);
+        fChain->SetBranchAddress("ephfpSumW", &ephfpSumW, &b_ephfpSumW);
+        fChain->SetBranchAddress("ephfmSumW", &ephfmSumW, &b_ephfmSumW);
+        fChain->SetBranchAddress("ephfAngle", ephfAngle, &b_ephfAngle);
+        fChain->SetBranchAddress("ephfAngleoff", ephfAngleoff, &b_ephfAngleoff);
+        fChain->SetBranchAddress("ephfmAngleoff", ephfmAngleoff, &b_ephfmAngleoff);
+        fChain->SetBranchAddress("ephfpAngleoff", ephfpAngleoff, &b_ephfpAngleoff);
+        fChain->SetBranchAddress("ephfAngleRaw", ephfAngleRaw, &b_ephfAngleRaw);
+        fChain->SetBranchAddress("ephfmAngleRaw", ephfmAngleRaw, &b_ephfmAngleRaw);
+        fChain->SetBranchAddress("ephfpAngleRaw", ephfpAngleRaw, &b_ephfpAngleRaw);
+        fChain->SetBranchAddress("ephfQ", ephfQ, &b_ephfQ);
+        fChain->SetBranchAddress("ephfSumW", &ephfSumW, &b_ephfSumW);
+        fChain->SetBranchAddress("ephfmsumCosRaw", ephfmsumCosRaw, &b_ephfmsumCosRaw);
+        fChain->SetBranchAddress("ephfmsumSinRaw", ephfmsumSinRaw, &b_ephfmsumSinRaw);
+        fChain->SetBranchAddress("ephfmsumPtOrEt", ephfmsumPtOrEt, &b_ephfmsumPtOrEt);
+        fChain->SetBranchAddress("ephfpsumCosRaw", ephfpsumCosRaw, &b_ephfpsumCosRaw);
+        fChain->SetBranchAddress("ephfpsumSinRaw", ephfpsumSinRaw, &b_ephfpsumSinRaw);
+        fChain->SetBranchAddress("ephfpsumPtOrEt", ephfpsumPtOrEt, &b_ephfpsumPtOrEt);
+        fChain->SetBranchAddress("ephfsumCosRaw", ephfsumCosRaw, &b_ephfsumCosRaw);
+        fChain->SetBranchAddress("ephfsumSinRaw", ephfsumSinRaw, &b_ephfsumSinRaw);
+        fChain->SetBranchAddress("ephfsumSin", ephfsumSin, &b_ephfsumSin);
+        fChain->SetBranchAddress("ephfsumCos", ephfsumCos, &b_ephfsumCos);
+        fChain->SetBranchAddress("ephfsumPtOrEt", ephfsumPtOrEt, &b_ephfsumPtOrEt);
+        fChain->SetBranchAddress("dca3DErr", dca3DErr, &b_dca3DErr);
         };
+
+    // simpleDStarDataTreeevt* getEventHandle(){ return this;}
+//     template <typename T>
+//         void setTree(T *fChain){
+//    fChain->SetBranchAddress("Ntrkoffline", &Ntrkoffline, &b_Ntrkoffline);
+//    fChain->SetBranchAddress("Npixel", &Npixel, &b_Npixel);
+//    fChain->SetBranchAddress("HFsumETPlus", &HFsumETPlus, &b_HFsumETPlus);
+//    fChain->SetBranchAddress("HFsumETMinus", &HFsumETMinus, &b_HFsumETMinus);
+//    fChain->SetBranchAddress("ZDCPlus", &ZDCPlus, &b_ZDCPlus);
+//    fChain->SetBranchAddress("ZDCMinus", &ZDCMinus, &b_ZDCMinus);
+//    fChain->SetBranchAddress("bestvtxX", &bestvtxX, &b_bestvtxX);
+//    fChain->SetBranchAddress("bestvtxY", &bestvtxY, &b_bestvtxY);
+//    fChain->SetBranchAddress("bestvtxZ", &bestvtxZ, &b_bestvtxZ);
+//    fChain->SetBranchAddress("candSize", &candSize, &b_candSize);
+//    fChain->SetBranchAddress("pT", pT, &b_pT);
+//    fChain->SetBranchAddress("y", y, &b_y);
+//    fChain->SetBranchAddress("eta", eta, &b_eta);
+//    fChain->SetBranchAddress("phi", phi, &b_phi);
+//    fChain->SetBranchAddress("mass", mass, &b_mass);
+//    fChain->SetBranchAddress("flavor", flavor, &b_flavor);
+//    fChain->SetBranchAddress("VtxProb", VtxProb, &b_VtxProb);
+//    fChain->SetBranchAddress("VtxChi2", VtxChi2, &b_VtxChi2);
+//    fChain->SetBranchAddress("VtxNDF", VtxNDF, &b_VtxNDF);
+//    fChain->SetBranchAddress("3DCosPointingAngle", _3DCosPointingAngle, &b_3DCosPointingAngle);
+//    fChain->SetBranchAddress("3DPointingAngle", _3DPointingAngle, &b_3DPointingAngle);
+//    fChain->SetBranchAddress("2DCosPointingAngle", _2DCosPointingAngle, &b_2DCosPointingAngle);
+//    fChain->SetBranchAddress("2DPointingAngle", _2DPointingAngle, &b_2DPointingAngle);
+//    fChain->SetBranchAddress("3DDecayLengthSignificance", _3DDecayLengthSignificance, &b_3DDecayLengthSignificance);
+//    fChain->SetBranchAddress("3DDecayLength", _3DDecayLength, &b_3DDecayLength);
+//    fChain->SetBranchAddress("2DDecayLengthSignificance", _2DDecayLengthSignificance, &b_2DDecayLengthSignificance);
+//    fChain->SetBranchAddress("2DDecayLength", _2DDecayLength, &b_2DDecayLength);
+//    fChain->SetBranchAddress("massDaugther1", massDaugther1, &b_massDaugther1);
+//    fChain->SetBranchAddress("pTD1", pTD1, &b_pTD1);
+//    fChain->SetBranchAddress("EtaD1", EtaD1, &b_EtaD1);
+//    fChain->SetBranchAddress("PhiD1", PhiD1, &b_PhiD1);
+//    fChain->SetBranchAddress("VtxProbDaugther1", VtxProbDaugther1, &b_VtxProbDaugther1);
+//    fChain->SetBranchAddress("VtxChi2Daugther1", VtxChi2Daugther1, &b_VtxChi2Daugther1);
+//    fChain->SetBranchAddress("VtxNDFDaugther1", VtxNDFDaugther1, &b_VtxNDFDaugther1);
+//    fChain->SetBranchAddress("3DCosPointingAngleDaugther1", _3DCosPointingAngleDaugther1, &b_3DCosPointingAngleDaugther1);
+//    fChain->SetBranchAddress("3DPointingAngleDaugther1", _3DPointingAngleDaugther1, &b_3DPointingAngleDaugther1);
+//    fChain->SetBranchAddress("2DCosPointingAngleDaugther1", _2DCosPointingAngleDaugther1, &b_2DCosPointingAngleDaugther1);
+//    fChain->SetBranchAddress("2DPointingAngleDaugther1", _2DPointingAngleDaugther1, &b_2DPointingAngleDaugther1);
+//    fChain->SetBranchAddress("3DDecayLengthSignificanceDaugther1", _3DDecayLengthSignificanceDaugther1, &b_3DDecayLengthSignificanceDaugther1);
+//    fChain->SetBranchAddress("3DDecayLengthDaugther1", _3DDecayLengthDaugther1, &b_3DDecayLengthDaugther1);
+//    fChain->SetBranchAddress("3DDecayLengthErrorDaugther1", _3DDecayLengthErrorDaugther1, &b_3DDecayLengthErrorDaugther1);
+//    fChain->SetBranchAddress("2DDecayLengthSignificanceDaugther1", _2DDecayLengthSignificanceDaugther1, &b_2DDecayLengthSignificanceDaugther1);
+//    fChain->SetBranchAddress("zDCASignificanceDaugther2", zDCASignificanceDaugther2, &b_zDCASignificanceDaugther2);
+//    fChain->SetBranchAddress("xyDCASignificanceDaugther2", xyDCASignificanceDaugther2, &b_xyDCASignificanceDaugther2);
+//    fChain->SetBranchAddress("NHitD2", NHitD2, &b_NHitD2);
+//    fChain->SetBranchAddress("HighPurityDaugther2", HighPurityDaugther2, &b_HighPurityDaugther2);
+//    fChain->SetBranchAddress("pTD2", pTD2, &b_pTD2);
+//    fChain->SetBranchAddress("EtaD2", EtaD2, &b_EtaD2);
+//    fChain->SetBranchAddress("PhiD2", PhiD2, &b_PhiD2);
+//    fChain->SetBranchAddress("pTerrD1", pTerrD1, &b_pTerrD1);
+//    fChain->SetBranchAddress("pTerrD2", pTerrD2, &b_pTerrD2);
+//    fChain->SetBranchAddress("dedxHarmonic2D2", dedxHarmonic2D2, &b_dedxHarmonic2D2);
+//    fChain->SetBranchAddress("zDCASignificanceGrandDaugther1", zDCASignificanceGrandDaugther1, &b_zDCASignificanceGrandDaugther1);
+//    fChain->SetBranchAddress("zDCASignificanceGrandDaugther2", zDCASignificanceGrandDaugther2, &b_zDCASignificanceGrandDaugther2);
+//    fChain->SetBranchAddress("xyDCASignificanceGrandDaugther1", xyDCASignificanceGrandDaugther1, &b_xyDCASignificanceGrandDaugther1);
+//    fChain->SetBranchAddress("xyDCASignificanceGrandDaugther2", xyDCASignificanceGrandDaugther2, &b_xyDCASignificanceGrandDaugther2);
+//    fChain->SetBranchAddress("NHitGrandD1", NHitGrandD1, &b_NHitGrandD1);
+//    fChain->SetBranchAddress("NHitGrandD2", NHitGrandD2, &b_NHitGrandD2);
+//    fChain->SetBranchAddress("HighPurityGrandDaugther1", HighPurityGrandDaugther1, &b_HighPurityGrandDaugther1);
+//    fChain->SetBranchAddress("HighPurityGrandDaugther2", HighPurityGrandDaugther2, &b_HighPurityGrandDaugther2);
+//    fChain->SetBranchAddress("pTGrandD1", pTGrandD1, &b_pTGrandD1);
+//    fChain->SetBranchAddress("pTGrandD2", pTGrandD2, &b_pTGrandD2);
+//    fChain->SetBranchAddress("pTerrGrandD1", pTerrGrandD1, &b_pTerrGrandD1);
+//    fChain->SetBranchAddress("pTerrGrandD2", pTerrGrandD2, &b_pTerrGrandD2);
+//    fChain->SetBranchAddress("EtaGrandD1", EtaGrandD1, &b_EtaGrandD1);
+//    fChain->SetBranchAddress("EtaGrandD2", EtaGrandD2, &b_EtaGrandD2);
+//    fChain->SetBranchAddress("dedxHarmonic2GrandD1", dedxHarmonic2GrandD1, &b_dedxHarmonic2GrandD1);
+//    fChain->SetBranchAddress("dedxHarmonic2GrandD2", dedxHarmonic2GrandD2, &b_dedxHarmonic2GrandD2);
+//    fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
+//     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
+//     fChain->SetBranchAddress("mva", mva, &b_mva);
+//     fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
+//         };
     };
     struct simpleDStarMCTreeevt{
         protected:
@@ -3312,6 +3478,129 @@ dca3D=evt.dca3D[idx];
             // float gen_D1charge;
             // float gen_D1pdgI;
             simpleDStarDataTreeflat* getEventHandle(){ return this;}
+            template<typename T>
+              void setTree(T *t){
+            t->SetBranchAddress("Ntrkoffline",&Ntrkoffline);
+            t->SetBranchAddress("Npixel",&Npixel);
+            t->SetBranchAddress("HFsumETPlus",&HFsumETPlus);
+            t->SetBranchAddress("HFsumETMinus",&HFsumETMinus);
+            t->SetBranchAddress("ZDCPlus",&ZDCPlus);
+            t->SetBranchAddress("ZDCMinus",&ZDCMinus);
+            t->SetBranchAddress("bestvtxX",&bestvtxX);
+            t->SetBranchAddress("bestvtxY",&bestvtxY);
+            t->SetBranchAddress("bestvtxZ",&bestvtxZ);
+            t->SetBranchAddress("candSize",&candSize);
+            t->SetBranchAddress("pT",&pT);
+            t->SetBranchAddress("y",&y);
+            t->SetBranchAddress("eta",&eta);
+            t->SetBranchAddress("phi",&phi);
+            t->SetBranchAddress("mass",&mass);
+            t->SetBranchAddress("flavor",&flavor);
+            t->SetBranchAddress("VtxProb",&VtxProb);
+            t->SetBranchAddress("VtxChi2",&VtxChi2);
+            t->SetBranchAddress("VtxNDF",&VtxNDF);
+            t->SetBranchAddress("3DCosPointingAngle",&_3DCosPointingAngle);
+            t->SetBranchAddress("3DPointingAngle",&_3DPointingAngle);
+            t->SetBranchAddress("2DCosPointingAngle",&_2DCosPointingAngle);
+            t->SetBranchAddress("2DPointingAngle",&_2DPointingAngle);
+            t->SetBranchAddress("3DDecayLengthSignificance",&_3DDecayLengthSignificance);
+            t->SetBranchAddress("3DDecayLength",&_3DDecayLength);
+            t->SetBranchAddress("2DDecayLengthSignificance",&_2DDecayLengthSignificance);
+            t->SetBranchAddress("2DDecayLength",&_2DDecayLength);
+            // t->SetBranchAddress("isSwap",&isSwap);
+            // t->SetBranchAddress("idmom_reco",&idmom_reco);
+            // t->SetBranchAddress("idBAnc_reco",&idBAnc_reco);
+            // t->SetBranchAddress("matchGEN",&matchGEN);
+            // t->SetBranchAddress("matchGen3DPointingAngle",&matchGen3DPointingAngle);
+            // t->SetBranchAddress("matchGen2DPointingAngle",&matchGen2DPointingAngle);
+            // t->SetBranchAddress("matchGen3DDecayLength",&matchGen3DDecayLength);
+            // t->SetBranchAddress("matchGen2DDecayLength",&matchGen2DDecayLength);
+            // t->SetBranchAddress("matchgen_D0pT",&matchgen_D0pT);
+            // t->SetBranchAddress("matchgen_D0eta",&matchgen_D0eta);
+            // t->SetBranchAddress("matchgen_D0phi",&matchgen_D0phi);
+            // t->SetBranchAddress("matchgen_D0mass",&matchgen_D0mass);
+            // t->SetBranchAddress("matchgen_D0y",&matchgen_D0y);
+            // t->SetBranchAddress("matchgen_D0charge",&matchgen_D0charge);
+            // t->SetBranchAddress("matchgen_D0pdgId",&matchgen_D0pdgId);
+            // t->SetBranchAddress("matchGen_D0pT",&matchGen_D0pT);
+            // t->SetBranchAddress("matchGen_D0eta",&matchGen_D0eta);
+            // t->SetBranchAddress("matchGen_D0phi",&matchGen_D0phi);
+            // t->SetBranchAddress("matchGen_D0mass",&matchGen_D0mass);
+            // t->SetBranchAddress("matchGen_D0y",&matchGen_D0y);
+            // t->SetBranchAddress("matchGen_D0charge",&matchGen_D0charge);
+            // t->SetBranchAddress("matchGen_D0pdgId",&matchGen_D0pdgId);
+            // t->SetBranchAddress("matchGen_D0Dau1_pT",&matchGen_D0Dau1_pT);
+            // t->SetBranchAddress("matchGen_D0Dau1_eta",&matchGen_D0Dau1_eta);
+            // t->SetBranchAddress("matchGen_D0Dau1_phi",&matchGen_D0Dau1_phi);
+            // t->SetBranchAddress("matchGen_D0Dau1_mass",&matchGen_D0Dau1_mass);
+            // t->SetBranchAddress("matchGen_D0Dau1_y",&matchGen_D0Dau1_y);
+            // t->SetBranchAddress("matchGen_D0Dau1_charge",&matchGen_D0Dau1_charge);
+            // t->SetBranchAddress("matchGen_D0Dau1_pdgId",&matchGen_D0Dau1_pdgId);
+            // t->SetBranchAddress("matchGen_D0Dau2_pT",&matchGen_D0Dau2_pT);
+            // t->SetBranchAddress("matchGen_D0Dau2_eta",&matchGen_D0Dau2_eta);
+            // t->SetBranchAddress("matchGen_D0Dau2_phi",&matchGen_D0Dau2_phi);
+            // t->SetBranchAddress("matchGen_D0Dau2_mass",&matchGen_D0Dau2_mass);
+            // t->SetBranchAddress("matchGen_D0Dau2_y",&matchGen_D0Dau2_y);
+            // t->SetBranchAddress("matchGen_D0Dau2_charge",&matchGen_D0Dau2_charge);
+            // t->SetBranchAddress("matchGen_D0Dau2_pdgId",&matchGen_D0Dau2_pdgId);
+            // t->SetBranchAddress("matchGen_D1pT",&matchGen_D1pT);
+            // t->SetBranchAddress("matchGen_D1eta",&matchGen_D1eta);
+            // t->SetBranchAddress("matchGen_D1phi",&matchGen_D1phi);
+            // t->SetBranchAddress("matchGen_D1mass",&matchGen_D1mass);
+            // t->SetBranchAddress("matchGen_D1y",&matchGen_D1y);
+            // t->SetBranchAddress("matchGen_D1charge",&matchGen_D1charge);
+            // t->SetBranchAddress("matchGen_D1pdgId",&matchGen_D1pdgId);
+            // t->SetBranchAddress("matchGen_D1decayLength2D_",&matchGen_D1decayLength2D_);
+            // t->SetBranchAddress("matchGen_D1decayLength3D_",&matchGen_D1decayLength3D_);
+            // t->SetBranchAddress("matchGen_D1angle2D_",&matchGen_D1angle2D_);
+            // t->SetBranchAddress("matchGen_D1angle3D_",&matchGen_D1angle3D_);
+            // t->SetBranchAddress("matchGen_D1ancestorId_",&matchGen_D1ancestorId_);
+            // t->SetBranchAddress("matchGen_D1ancestorFlavor_",&matchGen_D1ancestorFlavor_);
+            t->SetBranchAddress("massDaugther1",&massDaugther1);
+            t->SetBranchAddress("pTD1",&pTD1);
+            t->SetBranchAddress("EtaD1",&EtaD1);
+            t->SetBranchAddress("PhiD1",&PhiD1);
+            t->SetBranchAddress("VtxProbDaugther1",&VtxProbDaugther1);
+            t->SetBranchAddress("VtxChi2Daugther1",&VtxChi2Daugther1);
+            t->SetBranchAddress("VtxNDFDaugther1",&VtxNDFDaugther1);
+            t->SetBranchAddress("3DCosPointingAngleDaugther1",&_3DCosPointingAngleDaugther1);
+            t->SetBranchAddress("3DPointingAngleDaugther1",&_3DPointingAngleDaugther1);
+            t->SetBranchAddress("2DCosPointingAngleDaugther1",&_2DCosPointingAngleDaugther1);
+            t->SetBranchAddress("2DPointingAngleDaugther1",&_2DPointingAngleDaugther1);
+            t->SetBranchAddress("3DDecayLengthSignificanceDaugther1",&_3DDecayLengthSignificanceDaugther1);
+            t->SetBranchAddress("3DDecayLengthDaugther1",&_3DDecayLengthDaugther1);
+            t->SetBranchAddress("3DDecayLengthErrorDaugther1",&_3DDecayLengthErrorDaugther1);
+            t->SetBranchAddress("2DDecayLengthSignificanceDaugther1",&_2DDecayLengthSignificanceDaugther1);
+            t->SetBranchAddress("zDCASignificanceDaugther2",&zDCASignificanceDaugther2);
+            t->SetBranchAddress("xyDCASignificanceDaugther2",&xyDCASignificanceDaugther2);
+            t->SetBranchAddress("NHitD2",&NHitD2);
+            t->SetBranchAddress("HighPurityDaugther2",&HighPurityDaugther2);
+            t->SetBranchAddress("pTD2",&pTD2);
+            t->SetBranchAddress("EtaD2",&EtaD2);
+            t->SetBranchAddress("PhiD2",&PhiD2);
+            t->SetBranchAddress("pTerrD1",&pTerrD1);
+            t->SetBranchAddress("pTerrD2",&pTerrD2);
+            t->SetBranchAddress("dedxHarmonic2D2",&dedxHarmonic2D2);
+            t->SetBranchAddress("zDCASignificanceGrandDaugther1",&zDCASignificanceGrandDaugther1);
+            t->SetBranchAddress("zDCASignificanceGrandDaugther2",&zDCASignificanceGrandDaugther2);
+            t->SetBranchAddress("xyDCASignificanceGrandDaugther1",&xyDCASignificanceGrandDaugther1);
+            t->SetBranchAddress("xyDCASignificanceGrandDaugther2",&xyDCASignificanceGrandDaugther2);
+            t->SetBranchAddress("NHitGrandD1",&NHitGrandD1);
+            t->SetBranchAddress("NHitGrandD2",&NHitGrandD2);
+            t->SetBranchAddress("HighPurityGrandDaugther1",&HighPurityGrandDaugther1);
+            t->SetBranchAddress("HighPurityGrandDaugther2",&HighPurityGrandDaugther2);
+            t->SetBranchAddress("pTGrandD1",&pTGrandD1);
+            t->SetBranchAddress("pTGrandD2",&pTGrandD2);
+            t->SetBranchAddress("pTerrGrandD1",&pTerrGrandD1);
+            t->SetBranchAddress("pTerrGrandD2",&pTerrGrandD2);
+            t->SetBranchAddress("EtaGrandD1",&EtaGrandD1);
+            t->SetBranchAddress("EtaGrandD2",&EtaGrandD2);
+            t->SetBranchAddress("dedxHarmonic2GrandD1",&dedxHarmonic2GrandD1);
+            t->SetBranchAddress("dedxHarmonic2GrandD2",&dedxHarmonic2GrandD2);
+            t->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
+            t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
+            t->SetBranchAddress("dca3D",&dca3D);
+	    t->SetBranchAddress("mva",&mva);};
             template <typename T>
         void setOutputTree(T *t){
             t->Branch("Ntrkoffline",&Ntrkoffline);

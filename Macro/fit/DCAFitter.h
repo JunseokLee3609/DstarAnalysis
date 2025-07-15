@@ -747,7 +747,8 @@ public:
 
 	// double sbLow = 0.002;
 	// double sbHigh = 0.004;
-	double sbLow = 0.04;
+	double sbLow = 0.02;
+    double sbmid = 0.04;
 	double sbHigh = 0.08;
 	// std::string sbCut = Form("abs(%f-mass) > %f && abs(%f-mass) < %f ", deltaM_PDG, sbLow, deltaM_PDG, sbHigh);
 	// std::string sigCut = Form("abs(%f-mass) < %f ", deltaM_PDG, sbLow);
@@ -758,7 +759,7 @@ public:
         double dcaLow = dcaBins_[i];
         double dcaHigh = dcaBins_[i+1];
     TString dcaCut = TString::Format("%s >= %f && %s < %f", dca->GetName(), dcaLow, dca->GetName(), dcaHigh);
-    TString sbCut = TString::Format("abs(%s-%f) < %f && abs(%s-%f) > %f", massVar_->GetName(),D0_PDG, sbHigh, massVar_->GetName(),D0_PDG, sbLow);
+    TString sbCut = TString::Format("abs(%s-%f) < %f && abs(%s-%f) > %f", massVar_->GetName(),D0_PDG, sbHigh, massVar_->GetName(),D0_PDG, sbmid);
     TString sigCut = TString::Format("abs(%f-%s) < %f", D0_PDG,massVar_->GetName(), sbLow);
     // TString sigCut = TString::Format("%s < %f && %s > %f", massVar_->GetName(), sbLow, massVar_->GetName(), sbHigh);
     // TString sbCut = TString::Format("%s < 0.148 && %s > 0.144",massVar_->GetName(), massVar_->GetName());
@@ -787,7 +788,7 @@ public:
 	// sbYieldHist_->Fill(row->getRealValue(dcaVar_->GetName()));
 	// }
 }
-    // sbYieldHist_->Scale(1/2.0); // Scale sideband yield to match signal yield
+    sbYieldHist_->Scale(1/2.0); // Scale sideband yield to match signal yield
     // sbYieldHist_->Scale(1.0, "width"); 
     // sigYieldHist_->Scale(1.0, "width"); // DCA bin 폭
     dataYieldHist_.reset(static_cast<TH1D*>(sigYieldHist_->Clone()));
@@ -1011,23 +1012,23 @@ public:
 
     mainPad->cd();
     // dca->setBinning(RooBinning(dcaBins_.size() - 1, dcaBins_.data()));
-    RooPlot* frame = dca->frame(RooFit::Title(" "));
     RooBinning customBinning(dcaBins_.size() - 1, dcaBins_.data());
+    RooPlot* frame = dca->frame(Bins(dcaBins_.size()-1),RooFit::Title(" "));
     // frame->setBinning(customBinning);
 
     if (useDataTemplates) {
-        if (!dataDrivenTemplate_) {
-            std::cerr << "Error: dataDrivenTemplate_ (data yield histogram) not available for plotting." << std::endl;
-            delete c;
-            return;
-        }
-        TH1* h_density = dataDrivenTemplate_->createHistogram("h_density", *dca);
-        h_density->Scale(1.0, "width");
-        // h_density->Scale(1.0 / h_density->Integral() * dataSet_->sumEntries()); // Normalize to unit area
-        RooHist* rh_density=new RooHist(*h_density, 0.0, 1, RooAbsData::SumW2, 1.0, "P");
-        frame->addPlotable(rh_density, "P");
+        // if (!dataDrivenTemplate_) {
+        //     std::cerr << "Error: dataDrivenTemplate_ (data yield histogram) not available for plotting." << std::endl;
+        //     delete c;
+        //     return;
+        // }
+        // TH1* h_density = dataDrivenTemplate_->createHistogram("h_density", *dca);
+        // h_density->Scale(1.0, "width");
+        // // h_density->Scale(1.0 / h_density->Integral() * dataSet_->sumEntries()); // Normalize to unit area
+        // RooHist* rh_density=new RooHist(*h_density, 0.0, 1, RooAbsData::SumW2, 1.0, "P");
+        // frame->addPlotable(rh_density, "P");
         
-        // dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning),RooFit::Density(true), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
+        dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
         // dataDrivenTemplate_->plotOn(frame, RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
 
         RooAbsPdf* mcPromptPdf = ws_->pdf("promptPdf"); // MC prompt PDF
@@ -1056,7 +1057,7 @@ public:
         //                   RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
         // }
         
-        // dataDrivenTemplate_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
+        // dataDrivenTemplate_->plotOn(frame, RooFit::Name("data_yield_hist"), RooFit::DataError(RooAbsData::SumW2));
 
     } else { 
         if (!dataSet_) {

@@ -16,7 +16,7 @@ void Macro(bool doFit = false,bool useCUDA=true){
     // std::string filepath = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_D0DATAMVA.root";
     std::string filepath = "/home/jun502s/DstarAna/DStarAna/data/DstarData_Rds_CUDA_pp.root";
     std::string datasetName = "dataset";
-    DStarParamMap params = DStarParamMaker(ptBins,etaBins);
+    DStarParamMap params = D0ParamMaker(ptBins,etaBins);
     DataLoader loader(filepath);
     loader.loadRooDataSet(datasetName,"workspace");
     // RooDataSet* dataset = (RooDataSet*)TFile::Open(filepath.c_str())->Get(datasetName.c_str());

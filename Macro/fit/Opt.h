@@ -189,7 +189,8 @@ struct FitOpt {
         this->dcaVar = "dca3D";
         this->dcaMin = 0.0;
         this->dcaMax = 0.07;
-        this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.1};
+        // this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.1};
+        this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0118,0.0160,0.0214,0.0281,0.0367,0.0476,0.07};
         // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
         // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
         // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
