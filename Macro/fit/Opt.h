@@ -3,14 +3,15 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
 #include "Params.h" 
 
 struct FitOpt {
 
-    // 기본 정보
     std::string name;               // 인스턴스 이름
     
-    // 파일 및 데이터셋 관련    
     
 
     std::string datasetName;        // 데이터셋 이름
@@ -33,9 +34,9 @@ struct FitOpt {
     std::string centLegend;
     std::string cosLegend;
     std::string dcaLegend;
+    std::string subDir;
 
     
-    // 변수명 정보
     std::string massVar;            // 질량 변수 이름
     std::string ptVar;              // pT 변수 이름
     std::string etaVar;             // eta 변수 이름
@@ -46,11 +47,9 @@ struct FitOpt {
     std::string dcaVar;
     std::vector<std::string> constraintParameters;
     
-    // 질량 범위 설정
     double massMin;                 // 질량 최소값
     double massMax;                 // 질량 최대값
     
-    // 델타 질량 모드 설정 (D* 분석용)
     bool useDeltaMass;              // 델타 M 사용 여부
     double deltaMassMin;            // 델타 M 최소값
     double deltaMassMax;            // 델타 M 최대값
@@ -67,29 +66,32 @@ struct FitOpt {
     double dcaMin;                  // DCA 최소값
     double dcaMax;                  // DCA 최대값
     
-    // binning 관련
     std::vector<double> ptBins;
     std::vector<double> etaBins;
     std::vector<double> centBins;
     std::vector<double> mvaBins;
     std::vector<double> dcaBins =  {0,0.0012,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.07};
     
-    // 피팅 옵션
     bool useMinos;             
     bool useHesse;            
     bool verbose;             
     bool useCUDA;
     bool doFit;
     
-    // 출력 관련
     std::string outputDir;    
     std::string outputPlotDir;
     std::string outputMCDir;    
     std::string outputPrefix; 
     bool savePlots;           
     bool saveWorkspace;       
+
+private:
+    std::string baseOutputDir;
+    std::string baseOutputMCDir;
+    std::string baseOutputPlotDir;
     
-    // 생성자 - 기본값 설정
+public:
+    
     FitOpt() : 
         name("default"),
         datasetName("datasetHX"),
@@ -99,7 +101,7 @@ struct FitOpt {
         massVar("mass"),
         ptVar("pT"),
         etaVar("eta"),
-	    yVar("y"),
+        yVar("y"),
         centVar("cent"),
         mvaVar("mva"),
         cosVar("cos"),
@@ -111,6 +113,7 @@ struct FitOpt {
         deltaMassMin(0.0),
         deltaMassMax(1.0),
         deltaMassVar("deltaMass"),
+        subDir(""),
         mvaMin(0.0),
         // pTMin(4.0),
         // pTMax(100.0),
@@ -124,9 +127,48 @@ struct FitOpt {
         useCUDA(true),
         outputDir("roots/Data/"),
         outputMCDir("roots/MC/"),
+        baseOutputDir("roots/Data/"),
+        baseOutputMCDir("roots/MC/"),
+        baseOutputPlotDir("plots/"),
         savePlots(true),
         saveWorkspace(true)
     {}
+    
+    void setSubDir(const std::string& newSubDir) {
+        subDir = newSubDir;
+        updateDirectories();
+    }
+    
+    void setBaseDirectories(const std::string& dataDir, const std::string& mcDir, const std::string& plotDir = "") {
+        baseOutputDir = dataDir;
+        baseOutputMCDir = mcDir;
+        if (!plotDir.empty()) {
+            baseOutputPlotDir = plotDir;
+        }
+        updateDirectories();
+    }
+    
+    void updateDirectories() {
+        if (subDir.empty()) {
+            outputDir = baseOutputDir;
+            outputMCDir = baseOutputMCDir;
+            outputPlotDir = baseOutputPlotDir;
+        } else {
+            outputDir = addSubDirToPath(baseOutputDir, subDir);
+            outputMCDir = addSubDirToPath(baseOutputMCDir, subDir);
+            outputPlotDir = addSubDirToPath(baseOutputPlotDir, subDir);
+        }
+    }
+
+private:
+    // 경로에 subDir을 추가하는 헬퍼 함수
+    std::string addSubDirToPath(const std::string& basePath, const std::string& sub) const {
+        std::string path = basePath;
+        if (!path.empty() && path.back() != '/') path += "/";
+        return path + sub + "/";
+    }
+
+public:
     
     // 편의를 위한 D0 기본 설정 메서드
     // void D0MCDefault() {
@@ -148,6 +190,7 @@ struct FitOpt {
         this->wsName = "ws_D0";
         this->plotName = Form("Plot%s_%s_%s_%s_%s_%s",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputFile = Form("%s_%s_%s_%s_%s_%s",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->setBaseDirectories("roots/Data/", "roots/MC/", "plots/Data/");
         // this->datasetName = "reducedData";
     }
     void DStarDataDefault() {
@@ -162,7 +205,7 @@ struct FitOpt {
         this->wsName = "ws_DStar";
         this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputFile = Form("%s_%s_%s_%s_%s_%s.root",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->outputDir="roots/MC/";
+        this->setBaseDirectories("roots/MC/", "roots/MC/", "plots/MC/");
         // this->datasetName = "reducedData";
     }
         void D0DataDefault2() {
@@ -178,7 +221,7 @@ struct FitOpt {
         this->wsName = "ws_D0";
         this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputFile = Form("%s_%s_%s_%s_%s_%s.root",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->centVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->outputDir="roots/Data/";
+        this->setBaseDirectories("roots/Data/", "roots/MC/", "plots/Data/");
         // this->datasetName = "reducedData";
     }
     void DStarMCAbsDefault() {
@@ -212,9 +255,7 @@ struct FitOpt {
         this->centLegend = Form("%0.2f < |cos#theta_{HX}| < %0.2f", this->cosMin, this->cosMax);
         
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->outputMCDir="roots/MC_DStar_ppRef/";
-        this->outputDir="roots/Data_DStar_ppRef/";
-        this->outputPlotDir="plots/Data_DStar_ppRef/";
+        this->setBaseDirectories("roots/Data_DStar_ppRef/", "roots/MC_DStar_ppRef/", "plots/Data_DStar_ppRef/");
         // this->datasetName = "reducedData";
     }
     void DStarMCDefault() {
@@ -243,9 +284,7 @@ struct FitOpt {
         this->constraintParameters= {"alpha","mean"};
         
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
-        this->outputMCDir="roots/MC_DStar_ppRef/";
-        this->outputDir="roots/Data_DStar_ppRef/";
-        this->outputPlotDir="plots/Data_DStar_ppRef/";
+        this->setBaseDirectories("roots/Data_DStar_ppRef/", "roots/MC_DStar_ppRef/", "plots/Data_DStar_ppRef/");
         // this->datasetName = "reducedData";
     }
     void D0MCDefault() {
@@ -270,9 +309,8 @@ struct FitOpt {
         this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%sto%s_%s%s",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->centVar.c_str(),convertDotToP(this->centMin).c_str(),convertDotToP(this->centMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
         this->constraintParameters= {};
-        this->outputMCDir="roots/MC_D0_PbPb/";
-        this->outputDir="roots/Data_D0_PbPb/";
         this->constraintParameters= {"sigma_Swap1"};
+        this->setBaseDirectories("roots/Data_D0_PbPb/", "roots/MC_D0_PbPb/", "plots/Data_D0_PbPb/");
         // this->outputMCDir="roots/MC/";
         // this->outputDir="roots/Data/";
         this->datasetName = "dataset";
