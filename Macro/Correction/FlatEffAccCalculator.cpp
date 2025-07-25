@@ -16,9 +16,10 @@ void FlatEffAccCalculator(
     // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root",
     // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root",
     // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_06Apr25.root",
-    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_1_07Apr25.root",
+    //string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_1_07Apr25.root",
+    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/DStar/flatSkimForBDT_DStar_Mix_Jun16.root",
     // string fileMCNP,
-    string subDir = "",
+    string subDir = "Mix_Jun18",
     bool cutBased = false, 
     int mvaV = 0,
     double Direction_y = 1.0
@@ -60,7 +61,7 @@ void FlatEffAccCalculator(
     histoPhiCos[MC::kPR] = new TH2D("phi_cos_pr", "", nphi, phil, phih, ncos, coslo, coshi );
     // histoYPhi[MC::kNP] = new TH2D("y_phi_np", "",ny, yl, yh, nphi, phil, phih);
     std::map<MC, TH2D*> histoPtCos;
-    histoPtCos[MC::kPR] = new TH2D("pt_cos_pr", "", npt, pl, ph, ncos, coslo, coshi);
+    histoPtCos[MC::kPR] = new TH2D("pt_cos_pr", "", npt, &corrParams::pvec()[0], ncos, coslo, coshi);
     // histoPhiPt[MC::kNP] = new TH2D("phi_pt_np", "",nphi, phil, phih, npt, pl, ph);
 
     // std::map<MC, TH1D*> histoAglGenPass;
@@ -116,7 +117,7 @@ void FlatEffAccCalculator(
     histoPhiCosPass[MC::kPR] = new TH2D("phi_cos_pr_pass", "", nphi, phil, phih, ncos, coslo, coshi );
     // histoYPhi[MC::kNP] = new TH2D("y_phi_np", "",ny, yl, yh, nphi, phil, phih);
     std::map<MC, TH2D*> histoPtCosPass;
-    histoPtCosPass[MC::kPR] = new TH2D("pt_cos_pr_pass", "", npt, pl, ph, ncos, coslo, coshi);
+    histoPtCosPass[MC::kPR] = new TH2D("pt_cos_pr_pass", "", npt, &corrParams::pvec()[0], ncos, coslo, coshi);
     // histoPhiPt[MC::kNP] = new TH2D("phi_pt_np", "",nphi, phil, phih, npt, pl, ph);
 
     std::map<MC, TH3D*> histo3D;
@@ -161,7 +162,7 @@ void FlatEffAccCalculator(
     // numEvtPR = 100000;
     // long long numEvtNP = tMCNP->GetEntries();
 
-    TFile* outputFile = new TFile(Form("output.root"),"recreate");
+    TFile* outputFile = new TFile(Form("output_%s.root",subDir.c_str()),"recreate");
 
     /* Histo Filling Algorithm, takes index and will run every loop that is declared after*/
     int countgen = 0;
@@ -181,12 +182,12 @@ void FlatEffAccCalculator(
             countgen++;
             histoPt[mcID]->Fill(evtGenFlat.gen_pT, dzW);
             histoY[mcID]->Fill(Direction_y * evtGenFlat.gen_y, dzW);
-            histoCos[mcID]->Fill(vect.CosTheta(), dzW);
+            histoCos[mcID]->Fill(abs(vect.CosTheta()), dzW);
             histoPhi[mcID]->Fill(evtGenFlat.gen_phi, dzW);
             histoPtY[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, dzW);
-            histoYCos[mcID]->Fill(Direction_y * evtGenFlat.gen_y, vect.CosTheta(), dzW);
-            histoPhiCos[mcID]->Fill(evtGenFlat.gen_phi, vect.CosTheta(), dzW);
-            histoPtCos[mcID]->Fill(evtGenFlat.gen_pT, vect.CosTheta(), dzW);
+            histoYCos[mcID]->Fill(Direction_y * evtGenFlat.gen_y, abs(vect.CosTheta()), dzW);
+            histoPhiCos[mcID]->Fill(evtGenFlat.gen_phi, abs(vect.CosTheta()), dzW);
+            histoPtCos[mcID]->Fill(evtGenFlat.gen_pT, abs(vect.CosTheta()), dzW);
             histoYPhi[mcID]->Fill(Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
             histoPhiPt[mcID]->Fill(evtGenFlat.gen_phi, evtGenFlat.gen_pT, dzW);
             histo3D[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
@@ -211,7 +212,7 @@ void FlatEffAccCalculator(
         }
     };
     auto fillReco = [&](double dzW, MC mcID){
-        if (evtRecoFlat.matchGEN) {
+        if (evtRecoFlat.matchGEN && !evtRecoFlat.isSwap) {
             auto D0y = algo::rapidity(evtRecoFlat.pTD1, evtRecoFlat.EtaD1, evtRecoFlat.PhiD1, evtRecoFlat.massDaugther1);
             
             // Apply selection criteria
@@ -236,14 +237,14 @@ void FlatEffAccCalculator(
                 histoPtPass[mcID]->Fill(evtRecoFlat.pT, dzW);
                 histoYPass[mcID]->Fill(Direction_y * evtRecoFlat.y, dzW);
                 histoPhiPass[mcID]->Fill(evtRecoFlat.phi, dzW);
-                histoCosPass[mcID]->Fill(vect.CosTheta(), dzW);
+                histoCosPass[mcID]->Fill(abs(vect.CosTheta()), dzW);
                 histoPtYPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, dzW);
                 histoYPhiPass[mcID]->Fill(Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
                 histoPhiPtPass[mcID]->Fill(evtRecoFlat.phi, evtRecoFlat.pT, dzW);
                 histo3DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
-                histoYCosPass[mcID]->Fill(Direction_y * evtRecoFlat.y, vect.CosTheta(), dzW);
-                histoPhiCosPass[mcID]->Fill(evtRecoFlat.phi, vect.CosTheta(), dzW);
-                histoPtCosPass[mcID]->Fill(evtRecoFlat.pT, vect.CosTheta(), dzW);
+                histoYCosPass[mcID]->Fill(Direction_y * evtRecoFlat.y, abs(vect.CosTheta()), dzW);
+                histoPhiCosPass[mcID]->Fill(evtRecoFlat.phi, abs(vect.CosTheta()), dzW);
+                histoPtCosPass[mcID]->Fill(evtRecoFlat.pT, abs(vect.CosTheta()), dzW);
             }
         }
     };
@@ -251,6 +252,7 @@ void FlatEffAccCalculator(
     /* Actual filling loop*/
 
     for( auto idx : ROOT::TSeqU(numGenEntries)){
+         if (idx % 100000 == 0) std::cout << " GEN Entry: " << idx << "/" << numGenEntries << std::endl;
         genTree->GetEntry(idx);
 		// double dzW = hDzRatio->GetBinContent(hDzRatio->FindBin(evtPR.bestvtxZ));
         double dzW = 1.0;
@@ -258,11 +260,10 @@ void FlatEffAccCalculator(
         // std::cout << std::endl;
     }
     for( auto idx : ROOT::TSeqU(numRecoEntries)){
+         if (idx % 100000 == 0) std::cout << " RECO Entry: " << idx << "/" << numRecoEntries << std::endl;
         recoTree->GetEntry(idx);
         double dzW = 1.0;
-		// double dzW = hDzRatio->GetBinContent(hDzRatio->FindBin(evtPR.bestvtxZ));
             fillReco(dzW, MC::kPR);
-        // std::cout << std::endl;
     }
     // for( auto idx : ROOT::TSeqU(numEvtPR)){
     // for( auto idx : ROOT::TSeqU(100)){
@@ -415,6 +416,12 @@ void FlatEffAccCalculator(
     // histoPhiPtPass[MC::kNP]->Write();
     // histo3DGenPass[MC::kNP] ->Write();
     // histo3DPass[MC::kNP] ->Write();
+    TH1D* projCos_firstPtBin = histoPtCosPass[MC::kPR]->ProjectionY("projCos_firstPtBin", 1, 3);
+
+// 예시: 결과를 그리기
+TCanvas* c_proj = new TCanvas("c_proj", "Projection of first pt bin", 600, 400);
+projCos_firstPtBin->Draw();
+c_proj->SaveAs("projCos_firstPtBin.png");
     ratio3DPR->Write();
     // ratio3DNP->Write();
     ratio3DPRACC->Write();

@@ -16,7 +16,9 @@ void FlatEffAccCalculator_D0(
     // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root",
     // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_0_06Apr25.root",
     //string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Apr07NonSwap_y1p2_pT2/flatSkimForBDT_DStar_ppRef_NonSwapMC_1_07Apr25.root",
-    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/D0/flatSkimForBDT_D0_PbPb_MC_ONNX_withCent_Apr23_0_.root",
+    //string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/D0/flatSkimForBDT_D0_PbPb_MC_ONNX_withOfficialCent_DpT018_30Apr25.root",
+    string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/D0/flatSkimForBDT_D0_PbPb_MC_ONNX_withOfficialCent_DpT018_17May25.root",
+    // string fileMCPR="/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/D0/flatSkimForBDT_D0_Prompt_withOfficialCent_pT018_0_14May25.root",
     // string fileMCNP,
 //    string subDir = "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppData/D0/flatSkimForBDT_D0_PbPb_Data_ONNX_withCent_16Apr.root",
     bool cutBased = false, 
@@ -28,7 +30,8 @@ void FlatEffAccCalculator_D0(
 
     // double mvaCut = selMVA.low;
     double dcaCut = 0; // e.g. 0--0.01
-    std::vector<double> mvaBin = { 0.990,0.991,0.992,0.993,0.994,0.995,0.996,0.997,0.998,0.999,1.0};
+    std::vector<double> mvaBin = {0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.91,0.92,0.93,0.94,0.95,0.96,0.97,0.98, 0.990,0.991,0.992,0.993,0.994,0.995,0.996,0.997,0.998,0.999,1.0};
+    std::vector<double> centralityBin = {0,5,10,15,20,25,30,35,40,45,50,60,70,80,90};
 
     // --- Define Histograms ---
     std::map<MC, TH1D*> histoPt;
@@ -38,7 +41,7 @@ void FlatEffAccCalculator_D0(
     std::map<MC, TH1D*> histoPhi;
     histoPhi[MC::kPR] = new TH1D("phi_pr", "",nphi, phil, phih);
     std::map<MC, TH1D*> histoCent;
-    histoCent[MC::kPR] = new TH1D("cent_pr", "",ncent, &corrParams::centvec()[0]);
+    histoCent[MC::kPR] = new TH1D("cent_pr", "",centralityBin.size()-1, centralityBin.data());
     std::map<MC,TH1D*> histoMVA;
     histoMVA[MC::kPR] = new TH1D("mva_pr", "", mvaBin.size()-1, mvaBin.data());
     std::map<MC, TH2D*> histoPtY;
@@ -72,7 +75,7 @@ void FlatEffAccCalculator_D0(
     std::map<MC, TH1D*> histoPhiPass;
     histoPhiPass[MC::kPR] = new TH1D("phi_pr_pass", "",nphi, phil, phih);
     std::map<MC, TH1D*> histoCentPass;
-    histoCentPass[MC::kPR] = new TH1D("cent_pr_pass", "",ncent, &corrParams::centvec()[0]);
+    histoCentPass[MC::kPR] = new TH1D("cent_pr_pass", "",centralityBin.size()-1, centralityBin.data());
     std::map<MC, TH1D*> histoMVAPass;
     histoMVAPass[MC::kPR] = new TH1D("mva_pr_pass", "" ,mvaBin.size()-1, mvaBin.data());
     std::map<MC, TH2D*> histoPtYPass;
@@ -84,16 +87,61 @@ void FlatEffAccCalculator_D0(
     std::map<MC, TH3D*> histo3DPass;
     histo3DPass[MC::kPR]  = new TH3D("pt_y_phi_pr_pass", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0],  nphi, &algo::getEqualRangeV<double>(phil, phih, nphi)[0] );
 
+    // Int_t bins[4] = {npt, ny, mvaBin.size()-1, centralityBin.size()-1};
+    // Double_t low[4] = {corrParams::pvec()[0], corrParams::yvec()[0], mvaBin[0], centralityBin[0]};
+    // Double_t high[4] = {corrParams::pvec()[npt], corrParams::yvec()[ny], mvaBin[mvaBin.size()-1], centralityBin[centralityBin.size()-1]};
+
     // Add MVA histograms
     Int_t nmva = 20; // Number of bins for MVA
     Double_t mvalo = 0.9, mvahi = 1.0; // Range for MVA score
     std::map<MC, TH3D*> histoCuml3DPass;
     histoCuml3DPass[MC::kPR]  = new TH3D("pt_y_mva_pr_pass", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data() );
     histoCuml3DPass[MC::kNP]  = new TH3D("pt_y_mva_np_pass", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data() );
+    // std::map<MC, THn*> histoCuml4DPass;
+    // histoCuml4DPass[MC::kPR] = new THn("pt_y_mva_cent_pr_pass", "", 4, npt, low, high, bins, low, high);
+    
 
     std::map<MC, TH3D*> histoCuml3D;
     histoCuml3D[MC::kPR]  = new TH3D("pt_y_mva_pr", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data() );
     histoCuml3D[MC::kNP]  = new TH3D("pt_y_mva_np", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data() );
+    // std::map<MC, THn*> histoCuml4D;
+    // histoCuml4D[MC::kPR] = new THn("pt_y_mva_cent_pr", "", 4, npt, low, high, bins, low, high);
+    // histoCuml4D[MC::kPR]  = new THn("pt_y_mva_cent_pr", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data(), centralityBin.size()-1, centralityBin.data() );
+    // histoCuml4D[MC::kNP]  = new THn("pt_y_mva_cent_np", "", npt, &corrParams::pvec()[0], ny, &corrParams::yvec()[0], mvaBin.size()-1, mvaBin.data(),centralityBin.size()-1, centralityBin.data() );
+
+    // --- New histograms for pT, y, centrality efficiency maps per MVA cut ---
+    std::map<MC, TH3D*> histoGen_PtYCent;
+    histoGen_PtYCent[MC::kPR] = new TH3D("pt_y_cent_pr_gen_total", "Gen pT vs y vs centrality (PR);pT;y;centrality", 
+                                         npt, &corrParams::pvec()[0], 
+                                         ny, &corrParams::yvec()[0], 
+                                         centralityBin.size()-1, centralityBin.data());
+    // Add for MC::kNP if needed and if input for NP is processed
+    // histoGen_PtYCent[MC::kNP] = new TH3D("pt_y_cent_np_gen_total", "Gen pT vs y vs centrality (NP);pT;y;centrality", 
+    //                                      npt, &corrParams::pvec()[0], 
+    //                                      ny, &corrParams::yvec()[0], 
+    //                                      centralityBin.size()-1, centralityBin.data());
+
+    std::map<MC, std::vector<TH3D*>> histoReco_PtYCent_ForMVACut;
+    histoReco_PtYCent_ForMVACut[MC::kPR].resize(mvaBin.size());
+    // histoReco_PtYCent_ForMVACut[MC::kNP].resize(mvaBin.size()); // If MC::kNP is processed
+
+    for (size_t i_mva = 0; i_mva < mvaBin.size(); ++i_mva) {
+        cout << i_mva << " " << mvaBin[i_mva] << endl;
+        histoReco_PtYCent_ForMVACut[MC::kPR][i_mva] = 
+            new TH3D(Form("pt_y_cent_pr_reco_mvaCut_gt_%.4f", mvaBin[i_mva]), 
+                     Form("Reco pT vs y vs centrality (PR), MVA > %.4f;pT;y;centrality", mvaBin[i_mva]),
+                     npt, &corrParams::pvec()[0], 
+                     ny, &corrParams::yvec()[0], 
+                     centralityBin.size()-1, centralityBin.data());
+        // Add for MC::kNP if needed
+        // histoReco_PtYCent_ForMVACut[MC::kNP][i_mva] = 
+        //     new TH3D(Form("pt_y_cent_np_reco_mvaCut_gt_%.4f", mvaBin[i_mva]), 
+        //              Form("Reco pT vs y vs centrality (NP), MVA > %.4f;pT;y;centrality", mvaBin[i_mva]),
+        //              npt, &corrParams::pvec()[0], 
+        //              ny, &corrParams::yvec()[0], 
+        //              centralityBin.size()-1, centralityBin.data());
+    }
+    // --- End of new histogram definitions ---
 
     DataFormat::simpleDMCTreeflat evtGenFlat;  // For Gen tree
     DataFormat::simpleDMCTreeflat evtRecoFlat; // For Reco tree
@@ -120,7 +168,6 @@ void FlatEffAccCalculator_D0(
     long long numGenEntries = genTree->GetEntries();
     long long numRecoEntries = recoTree->GetEntries();
 
-    TFile* outputFile = new TFile(Form("output.root"),"recreate");
 
     /* Histo Filling Algorithm, takes index and will run every loop that is declared after*/
     int countgen = 0;
@@ -128,21 +175,26 @@ void FlatEffAccCalculator_D0(
 
     auto fillGen = [&](double dzW, MC mcID){
         if( evtGenFlat.gen_pT > 0 && 
-            fabs(evtGenFlat.gen_y) < 1 &&
+            fabs(evtGenFlat.gen_y) < 1 && // Basic kinematic acceptance for generated particles
             true){
             countgen++;
             histoPt[mcID]->Fill(evtGenFlat.gen_pT, dzW);
             histoY[mcID]->Fill(Direction_y * evtGenFlat.gen_y, dzW);
-            histoCent[mcID]->Fill(evtGenFlat.centrality, dzW);
+            histoCent[mcID]->Fill(evtGenFlat.centrality/2, dzW);
             histoPhi[mcID]->Fill(evtGenFlat.gen_phi, dzW);
             histoPtY[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, dzW);
 
             histoYPhi[mcID]->Fill(Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
             histoPhiPt[mcID]->Fill(evtGenFlat.gen_phi, evtGenFlat.gen_pT, dzW);
             histo3D[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, evtGenFlat.gen_phi, dzW);
-            for( auto mvas: mvaBin){
-                histoMVA[mcID]->Fill(mvas, dzW);
+            
+            // Fill the new generator histogram for pT, y, centrality
+            histoGen_PtYCent[mcID]->Fill(evtGenFlat.gen_pT, Direction_y * evtGenFlat.gen_y, evtGenFlat.centrality/2, dzW);
+
+            for( auto mvas: mvaBin){ // This loop is for existing cumulative MVA histograms
+                histoMVA[mcID]->Fill(mvas, dzW); // This seems to fill all mva thresholds for each event, check logic
                 histoCuml3D[mcID] ->Fill(evtGenFlat.gen_pT, Direction_y* evtGenFlat.gen_y, mvas, dzW);
+                // histoCuml4D[mcID] ->Fill(evtGenFlat.gen_pT, Direction_y* evtGenFlat.gen_y, mvas, evtGenFlat.centrality/2, dzW); // centrality/2 might need review
             }
             
             if (fabs(evtGenFlat.gen_y) < DSGLABSY_D0 &&
@@ -166,55 +218,47 @@ void FlatEffAccCalculator_D0(
     };
     auto fillReco = [&](double dzW, MC mcID){
         if (evtRecoFlat.matchGEN && !evtRecoFlat.isSwap) {
-            // histoMVA[mcID]->Fill(evtRecoFlat.mva, dzW);
+            // histoMVA[mcID]->Fill(evtRecoFlat.mva, dzW); // This was for all reco MVA values, not binned/cut
 
             
             // Apply selection criteria
             if (fabs(evtRecoFlat.y) < 1 &&
                 evtRecoFlat.pT > 0 &&
-                // fabs(D0y) < DSGLABSY_D0 &&
-                // fabs(evtRecoFlat.EtaD2) < 2.4 &&
-                // // evtRecoFlat.pTD2 > 1 &&
-                // // evtRecoFlat.pTD1 > 1 &&
-                // fabs(evtRecoFlat.EtaGrandD1) < DSGLABSETA_D0DAU1 &&
-                // fabs(evtRecoFlat.EtaGrandD2) < DSGLABSETA_D0DAU2 &&
-                // evtRecoFlat.pTGrandD1 > DSGLPT_D0DAU1 &&
-                // evtRecoFlat.pTGrandD2 > DSGLPT_D0DAU2 &&
+                evtRecoFlat.pT < 50 &&
+                // evtRecoFlat.centrality/2 > 0 &&
+                // evtRecoFlat.centrality/2 < 90 &&
+                // ... other reco selections ...
                 true ) {
                 
-                
-                
-                // count++;
-                
-                // histoMVAPass[mcID]->Fill(evtRecoFlat.mva, dzW);
-
+                // ... existing histo fills for pass ...
                 histoPtPass[mcID]->Fill(evtRecoFlat.pT, dzW);
                 histoYPass[mcID]->Fill(Direction_y * evtRecoFlat.y, dzW);
                 histoPhiPass[mcID]->Fill(evtRecoFlat.phi, dzW);
-                histoCentPass[mcID]->Fill(evtRecoFlat.centrality, dzW);
+                histoCentPass[mcID]->Fill(evtRecoFlat.centrality/2, dzW);
                 histoPtYPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, dzW);
                 histoYPhiPass[mcID]->Fill(Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
                 histoPhiPtPass[mcID]->Fill(evtRecoFlat.phi, evtRecoFlat.pT, dzW);
                 histo3DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, evtRecoFlat.phi, dzW);
-                double dzW2 = dzW;
-                // if(reweight){
-                //     dzW2 *=  1.0/hist_pty[mcID]->GetBinContent(hist_pty[mcID]->FindBin(evtRecoFlatRecoFlat.pT, evtRecoFlat.y));
-                // }
-                for( auto mvaThres : mvaBin){
-                    if(evtRecoFlat.mva > mvaThres) histoMVAPass[mcID]->Fill(mvaThres+0.00000001, dzW);
-                    if(evtRecoFlat.mva > mvaThres) histoCuml3DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, mvaThres+0.000000001, dzW2);
+                
+                double dzW2 = dzW; // Potentially reweighted
+
+                // Fill new reco histograms for pT, y, centrality, for each MVA cut
+                if (histoReco_PtYCent_ForMVACut.count(mcID)) {
+                    for (size_t i_mva = 0; i_mva < mvaBin.size(); ++i_mva) {
+                        if (evtRecoFlat.mva > mvaBin[i_mva]) {
+                            histoReco_PtYCent_ForMVACut[mcID][i_mva]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, evtRecoFlat.centrality/2, dzW2);
+
+                        }
+                    }
                 }
-                // if (((evtRecoFlat.mva-0.3)*DSGLMVASCALE +0.3 ) > 0.8){
-                    // histoAglPass[mcID]->Fill(evtRecoFlatRecoFlat.v3DPointingAngle  , dzW);
-                //     histoPtPass[mcID]->Fill(evtRecoFlat.pT  , dzW2);
-                //     histoYPass[mcID]->Fill(Direction_y * evtRecoFlat.y  , dzW2);
-                //     histoPhiPass[mcID]->Fill(evtRecoFlat.phi  , dzW2);
-                //     histoPtYPass[mcID]->Fill(evtRecoFlat.pT, Direction_y *evtRecoFlat.y  , dzW2);
-                //     histoYPhiPass[mcID]->Fill(Direction_y * evtRecoFlat.y, evtRecoFlat.phi  , dzW2);
-                //     histoPhiPtPass[mcID]->Fill(evtRecoFlat.phi, evtRecoFlat.pT  , dzW2);
-                //     histo3DPass[mcID] ->Fill(evtRecoFlat.pT, Direction_y *evtRecoFlat.y, evtRecoFlat.phi, dzW2);
-                // count ++;
-                // }
+
+                // This loop is for existing cumulative MVA histograms
+                for( auto mvaThres : mvaBin){
+                    if(evtRecoFlat.mva > mvaThres) histoMVAPass[mcID]->Fill(mvaThres+0.00000001, dzW); // Fills at the threshold value
+                    if(evtRecoFlat.mva > mvaThres) histoCuml3DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, mvaThres+0.000000001, dzW2);
+                    // if(evtRecoFlat.mva > mvaThres) histoCuml4DPass[mcID]->Fill(evtRecoFlat.pT, Direction_y * evtRecoFlat.y, mvaThres+0.000000001, evtRecoFlat.centrality/2, dzW2);
+                }
+                count ++;
             }
         }
     };
@@ -226,6 +270,7 @@ void FlatEffAccCalculator_D0(
         if (idx % 100000 == 0) std::cout << " GEN Entry: " << idx << "/" << numGenEntries << std::endl;
         genTree->GetEntry(idx);
         double dzW = evtGenFlat.ncoll;
+        // double dzW = 1;
             fillGen(dzW, MC::kPR);
     }
     std::cout << "Processing RECO entries..." << std::endl;
@@ -234,6 +279,7 @@ void FlatEffAccCalculator_D0(
         recoTree->GetEntry(idx);
         // cout << evtRecoFlat.ncoll  << endl;
         double dzW = evtRecoFlat.ncoll;
+        // double dzW = 1;
             fillReco(dzW, MC::kPR);
     }
 
@@ -288,7 +334,7 @@ void FlatEffAccCalculator_D0(
     c1->cd(1);
     ratioPtYPR->Draw("colz");
     c1->cd(2);
-    ratioMVAPR->SetRangeUser(ratioMVAPR->GetMinimum()*0.8, ratioMVAPR->GetMaimum()*1.2);
+    ratioMVAPR->GetYaxis()->SetRangeUser(ratioMVAPR->GetMinimum()*0.8, ratioMVAPR->GetMaximum()*1.2);
     ratioMVAPR->Draw();
     c1->cd(3);
     ratioPtPR->Draw();
@@ -300,6 +346,8 @@ void FlatEffAccCalculator_D0(
     ratioCentPR->Draw();
 
     c1->SaveAs(Form("distributions.png"));
+
+    TFile* outputFile = new TFile(Form("output_MC_May17_ncoll_v1.root"),"recreate");
 
     std::cout << "Passing Gen total : " << countgen << std::endl;
     std::cout << "Passing Reco total : " << count << std::endl;
@@ -338,6 +386,47 @@ void FlatEffAccCalculator_D0(
     histoMVA[MC::kPR]->Write();
     histoMVAPass[MC::kPR]->Write();
     ratioMVAPR->Write();
+
+    // --- Write new histograms and efficiency maps ---
+    if (histoGen_PtYCent.count(MC::kPR)) {
+        histoGen_PtYCent[MC::kPR]->Write();
+    }
+    // Add for MC::kNP if processed
+    // if (histoGen_PtYCent.count(MC::kNP)) {
+    //     histoGen_PtYCent[MC::kNP]->Write();
+    // }
+
+    if (histoReco_PtYCent_ForMVACut.count(MC::kPR)) {
+        for (size_t i_mva = 0; i_mva < mvaBin.size(); ++i_mva) {
+            TH3D* num_hist = histoReco_PtYCent_ForMVACut[MC::kPR][i_mva];
+            TH3D* den_hist = histoGen_PtYCent[MC::kPR];
+
+            num_hist->Write(); // Write the numerator histogram for this MVA cut
+
+            if (den_hist && den_hist->GetEntries() > 0) { // Ensure denominator is valid
+                TH3D* eff_hist = (TH3D*)num_hist->Clone(Form("eff_pt_y_cent_pr_mvaCut_gt_%.4f", mvaBin[i_mva]));
+                eff_hist->SetTitle(Form("Efficiency (pT,y,cent) PR for MVA > %.4f;pT (GeV/c);y;Centrality (%%)", mvaBin[i_mva]));
+                eff_hist->Divide(eff_hist, den_hist, 1, 1, "B"); // "B" for binomial errors
+                eff_hist->Write();
+            }
+        }
+    }
+    // Add similar loop for MC::kNP if processed
+    // if (histoReco_PtYCent_ForMVACut.count(MC::kNP) && histoGen_PtYCent.count(MC::kNP)) {
+    //     for (size_t i_mva = 0; i_mva < mvaBin.size(); ++i_mva) {
+    //         TH3D* num_hist = histoReco_PtYCent_ForMVACut[MC::kNP][i_mva];
+    //         TH3D* den_hist = histoGen_PtYCent[MC::kNP];
+    //         num_hist->Write();
+    //         if (den_hist && den_hist->GetEntries() > 0) {
+    //             TH3D* eff_hist = (TH3D*)num_hist->Clone(Form("eff_pt_y_cent_np_mvaCut_gt_%.4f", mvaBin[i_mva]));
+    //             eff_hist->SetTitle(Form("Efficiency (pT,y,cent) NP for MVA > %.4f;pT (GeV/c);y;Centrality (%%)", mvaBin[i_mva]));
+    //             eff_hist->Divide(eff_hist, den_hist, 1, 1, "B");
+    //             eff_hist->Write();
+    //         }
+    //     }
+    // }
+    // --- End of writing new histograms ---
+
 
     ratio3DPR->Write();
     ratio3DPRACC->Write();

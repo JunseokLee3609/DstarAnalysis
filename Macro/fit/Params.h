@@ -52,12 +52,15 @@ namespace PDFParams {
         double mean = 0.0;
         double sigmaL = 1.0;
         double sigmaR = 1.0;
+        double sigma = 1.0;
         double alphaL = 1.0;
         double nL = 1.0;
         double alphaR = 1.0;
         double nR = 1.0;
         double mean_min = -10.0;
         double mean_max = 10.0;
+        double sigma_min = 0.1;
+        double sigma_max = 10.0;
         double sigmaL_min = 0.1;
         double sigmaL_max = 10.0;
         double sigmaR_min = 0.1;

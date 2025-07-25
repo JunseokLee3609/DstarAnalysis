@@ -516,7 +516,6 @@ void FlexibleData(
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
                 if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 0.5 || dinData->pTGrandD2[iD1] <0.5 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
                     doutData->isMC = false;
-                    doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
                     doutData->copyDn(*dinData, iD1);
@@ -697,6 +696,7 @@ void FlexibleMC(
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
             //    if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pT[iD1] < 4  || abs(dinMC->EtaD1[iD1]) >2.4 || abs(dinMC->EtaD2[iD1]) >2.4 || dinMC->pTGrandD1[iD1]< 0.5 || dinMC->pTGrandD2[iD1] <0.5 || abs(dinMC->EtaGrandD1[iD1]) > 2.4 || abs(dinMC->EtaGrandD2[iD1])>2.4) continue;
+
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -705,7 +705,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
-                // if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->pTGrandD1[iD1]< 1 || dinMC->pTGrandD2[iD1] <1 || dinMC->EtaGrandD1[iD1] > 2.4 || dinMC->EtaGrandD2[iD1] >2.4) continue;
+                if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->gen_D0Dau1_pT[iD1]< 0.5 || dinMC->gen_D0Dau2_pT[iD1] <0.5 || dinMC->gen_D0Dau1_eta[iD1] > 2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4 || dinMC->gen_D1pT[iD1] < 0.4) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
@@ -748,6 +748,7 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
     bool doCent = false;
     bool doEvtPlane = particleType == ParticleType::DStar ? true : false;
     doEvtPlane=false;
+
 
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
     std::string eventPlaneInfoTreeName = "eventplane/EventPlane"; // Event Plane 트리 이름 (추가)
