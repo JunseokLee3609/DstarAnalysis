@@ -8,6 +8,11 @@ float findNcoll(int hiBin) {
     return Ncoll[hiBin];
  }
 
+void FillChain(TChain* chain, const std::vector<std::string>& files) {
+    for (const auto& file : files) {
+        chain->Add(file.c_str());
+    }
+}
 void loadRootFilesRecursively(TChain* chain, const std::string& folderPath) {
     
     if(TString(folderPath).EndsWith(".root")) {
@@ -368,14 +373,28 @@ void FlexibleData(
 
     // 데이터 메인 트리 체인 생성
     std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
-    loadRootFilesRecursively(chainData.get(), dataPath);
+    std::ifstream inputFile(dataPath);
+     if (!inputFile.is_open()) {
+         std::cerr << "Error opening the input file list: " << dataPath << std::endl;
+         return 1;
+     }
+
+     std::string line;
+     std::vector<std::string> files;
+     std::cout << "File Content: " << std::endl;
+     while (getline(inputFile, line)) {
+         std::cout << line << std::endl;
+         files.push_back(line);
+     }
+     inputFile.close();
+     FillChain(chainData.get(),files);
 
     // Event Info 체인 (doCent가 true일 경우에만 생성 및 사용)
     std::unique_ptr<TChain> chainEventInfo = nullptr;
     Short_t centrality = -99; // 기본값 초기화
     if (doCent) {
         chainEventInfo.reset(new TChain(eventInfoTreeName.c_str()));
-        loadRootFilesRecursively(chainEventInfo.get(), dataPath); // 데이터 경로에서 Event Info 로드
+	FillChain(chainEventInfo.get(),files);
         if (chainEventInfo->GetEntries() > 0) {
             chainEventInfo->SetBranchAddress("centrality", &centrality);
             std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
@@ -390,7 +409,7 @@ void FlexibleData(
     Double_t Psi2Raw_Trk = -99; // 기본값 초기화
     if (doEvtPlane) {
         chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
-        loadRootFilesRecursively(chainEventPlane.get(), dataPath); // 데이터 경로에서 Event Info 로드
+	FillChain(chainEventPlane.get(),files);
         if (chainEventPlane->GetEntries() > 0) {
             chainEventPlane->SetBranchAddress("trkQx", &trkQx);
             chainEventPlane->SetBranchAddress("trkQy", &trkQy);
@@ -570,7 +589,23 @@ void FlexibleMC(
 
     // 메인 트리 체인
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
-    loadRootFilesRecursively(chainMC.get(), mcPath);
+      std::ifstream inputFile(mcPath);
+     if (!inputFile.is_open()) {
+         std::cerr << "Error opening the input file list: " << mcPath << std::endl;
+         return 1;
+     }
+
+     std::string line;
+     std::vector<std::string> files;
+     std::cout << "File Content: " << std::endl;
+     while (getline(inputFile, line)) {
+         std::cout << line << std::endl;
+         files.push_back(line);
+     }
+     inputFile.close();
+    FillChain(chainMC.get(),files);
+
+   // loadRootFilesRecursively(chainMC.get(), mcPath);
 
     // Event Info 체인 (doCent가 true일 경우에만 생성 및 사용)
     std::unique_ptr<TChain> chainEventInfo = nullptr;
@@ -578,7 +613,7 @@ void FlexibleMC(
     Float_t ncoll = -99;
     if (doCent) {
         chainEventInfo.reset(new TChain(eventInfoTreeName.c_str()));
-        loadRootFilesRecursively(chainEventInfo.get(), mcPath);
+    	FillChain(chainEventInfo.get(),files);
         if (chainEventInfo->GetEntries() > 0) {
             chainEventInfo->SetBranchAddress("centrality", &centrality);
             std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
@@ -736,6 +771,7 @@ void FlexibleMC(
     
     std::cout << "FlexibleMC job #" << jobIdx << " completed successfully." << std::endl;
 }
+
 
 
 int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string suffix="") {
