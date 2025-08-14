@@ -521,7 +521,7 @@ void FlexibleData(
             simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pTD1[iD1] <1 || dinData->pTD2[iD1] <1 || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4) continue;
+               // if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pTD1[iD1] <1 || dinData->pTD2[iD1] <1 || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4) continue;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -533,7 +533,8 @@ void FlexibleData(
             simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 0.5 || dinData->pTGrandD2[iD1] <0.5 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
+
+             //   if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 0.5 || dinData->pTGrandD2[iD1] <0.5 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -740,7 +741,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
-                if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->gen_D0Dau1_pT[iD1]< 0.5 || dinMC->gen_D0Dau2_pT[iD1] <0.5 || dinMC->gen_D0Dau1_eta[iD1] > 2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4 || dinMC->gen_D1pT[iD1] < 0.4) continue;
+            //    if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->gen_D0Dau1_pT[iD1]< 0.5 || dinMC->gen_D0Dau2_pT[iD1] <0.5 || dinMC->gen_D0Dau1_eta[iD1] > 2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4 || dinMC->gen_D1pT[iD1] < 0.4) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
