@@ -1,13 +1,16 @@
-universe           = vanilla
-executable         = runProcess_MC.sh
+executable         = runSkim.sh
 getenv = True
-arguments          = $(start) $(end) $(job_idx) $(type) $(path)
+arguments          = $(inputPath) $(num) 
 output             = logs/$(Cluster)_$(Process).out
 error              = logs/$(Cluster)_$(Process).err
 log                = logs/$(Cluster)_$(Process).log
 request_memory = 4 GB
 should_transfer_files = YES
 when_to_transfer_output = ON_EXIT
-queue start end job_idx type path from files.txt
+
+
+transfer_input_files = FlexibleFlattener.cpp, combined_file_list.txt
+
+queue inputPath num from combined_file_list.txt
 
 
