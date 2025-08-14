@@ -1,12 +1,13 @@
 universe           = vanilla
-executable         = runProcess_Mix.sh
+executable         = runProcess_MC.sh
 getenv = True
-arguments          = $(Process)*100000 ($INT(Process)+1)*100000-1 $(Process)
+arguments          = $(start) $(end) $(job_idx) $(type) $(path)
 output             = logs/$(Cluster)_$(Process).out
 error              = logs/$(Cluster)_$(Process).err
 log                = logs/$(Cluster)_$(Process).log
+request_memory = 4 GB
 should_transfer_files = YES
 when_to_transfer_output = ON_EXIT
-queue 20
+queue start end job_idx type path from files.txt
 
 
