@@ -27,10 +27,24 @@
 #include "Opt.h"
 #include "../Tools/Style/CMS_lumi.h"
 #include "Helper.h"
+#include "RobustParameterManager.h"
 
-// 상수 정의
+// 상수 정의 - 구성 가능하도록 개선
 constexpr double PION_MASS = 0.13957039;
 constexpr double DELTAMASS = 0.1454257;
+#ifndef DEFAULT_CPU_COUNT
+constexpr int DEFAULT_CPU_COUNT = 24;  // 하드코딩된 값을 상수로 정의
+#endif
+constexpr int MAX_FIT_RETRIES = 3;     // 피팅 재시도 최대 횟수
+
+// 예외 클래스 정의
+class FittingException : public std::exception {
+private:
+    std::string message_;
+public:
+    explicit FittingException(const std::string& msg) : message_(msg) {}
+    const char* what() const noexcept override { return message_.c_str(); }
+};
 
 // 외부 파라미터 구조체 사용을 위한 타입 별칭 정의
 using GaussianParams = PDFParams::GaussianParams;
@@ -44,6 +58,8 @@ using PhenomenologicalParams = PDFParams::PhenomenologicalParams;
 using ExponentialBkgParams = PDFParams::ExponentialBkgParams;
 using ChebychevBkgParams = PDFParams::ChebychevBkgParams;
 using PolynomialBkgParams = PDFParams::PolynomialBkgParams;
+using ExpErfBkgParams = PDFParams::ExpErfBkgParams;
+using DstBkgParams = PDFParams::DstBkgParams;
 
 class MassFitter {
 public:
@@ -71,6 +87,13 @@ public:
     void ApplyCut(const std::string& cutExpr);
     void SetData(RooDataSet* dataset);
     
+    // 유효성 검증 메서드 추가
+    void ValidateConstructorParameters(const std::string& name, double massMin, double massMax,
+                                     double nsig_ratio, double nsig_min_ratio, double nsig_max_ratio,
+                                     double nbkg_ratio, double nbkg_min_ratio, double nbkg_max_ratio) const;
+    void ValidateDataSet(RooDataSet* dataset) const;
+    void ValidateFitRange(double rangeMin, double rangeMax) const;
+    
     // Signal PDF 설정 메서드
     void SetSignalPDF(const GaussianParams& params,const std::string &name);
     void SetSignalPDF(const DoubleGaussianParams& params, const std::string &name);
@@ -84,8 +107,12 @@ public:
     void SetBackgroundPDF(const ChebychevBkgParams& params, const std::string& name);
     void SetBackgroundPDF(const PolynomialBkgParams& params, const std::string& name);
     void SetBackgroundPDF(const PhenomenologicalParams& params, const std::string &name);
+    void SetBackgroundPDF(const ExpErfBkgParams& params, const std::string& name);
+    void SetBackgroundPDF(const DstBkgParams& params, const std::string& name);
     
-    // 피팅 수행
+    // 향상된 피팅 수행 메서드
+    std::unique_ptr<RooFitResult> RobustFit(FitStrategy strategy = FitStrategy::ADAPTIVE,
+                                          double rangeMin = -999, double rangeMax = -999);
     RooFitResult* Fit(bool useMinos, bool useHesse, bool verbose ,bool useCUDA, double rangeMin , double rangeMax);
     RooFitResult* FitMC(bool useMinos, bool useHesse, bool verbose ,bool useCUDA, double rangeMin , double rangeMax);
     RooFitResult* ConstraintFit(std::string fileMCPath,std::string fileMCFile, vector<std::string> constraintParameters, bool useMinos, bool useHesse, bool verbose, bool useCUDA, double rangeMin, double rangeMax);
@@ -110,15 +137,15 @@ public:
     void SaveMCResults(const std::string& filePath,const std::string& fileName, bool saveWorkspace =true);
     RooWorkspace* GetWorkspace() const { return workspace_.get(); } 
     RooFitResult* GetFitResult() const { return fit_result_.get(); }
-    RooFitResult* GetMCFitResult() const { return mc_fit_result_; }
-    RooWorkspace* GetMCWorkspace() const { return mcworkspace_; }
+    RooFitResult* GetMCFitResult() const { return mc_fit_result_.get(); }  
+    RooWorkspace* GetMCWorkspace() const { return mcworkspace_.get(); }    // 스마트 포인터로 수정
     // void SaveSPlotResults(const std::string& filePath,const std::string& fileName, bool saveWorkspace =true);
     
     // Delta mass 모드 설정 (D* 분석용)
     void UseDeltaMass(bool use = true, double daughterMassMin = 1.8, double daughterMassMax = 1.9);
     
 private:
-    std::unique_ptr<RooFitResult> fixFit(RooFitResult* initialResult);
+    // 레거시 fixFit 메서드 제거됨 - RobustFit으로 대체
     std::unique_ptr<RooAbsPdf> MakeGaussian(const GaussianParams& params, const std::string& name = "gauss");
     std::unique_ptr<RooAbsPdf> MakeDoubleGaussian(const DoubleGaussianParams& params, const std::string& name = "doublegauss");
     std::unique_ptr<RooAbsPdf> MakeCrystalBall(const CrystalBallParams& params, const std::string& name = "cb");
@@ -130,6 +157,8 @@ private:
     std::unique_ptr<RooAbsPdf> MakeChebychev(const ChebychevBkgParams& params, const std::string& name = "cheb");
     std::unique_ptr<RooAbsPdf> MakePolynomial(const PolynomialBkgParams& params, const std::string& name = "poly");
     std::unique_ptr<RooAbsPdf> MakeRooDstD0Bg(const PhenomenologicalParams& params, const std::string& name = "dstd0");
+    std::unique_ptr<RooAbsPdf> MakeExpErf(const ExpErfBkgParams& params, const std::string& name = "experf");
+    std::unique_ptr<RooAbsPdf> MakeDstBg(const DstBkgParams& params, const std::string& name = "dstbkg");
 
     // 전체 PDF 생성
     void CombinePDFs();
@@ -153,8 +182,7 @@ private:
     std::unique_ptr<RooAbsPdf> signal_pdf_;              // 신호 PDF
     std::unique_ptr<RooAbsPdf> swap0_pdf_;               // Swap0 PDF
     std::unique_ptr<RooAbsPdf> swap1_pdf_;               // Swap1 PDF
-    std::unique_ptr<RooAbsPdf> background_pdf_;          // 배경 PDF
-    std::unique_ptr<RooAddPdf> total_pdf_;               // 전체 PDF (신호 + 배경)
+    std::unique_ptr<RooAbsPdf> background_pdf_;          std::unique_ptr<RooAbsPdf> total_pdf_;                // 전체 PDF (신호 + 배경)
 
     // 데이터 객체들
     RooDataSet* full_data_;              // 전체 데이터셋 (외부에서 전달받음)
@@ -162,9 +190,9 @@ private:
 
     // 결과 객체들 (스마트 포인터 사용)
     std::unique_ptr<RooFitResult> fit_result_;           // 피팅 결과
-    RooFitResult* mc_fit_result_; 
+    std::unique_ptr<RooFitResult> mc_fit_result_;        
     std::unique_ptr<RooWorkspace> workspace_;            // 작업공간
-    RooWorkspace* mcworkspace_;
+    std::unique_ptr<RooWorkspace> mcworkspace_;          
 
     // 신호 및 배경 수득률 변수들 (스마트 포인터 사용)
     std::unique_ptr<RooRealVar> nsig_;                   // 신호 수득률
@@ -174,6 +202,13 @@ private:
 
     // PDF 파라미터 보관용 벡터 (스마트 포인터 사용)
     std::vector<std::unique_ptr<RooRealVar>> parameters_;
+    
+    // PDF 객체들을 안전하게 보관하기 위한 벡터 추가
+    std::vector<std::unique_ptr<RooAbsPdf>> managed_pdfs_;
+    
+    // 견고한 매개변수 및 피팅 관리
+    std::unique_ptr<RobustParameterManager> paramManager_;
+    std::unique_ptr<SmartFitStrategyManager> fitStrategyManager_;
 
     double nsig_ratio_;              
     double nsig_min_ratio_;          
@@ -202,148 +237,56 @@ std::unique_ptr<RooAbsPdf> MassFitter::MakeGaussian(const GaussianParams& params
     return std::make_unique<RooGaussian>(name.c_str(), ("Gaussian_" + name).c_str(),
                           *activeMassVar_, *meanPtr, *sigmaPtr);
 }
-std::unique_ptr<RooFitResult> MassFitter::fixFit(RooFitResult* initialResult) {
-    
-    RooFitResult* tempResult = initialResult;
-    bool needRefit = true;
-    int fitnum = 0;
-    
-    while(needRefit) {
-        if (fitnum > 0) tempResult->Print("v");
-
-        auto fpf  = tempResult->floatParsFinal();
-        auto cpf  = tempResult->constPars();
-        auto* modelVars = total_pdf_->getVariables();
-        
-        // 상수 파라미터 고정 유지
-        for(int idx = 0; idx < cpf.getSize(); ++idx) {
-            auto var = (TObject*)&cpf[idx];
-            std::string _vname_ = string(var->GetName());
-            cout << " >> Fixing parameter: " << _vname_ << std::endl;
-            auto pdfVar = dynamic_cast<RooRealVar*>(modelVars->find(_vname_.c_str()));
-            if (pdfVar) pdfVar->setConstant(kTRUE);
-        }
-
-        // Floating 파라미터 범위 조정
-        for(int idx = 0; idx < fpf.getSize(); ++idx) {
-            auto var = dynamic_cast<RooRealVar*>(&fpf[idx]);
-            if (!var) continue;
-
-            string _vname_ = string(var->GetName());
-            auto pdfVar = dynamic_cast<RooRealVar*>(modelVars->find(_vname_.c_str()));
-            if (!pdfVar) continue;
-
-            double _val_ = var->getVal();
-            double _limup_ = var->getMax();
-            double _limdown_ = var->getMin();
-            double _errup_ = var->getErrorHi();
-            double _errdo_ = var->getErrorLo();
-            
-            if( _val_ + 3 * _errup_ > _limup_ || (_val_ > 0 && 1.2 * _val_ > _limup_) || (_val_ < 0 && 0.8 * _val_ > _limup_)) {
-                if(_vname_.find("frac") != std::string::npos){ cout << "skip exapnding upper limit for frac" << std::endl; continue; } 
-                if(_vname_.find("nsig") != std::string::npos) {cout << "skip exapnding upper limit for nsig" << std::endl; continue; }
-                if(_vname_.find("nbkg") != std::string::npos) {cout << "skip exapnding upper limit for nbkg" << std::endl; continue; }
-                if(_vname_.find("alpha") != std::string::npos) {cout << "skip exapnding upper limit for alpha" << std::endl; continue; }
-                if(_vname_.find("n") != std::string::npos){cout << "Expanding upper limit for n" << std::endl; pdfVar->setMax(pdfVar->getMax() * 2); continue;}
-                if(_vname_.find("mean") != std::string::npos) {cout << "skip exapnding upper limit for mean" << std::endl; continue; }
-                // if(_vname_.find("p0")!= std::string::npos || _vname_.find("p1") != std::string::npos || _vname_.find("p2") != std::string::npos) {
-                if(_vname_.find("p0")!= std::string::npos) {
-                    // pdfVar->setMax(pdfVar->getMax() * 2);
-                    std::cout << " >> Expanding upper limit for " << _vname_ << " to " << pdfVar->getMax() << std::endl;
-                    continue;
-                }
-                pdfVar->setMax(_val_ + _errup_ * 9.0);
-                std::cout << " >> Expanding upper limit for " << _vname_ << " to " << pdfVar->getMax() << std::endl;
-            }
-            if(_val_ + 3 * _errdo_ < _limdown_ || (_val_ > 0 && 0.8 * _val_ < _limdown_) || (_val_ < 0 && 1.2 * _val_ < _limdown_)) {
-                if(_vname_.find("sigma") != std::string::npos) {cout << "skip exapnding lower limit for sigma" << std::endl; continue; }
-                if(_vname_.find("frac") != std::string::npos) { cout << "skip exapnding lower limit for frac" << std::endl; continue; }
-                if(_vname_.find("nsig") != std::string::npos) {cout << "skip exapnding lower limit for nsig" << std::endl; continue; }
-                if(_vname_.find("nbkg") != std::string::npos) {cout << "skip exapnding lower limit for nbkg" << std::endl; continue; }
-                if(_vname_.find("mean") != std::string::npos) {cout << "skip exapnding lower limit for mean" << std::endl; continue; }
-                // if(_vname_.find("p0")!= std::string::npos || _vname_.find("p1") != std::string::npos || _vname_.find("p2") != std::string::npos) {
-                if(_vname_.find("p0")!= std::string::npos) {
-                    pdfVar->setMin(pdfVar->getMin() * 0.5);
-                    std::cout << " >> Expanding lower limit for " << _vname_ << " to " << pdfVar->getMin() << std::endl;
-                    continue;
-                }
-                // if(_vname_.find("alpha") != std::string::npos){pdfVar->setMin(pdfVar->getMin() * 0.1);} continue;
-                if(_vname_.find("alpha") != std::string::npos) {cout << "skip exapnding lower limit for alpha" << std::endl; continue; }
-                if(_vname_.find("n") != std::string::npos){
-                    std::cout << "Expanding lower limit for n" << std::endl; 
-                }
-                pdfVar->setMin(_val_ + _errdo_ * 9.0);
-                std::cout << " >> Expanding lower limit for " << _vname_ << " to " << pdfVar->getMin() << std::endl;
-            }
-        }
-        delete modelVars;
-
-        RooLinkedList fitOpts;
-        fitOpts.Add(new RooCmdArg(RooFit::NumCPU(24)));
-        fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(1)));
-        fitOpts.Add(new RooCmdArg(RooFit::Save()));
-        fitOpts.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
-        fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
-        fitOpts.Add(new RooCmdArg(RooFit::SumW2Error(true)));
-        fitOpts.Add(new RooCmdArg(RooFit::Optimize(1)));
-        fitOpts.Add(new RooCmdArg(RooFit::Hesse(true)));
-        // fitOpts.Add(new RooCmdArg(RooFit::Minos(true)));
-        fitOpts.Add(new RooCmdArg(RooFit::Range("analysis")));
-        // fitOpts.Add(new RooCmdArg(RooFit::))
-
-        
-        // if (fitnum > 0) delete tempResult; // 이전 루프의 결과 삭제
-
-        tempResult = total_pdf_->fitTo(*reduced_data_, fitOpts);
-        // fitOpts.Add(new RooCmdArg(RooFit::Strategy(2)));
-           int ntry = -1;
-    while(tempResult->status() !=0 && (ntry+1)<3){
-        ntry++;
-        std::cout << "Initial fit failed with status " << initialResult->status() 
-                  << ". Retrying..." << std::endl;
-        tempResult = total_pdf_->fitTo(*reduced_data_,
-                                        RooFit::Minimizer("Minuit","Minimizer"),
-                                        RooFit::NumCPU(24),
-    #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
-                                        // RooFit::EvalBackend(useCUDA ? "cuda" : "CPU"),  
-    #endif
-                                        RooFit::Optimize(1),
-                                        RooFit::Extended(true),
-                                        RooFit::Save(true),
-                                        // RooFit::Minos(true),
-                                        RooFit::Hesse(true),
-                                        // RooFit::PrintLevel(verbose ? 1 : -1),
-                                        RooFit::Strategy(2-ntry),
-                                        RooFit::Range("analysis"));
+// 새로운 견고한 피팅 메서드 - 기존 fixFit 대체
+std::unique_ptr<RooFitResult> MassFitter::RobustFit(FitStrategy strategy, double rangeMin, double rangeMax) {
+    if (!total_pdf_ || !reduced_data_) {
+        FittingLogger::error("PDF or data not initialized for robust fit");
+        throw FittingException("Cannot perform fit: PDF or data not initialized");
     }
-        fitnum++;
-        
-        auto fpf2 = tempResult->floatParsFinal();
-        bool touchlimit = false;
-         for( int idx=0;idx<fpf2.getSize();idx++ ){
-                auto var = (RooRealVar*) &fpf2[idx];
-                double _val_ = var->getVal();
-                double _limup_ = var->getMax();
-                double _limdown_ = var->getMin();
-                double _errup_ = var->getErrorHi();
-                double _errdo_ = var->getErrorLo();
-                if( _val_ + 3 * _errup_ > _limup_ || (_val_ > 0 && 1.2 * _val_ > _limup_) || (_val_ < 0 && 0.8 * _val_ > _limup_)) touchlimit=1;
-                if(_val_ + 3 * _errdo_ < _limdown_ || (_val_ > 0 && 0.8 * _val_ < _limdown_) || (_val_ < 0 && 1.2 * _val_ < _limdown_)) touchlimit=1;
-            }
-
-        
-        needRefit = ((tempResult->statusCodeHistory(0) != 0) || (tempResult->statusCodeHistory(1) != 0) || touchlimit);
-    	
-        std::cout << "\n\n--- Post-correction Fit Attempt #" << fitnum << " ---" << std::endl;
-		tempResult->Print("v");
-        
-        if (fitnum > 2 && needRefit) { // 최대 3번 시도 후 실패 시 중단
-            std::cout << "Fit still fails after " << fitnum << " attempts. Giving up." << std::endl;
-            break;
+    
+    FittingLogger::info("Starting robust fit with strategy: " + std::to_string(static_cast<int>(strategy)));
+    
+    // 범위 설정
+    if (rangeMin != -999 && rangeMax != -999) {
+        if (activeMassVar_) {
+            activeMassVar_->setRange("analysis", rangeMin, rangeMax);
         }
     }
     
-    return std::unique_ptr<RooFitResult>(tempResult);
+    // 매개변수 관리자가 없으면 생성
+    if (!paramManager_) {
+        paramManager_ = std::make_unique<RobustParameterManager>();
+    }
+    
+    // 피팅 전략 관리자가 없으면 생성  
+    if (!fitStrategyManager_) {
+        fitStrategyManager_ = std::make_unique<SmartFitStrategyManager>();
+    }
+    
+    // 전략 설정
+    fitStrategyManager_->setStrategy(strategy);
+    
+    // 견고한 피팅 실행
+    auto result = fitStrategyManager_->executeFit(total_pdf_.get(), reduced_data_, paramManager_.get());
+    
+    if (result) {
+        // 피팅 진단 실행
+        auto diagnostics = ComprehensiveFitDiagnostics::diagnose(result.get(), total_pdf_.get(), reduced_data_, paramManager_.get());
+        
+        FittingLogger::info("Fit quality score: " + std::to_string(diagnostics.qualityScore));
+        
+        if (diagnostics.qualityScore < 0.5) {
+            FittingLogger::warning("Poor fit quality detected");
+            ComprehensiveFitDiagnostics::printDiagnostics(diagnostics);
+        }
+        
+        // 피팅 결과를 내부 변수에 저장
+        fit_result_ = std::unique_ptr<RooFitResult>(static_cast<RooFitResult*>(result->Clone()));
+    } else {
+        FittingLogger::error("Robust fit failed completely");
+    }
+    
+    return result;
 }
 
 std::unique_ptr<RooAbsPdf> MassFitter::MakeDoubleGaussian(const DoubleGaussianParams& params, const std::string& name) {
@@ -381,10 +324,9 @@ std::unique_ptr<RooAbsPdf> MassFitter::MakeDoubleGaussian(const DoubleGaussianPa
     RooGaussian* gauss1Ptr = gauss1.get();
     RooGaussian* gauss2Ptr = gauss2.get();
     
-    // 가우시안 PDF들도 parameters_에 저장하기 위해 별도 벡터 사용
-    // (RooAbsPdf는 RooRealVar과 다른 타입이므로 별도 관리 필요)
-    gauss1.release(); // 메모리 관리를 RooAddPdf에 위임
-    gauss2.release(); // 메모리 관리를 RooAddPdf에 위임
+    // PDF들을 안전하게 관리하기 위해 managed_pdfs_에 저장
+    managed_pdfs_.push_back(std::move(gauss1));
+    managed_pdfs_.push_back(std::move(gauss2));
 
     // 생성된 PDF 포인터 반환
     return std::make_unique<RooAddPdf>(name.c_str(), ("DoubleGaussian_" + name).c_str(),
@@ -615,8 +557,10 @@ std::unique_ptr<RooAbsPdf> MassFitter::MakePolynomial(const PolynomialBkgParams&
         parameters_.push_back(std::move(coef));
     }
     
-    return std::make_unique<RooChebychev>(name.c_str(), ("Polynomial_" + name).c_str(),
-                           *activeMassVar_, coefList);
+    // return std::make_unique<RooChebychev>(name.c_str(), ("Polynomial_" + name).c_str(),
+    //                        *activeMassVar_, coefList);
+    return std::make_unique<RooPolynomial>(name.c_str(), ("Polynomial_" + name).c_str(),
+                           *activeMassVar_, coefList,0);
 }
 // void MassFitter::MakePhenomenological(const PhenomenologicalParams& params, const std::string& name) {
 //     // if (!activeMassVar_) return nullptr;
@@ -634,10 +578,12 @@ std::unique_ptr<RooAbsPdf> MassFitter::MakePolynomial(const PolynomialBkgParams&
 std::unique_ptr<RooAbsPdf> MassFitter::MakeRooDstD0Bg(const PhenomenologicalParams& params, const std::string& name = "dstd0") {
     if (!activeMassVar_) return nullptr;
     
+    // auto m0 = std::make_unique<RooRealVar>("m0", "m0", PION_MASS, PION_MASS-0.0002, PION_MASS+0.0002 );        // Parameter m0
     auto m0 = std::make_unique<RooRealVar>("m0", "m0", PION_MASS);        // Parameter m0
     auto p0 = std::make_unique<RooRealVar>("p0", "p0", params.p0, params.p0_min, params.p0_max);          // Parameter p0
     auto p1 = std::make_unique<RooRealVar>("p1", "p1", params.p1, params.p1_min, params.p1_max);          // Parameter p1
     auto p2 = std::make_unique<RooRealVar>("p2", "p2", params.p2, params.p2_min, params.p2_max);          // Parameter p2
+    // auto p2 = std::make_unique<RooRealVar>("p2", "p2", 0);          // Parameter p2
     
     // 파라미터 포인터들을 저장
     RooRealVar* m0Ptr = m0.get();
@@ -651,6 +597,72 @@ std::unique_ptr<RooAbsPdf> MassFitter::MakeRooDstD0Bg(const PhenomenologicalPara
     parameters_.push_back(std::move(p2));
     
     return std::make_unique<RooDstD0BG>(name.c_str(), ("RooDstD0Bg" + name).c_str(), *activeMassVar_, *m0Ptr, *p0Ptr, *p1Ptr, *p2Ptr);
+}
+std::unique_ptr<RooAbsPdf> MassFitter::MakeExpErf(const ExpErfBkgParams& params, const std::string& name) {
+    if (!activeMassVar_) return nullptr;
+    
+    // Create parameters for the exponential with error function background
+    auto err_mu = std::make_unique<RooRealVar>(("bkg_err_mu_" + name).c_str(), "err_mu",
+                                               params.err_mu,
+                                               params.err_mu_min,
+                                               params.err_mu_max);
+    
+    auto err_sigma = std::make_unique<RooRealVar>(("bkg_err_sigma_" + name).c_str(), "err_sigma",
+                                                  params.err_sigma,
+                                                  params.err_sigma_min,
+                                                  params.err_sigma_max);
+    
+    auto m_lambda = std::make_unique<RooRealVar>(("bkg_m_lambda_" + name).c_str(), "m_lambda",
+                                                 params.m_lambda,
+                                                 params.m_lambda_min,
+                                                 params.m_lambda_max);
+    
+    // Store pointers before moving to parameters vector
+    RooRealVar* err_muPtr = err_mu.get();
+    RooRealVar* err_sigmaPtr = err_sigma.get();
+    RooRealVar* m_lambdaPtr = m_lambda.get();
+    
+    // Move parameters to storage
+    parameters_.push_back(std::move(err_mu));
+    parameters_.push_back(std::move(err_sigma));
+    parameters_.push_back(std::move(m_lambda));
+    
+    // Create the RooGenericPdf with the formula
+    // Formula: TMath::Exp(-@0/@1)*(TMath::Erf((@0-@2)/(TMath::Sqrt(2)*@3))+1)*0.5
+    std::string formula = "TMath::Exp(-@0/@1)*(TMath::Erf((@0-@2)/(TMath::Sqrt(2)*@3))+1)*0.5";
+    
+    return std::make_unique<RooGenericPdf>(name.c_str(), 
+                                          ("ExpErf_Background_" + name).c_str(),
+                                          formula.c_str(),
+                                          RooArgList(*activeMassVar_, *m_lambdaPtr, *err_muPtr, *err_sigmaPtr));
+}
+std::unique_ptr<RooAbsPdf> MassFitter::MakeDstBg(const DstBkgParams& params, const std::string& name) {
+    if (!activeMassVar_) return nullptr;
+    
+    // Create parameters for the exponential with error function background
+    auto m0 = std::make_unique<RooRealVar>("m0", "m0", PION_MASS);        // Parameter m0
+    auto p0 = std::make_unique<RooRealVar>("p0", "p0", params.p0, params.p0_min, params.p0_max);          // Parameter p0
+    auto p1 = std::make_unique<RooRealVar>("p1", "p1", params.p1, params.p1_min, params.p1_max);  
+    
+    // Store pointers before moving to parameters vector
+    RooRealVar* m0Ptr = m0.get();
+    RooRealVar* p0Ptr = p0.get();
+    RooRealVar* p1Ptr = p1.get();
+    
+    // Move parameters to storage
+    parameters_.push_back(std::move(m0));
+    parameters_.push_back(std::move(p0));
+    parameters_.push_back(std::move(p1));
+    
+    // Create the RooGenericPdf with the formula
+    // Formula: TMath::Exp(-@0/@1)*(TMath::Erf((@0-@2)/(TMath::Sqrt(2)*@3))+1)*0.5
+    // std::string formula = "TMath::Exp(-@0/@1)*(TMath::Erf((@0-@2)/(TMath::Sqrt(2)*@3))+1)*0.5";
+    std::string formula = "@2*TMath::Sqrt(@0-@1)*TMath::Exp(@3*(@0-@1))";
+    
+    return std::make_unique<RooGenericPdf>(name.c_str(), 
+                                          ("Dst_Background_" + name).c_str(),
+                                          formula.c_str(),
+                                          RooArgList(*activeMassVar_, *m0Ptr, *p0Ptr, *p1Ptr));
 }
 
 
@@ -763,6 +775,10 @@ MassFitter::MassFitter(const std::string& name, std::string& massVar, double mas
       nsig_ratio_(nsig_ratio), nsig_min_ratio_(nsig_min_ratio), nsig_max_ratio_(nsig_max_ratio),
       nbkg_ratio_(nbkg_ratio), nbkg_min_ratio_(nbkg_min_ratio), nbkg_max_ratio_(nbkg_max_ratio) {
     
+    // 매개변수 유효성 검증
+    ValidateConstructorParameters(name, massMin, massMax, nsig_ratio, nsig_min_ratio, 
+                                nsig_max_ratio, nbkg_ratio, nbkg_min_ratio, nbkg_max_ratio);
+    
     // 질량 변수 생성 (스마트 포인터 사용)
     mass_ = std::make_unique<RooRealVar>(massVar_.c_str(), "mass", massMin, massMax, "GeV/c^{2}");
     
@@ -771,6 +787,26 @@ MassFitter::MassFitter(const std::string& name, std::string& massVar, double mas
     
     // 워크스페이스 초기화 (스마트 포인터 사용)
     workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
+    
+    // 견고한 매개변수 관리자 초기화
+    try {
+        paramManager_ = std::make_unique<RobustParameterManager>();
+        FittingLogger::info("RobustParameterManager initialized for " + name_);
+    } catch (const std::exception& e) {
+        FittingLogger::error("Failed to initialize RobustParameterManager: " + std::string(e.what()));
+        throw FittingException("Parameter manager initialization failed");
+    }
+    
+    // 스마트 피팅 전략 관리자 초기화
+    try {
+        fitStrategyManager_ = std::make_unique<SmartFitStrategyManager>();
+        FittingLogger::info("SmartFitStrategyManager initialized for " + name_);
+    } catch (const std::exception& e) {
+        FittingLogger::error("Failed to initialize SmartFitStrategyManager: " + std::string(e.what()));
+        throw FittingException("Fit strategy manager initialization failed");
+    }
+    
+    FittingLogger::info("MassFitter '" + name_ + "' initialized successfully with robust framework");
 }
 
 MassFitter::~MassFitter() {
@@ -867,8 +903,14 @@ void MassFitter::SetBackgroundPDF(const PhenomenologicalParams& params, const st
     std::string pdfName = name.empty() ? "bkg_" + name_ : name;
     background_pdf_ = MakeRooDstD0Bg(params, pdfName); // 스마트 포인터 이동
 }
-
-
+void MassFitter::SetBackgroundPDF(const ExpErfBkgParams& params, const std::string& name) {
+    std::string pdfName = name.empty() ? "bkg_" + name_ : name;
+    background_pdf_ = MakeExpErf(params, pdfName); // 스마트 포인터 이동
+}
+void MassFitter::SetBackgroundPDF(const DstBkgParams& params, const std::string& name) {
+    std::string pdfName = name.empty() ? "bkg_" + name_ : name;
+    background_pdf_ = MakeDstBg(params, pdfName); // 스마트 포인터 이동
+}
 
 RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, bool useCUDA, double rangeMin, double rangeMax) {
     if (!total_pdf_) {
@@ -884,7 +926,7 @@ RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, bool u
     
     // 피팅 수행
     RooLinkedList fitOpts;
-    fitOpts.Add(new RooCmdArg(RooFit::NumCPU(24)));
+    fitOpts.Add(new RooCmdArg(RooFit::NumCPU(DEFAULT_CPU_COUNT)));
     #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
     fitOpts.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
     #endif
@@ -896,6 +938,7 @@ RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, bool u
     fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
     fitOpts.Add(new RooCmdArg(RooFit::Range("analysis")));
 
+
     
     RooFitResult* initialResult = total_pdf_->fitTo(*reduced_data_, fitOpts);
     initialResult->Print("v");
@@ -904,7 +947,7 @@ RooFitResult* MassFitter::Fit(bool useMinos, bool useHesse, bool verbose, bool u
     while(((initialResult->statusCodeHistory(0) != 0) || (initialResult->statusCodeHistory(1) != 0)) && (ntry)<3){
     delete initialResult; // 이전 결과 삭제
     RooLinkedList fitOptstemp;
-    fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(24)));
+    fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(DEFAULT_CPU_COUNT)));
     fitOptstemp.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
     #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
     fitOptstemp.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
@@ -1037,7 +1080,7 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
 
 
     RooLinkedList fitOpts;
-    fitOpts.Add(new RooCmdArg(RooFit::NumCPU(24)));
+    fitOpts.Add(new RooCmdArg(RooFit::NumCPU(DEFAULT_CPU_COUNT)));
     fitOpts.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
     #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
     fitOpts.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
@@ -1049,6 +1092,7 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
     fitOpts.Add(new RooCmdArg(RooFit::Hesse(useHesse)));
     fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
     fitOpts.Add(new RooCmdArg(RooFit::Range("analysis")));
+    fitOpts.Add(new RooCmdArg(RooFit::SumW2Error(true))); 
     // fitOpts.Add(new RooCmdArg(RooFit::Strategy(2))); // 전략 2로 설정 (더 강력한 피팅 전략)
 
     
@@ -1062,7 +1106,7 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
     while(((initialResult->statusCodeHistory(0) != 0) || (initialResult->statusCodeHistory(1) != 0)) && (ntry)<3){
     delete initialResult; // 이전 결과 삭제
     RooLinkedList fitOptstemp;
-    fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(24)));
+    fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(DEFAULT_CPU_COUNT)));
     fitOptstemp.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
     #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
     fitOptstemp.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
@@ -1075,6 +1119,7 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
     fitOptstemp.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
     fitOptstemp.Add(new RooCmdArg(RooFit::Range("analysis")));
     fitOptstemp.Add(new RooCmdArg(RooFit::Strategy(2-ntry))); 
+    fitOptstemp.Add(new RooCmdArg(RooFit::SumW2Error(true))); 
         std::cout << "Initial fit failed with status " << initialResult->status() 
                   << ". Retrying..." << std::endl;
         initialResult = total_pdf_->fitTo(*reduced_data_,fitOptstemp);
@@ -1084,24 +1129,20 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
     }
     // bool touchlimit = false;
     // auto finalPars = initialResult->floatParsFinal();
-    //   for( int idx=0;idx<finalPars.getSize();idx++ ){
-    //             auto var = (RooRealVar*) &finalPars[idx];
-    //             double _val_ = var->getVal();
-    //             double _errup_ = var->getErrorHi();
-    //             double _errdo_ = var->getErrorLo();
-    //             double _errsym_ = var->getError();
-    //             double _limup_ = var->getMax();
-    //             double _limdown_ = var->getMin();
-    //             if(_val_==_limup_ || _val_==_limdown_) touchlimit=1;
-    //             if( _val_ + 3* _errup_ > _limup_ || (_val_ >0 && 1.2*_val_ > _limup_ )|| (_val_ <0 && 0.8*_val_ > _limup_ )) touchlimit=1;
-    //             if(_val_ + 3*_errdo_ < _limdown_ || (_val_ >0 && 0.8*_val_ < _limdown_ )|| (_val_ <0 && 1.2*_val_ < _limdown_ )) touchlimit=1;}
-
+    // for (int idx = 0; idx < finalPars.getSize(); ++idx) {
+    //     auto var = dynamic_cast<RooRealVar*>(&finalPars[idx]);
+    //     if (var) {
+    //         if (var->getVal() >= var->getMax() - 1e-6 || var->getVal() <= var->getMin() + 1e-6) {
+    //             touchlimit = true;
+    //             break;
+    //         }
+    //     }
+    // }
 
     // bool needFinalFitRefit = (initialResult->statusCodeHistory(0) != 0) || (initialResult->statusCodeHistory(1) != 0) || touchlimit;
-
-    // // // 3. 필요시 fixFit 호출
-    // if (needFinalFitRefit && !useMinos) {
-    //     std::cout << "Initial constrained fit was unstable. Attempting to fix and refit..." << std::endl;
+    
+    // if (needFinalFitRefit && !useMinos) { // Minos가 켜져 있으면 statusCode가 0이 아닐 수 있음
+    //     std::cout << "Initial fit was unstable. Attempting to fix and refit..." << std::endl;
     //     fit_result_ = fixFit(initialResult); // fixFit은 unique_ptr을 반환
     // } else {
     //     fit_result_.reset(initialResult); // 문제가 없으면 소유권만 이전
@@ -1112,376 +1153,6 @@ RooFitResult* MassFitter::ConstraintFit(std::string fileMCPath,std::string fileM
     // } else {
     //     std::cout << "Fit completed. Signal yield: " << GetSignalYield() 
     //               << " ± " << GetSignalYieldError() << std::endl;
-    //     std::cout << "Chi2/NDF = " << GetReducedChiSquare() << std::endl;
-    // }
-    
-    
-    initialResult->Print("v");
-    fit_result_.reset(initialResult); // 문제가 없으면 소유권만 이전
-    // 워크스페이스에 결과 저장
-    workspace_->import(*total_pdf_);
-    delete fitResult;
-    file->Close();
-    
-    return fit_result_.get();
-}
-
-// RooFitResult* MassFitter::ConstraintBinnedFit(std::string fileMCPath, std::string fileMCFile, std::string dataHistoName, std::string dataHistoFilePath, vector<std::string> constraintParameters, bool useMinos, bool useHesse, bool verbose, bool useCUDA, double rangeMin, double rangeMax) {
-//     std::string fullMCPath = fileMCPath;
-//     if (!fullMCPath.empty() && fullMCPath.back() != '/') fullMCPath += '/';
-//     fullMCPath += fileMCFile;
-
-//     TFile *mcFile = TFile::Open((fullMCPath).c_str());
-//     if (!mcFile || mcFile->IsZombie()) {
-//         std::cerr << "Error: Failed to open MC fit result file: " << fullMCPath << std::endl;
-//         return nullptr;
-//     }
-//     RooFitResult* mcFitResult = (RooFitResult*)mcFile->Get("fitResult");
-//     if (!mcFitResult) {
-//         std::cerr << "Error: Fit result 'fitResult' not found in MC file: " << fullMCPath << std::endl;
-//         mcFile->Close();
-//         delete mcFile;
-//         return nullptr;
-//     }
-
-//     TFile *dataFile = TFile::Open(dataHistoFilePath.c_str());
-//     if (!dataFile || dataFile->IsZombie()) {
-//         std::cerr << "Error: Failed to open data histogram file: " << dataHistoFilePath << std::endl;
-//         // mcFitResult is from mcFile, so don't delete it here if mcFile is closed properly
-//         mcFile->Close(); // mcFitResult becomes invalid after this if owned by mcFile
-//         delete mcFile;
-//         if(dataFile) delete dataFile;
-//         return nullptr;
-//     }
-//     TH1* dataTH1 = (TH1*)dataFile->Get(dataHistoName.c_str());
-//     if (!dataTH1) {
-//         std::cerr << "Error: Data histogram '" << dataHistoName << "' not found in file: " << dataHistoFilePath << std::endl;
-//         dataFile->Close();
-//         delete dataFile;
-//         mcFile->Close();
-//         delete mcFile;
-//         return nullptr;
-//     }
-
-//     RooDataHist* binnedData = new RooDataHist("binnedData", "Binned Data", *mass_, dataTH1);
-
-//     if (!total_pdf_ || !binnedData) {
-//         std::cerr << "Error: Total PDF or binned dataset not set" << std::endl;
-//         delete binnedData;
-//         dataFile->Close();
-//         delete dataFile;
-//         mcFile->Close();
-//         delete mcFile;
-//         return nullptr;
-//     }
-
-//     RooArgList fitParams = mcFitResult->floatParsFinal();
-//     RooArgSet massSet(*mass_);
-//     RooArgSet* pdfParams = total_pdf_->getParameters(&massSet);
-//     for (int i = 0; i < fitParams.getSize(); ++i) {
-//         RooRealVar* fitParam = dynamic_cast<RooRealVar*>(fitParams.at(i));
-//         if (!fitParam) continue;
-        
-//         const std::string paramName = fitParam->GetName();
-//         RooRealVar* pdfParam = dynamic_cast<RooRealVar*>(pdfParams->find(paramName.c_str()));
-//         // cout << pdfParam << " " <<fitParam << endl; // User's original debug line
-        
-//         if (pdfParam) {
-//             pdfParam->setVal(fitParam->getVal());      
-//             pdfParam->setError(fitParam->getError());
-            
-//             bool shouldConstrain = false;
-//             for (const auto& constParam : constraintParameters) {
-//                 if (paramName.find(constParam) != std::string::npos) {
-//                     shouldConstrain = true;
-    //                     break;
-    //                 }
-    //             }
-            
-    //             if (shouldConstrain) {
-    //                 pdfParam->setConstant(true);
-    //                 std::cout << "Parameter '" << paramName << "' set to " 
-    //                           << fitParam->getVal() << " ± " << fitParam->getError() 
-    //                           << " and FIXED" << std::endl;
-    //             } else {
-    //                 pdfParam->setConstant(false);
-    //                 std::cout << "Parameter '" << paramName << "' set to " 
-    //                           << fitParam->getVal() << " ± " << fitParam->getError() 
-    //                           << " (floating)" << std::endl;
-    //             }
-    //         } else {
-    //             std::cerr << "Warning: Parameter '" << paramName 
-    //                       << "' from fit result not found in total_pdf!" << std::endl;
-    //         }
-    //     }
-    //     mass_->setRange("analysis", rangeMin, rangeMax);
-    
-    //     RooMsgService::instance().setGlobalKillBelow(verbose ? RooFit::INFO : RooFit::WARNING);
-    
-    //     fit_result_ = total_pdf_->fitTo(*binnedData,
-    //                                     RooFit::NumCPU(24),
-    // #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
-    //                                     RooFit::EvalBackend(useCUDA ? "cuda" : "CPU"),
-    // #endif
-    //                                     RooFit::Extended(true),
-    //                                     RooFit::Save(true),
-    //                                     RooFit::Minos(useMinos),
-    //                                     RooFit::Hesse(useHesse),
-    //                                     RooFit::PrintLevel(verbose ? 1 : -1),
-    //                                     RooFit::Range("analysis"));
-
-//     if (verbose) {
-//         if (fit_result_) fit_result_->Print("v");
-//     } else {
-//         std::cout << "Fit completed. Signal yield: " << GetSignalYield() 
-//                   << " ± " << GetSignalYieldError() << std::endl;
-        
-    
-//     workspace_->import(*total_pdf_);
-//     workspace_->import(*binnedData); // Import the binned data as well
-
-//     // Cleanup
-//     // mcFitResult is owned by mcFile, no need to delete explicitly if mcFile is closed.
-//     // The original code had 'delete fitResult' (which is mcFitResult here) then 'file->Close()'.
-//     // Sticking to that pattern, though it's generally safer to let TFile manage its objects.
-//     delete mcFitResult; 
-//     mcFile->Close();
-//     delete mcFile;
-
-//     // dataTH1 is owned by dataFile.
-//     dataFile->Close();
-//     delete dataFile;
-//     delete binnedData; // Created with new
-    
-//     return fit_result_;
-// }
-double MassFitter::GetSignalYield() const {
-    return nsig_ ? nsig_->getVal() : 0.0;
-}
-
-double MassFitter::GetSignalYieldError() const {
-    return nsig_ ? nsig_->getError() : 0.0;
-}
-
-double MassFitter::GetBackgroundYield() const {
-    return nbkg_ ? nbkg_->getVal() : 0.0;
-}
-
-double MassFitter::GetBackgroundYieldError() const {
-    return nbkg_ ? nbkg_->getError() : 0.0;
-}
-
-double MassFitter::GetChiSquare() const {
-    if (!fit_result_ || !activeMassVar_ || !total_pdf_ || !reduced_data_) return -1.0;
-    
-    // 데이터를 히스토그램으로 변환하여 Chi2 계산
-    RooPlot* frame = activeMassVar_->frame();
-    reduced_data_->plotOn(frame);
-    total_pdf_->plotOn(frame);
-    
-    double chi2 = frame->chiSquare();
-    delete frame;
-    
-    return chi2;
-}
-void MassFitter::Clear() {
-    // 스마트 포인터들은 자동으로 해제됨
-    signal_pdf_.reset();
-    background_pdf_.reset();
-    total_pdf_.reset();
-    fit_result_.reset();
-    swap0_pdf_.reset();
-    swap1_pdf_.reset();
-    nsig_.reset();
-    nbkg_.reset();
-    frac_.reset();
-    nSigSwap_.reset();
-    parameters_.clear();
-    
-    // 데이터는 외부에서 관리되므로 nullptr로만 설정
-    full_data_ = nullptr;
-    reduced_data_ = nullptr;
-    
-    // 워크스페이스 재생성
-    workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
-}
-
-double MassFitter::GetNDF() const {
-    if (!fit_result_) return 0.0;
-    return fit_result_->floatParsFinal().getSize();
-}
-
-double MassFitter::GetReducedChiSquare() const {
-    double ndf = GetNDF();
-    return (ndf > 0) ? GetChiSquare() / ndf : -1.0;
-}
-template <typename SigPar, typename BkgPar>
-void MassFitter::PerformFit(FitOpt opt,RooDataSet* dataset, bool inclusive, const std::string pTbin, const std::string etabin, SigPar sigParams, BkgPar bkgParams) {
-    // Open ROOT file
-    // TFile* file = TFile::Open(filepath_.c_str());
-    // if (!file || file->IsZombie()) {
-    //     std::cerr << "Error: Failed to open file " << filepath_ << std::endl;
-    //     return;
-    // }
-    
-    // // Get the dataset from the file
-    // RooDataSet* dataset = dynamic_cast<RooDataSet*>(file->Get(opt.datasetName.c_str()));
-    // if (!dataset) {
-    //     std::cerr << "Error: Failed to load dataset '" << opt.datasetName << "' from file" << std::endl;
-    //     file->Close();
-    //     return;
-    // }
-    // // Set the dataset
-    SetData(dataset);
-    
-    // Apply cuts based on inclusive flag
-    if (inclusive) {
-        ApplyCut(opt.cutExpr);
-    } else {
-        ApplyCut(opt.cutExpr + "&&" + pTbin + "&&" + etabin);
-    }
-
-    // Create and set PDFs
-    SetSignalPDF(sigParams, "");
-    SetBackgroundPDF(bkgParams, "");
-    CombinePDFs();
-
-    // Perform fit and save results
-    if(opt.doFit)Fit(opt.useMinos, opt.useHesse,opt.verbose,opt.useCUDA, opt.massMin,opt.massMax);
-    SaveResults(opt.outputDir,opt.outputFile, opt.saveWorkspace);
-    
-    // Close the file (dataset is already copied to MassFitter)
-    // file->Close();
-}
-template <typename SigMCPar>
-void MassFitter::PerformDCAMCFit(FitOpt opt, RooDataSet* MCdataset, bool inclusive, const std::string pTbin, const std::string etabin, SigMCPar sigMCParams) {
-    // full_data_ = MCdataset;
-    SetData(MCdataset);
-
-    // Create and set PDFs
-    SetSignalPDF(sigMCParams,"");
-    // SetBackgroundPDF(bkgParams);
-    CombineMCPDFs();
-    // Perform fit and save results
-    if(opt.doFit)FitMC(opt.useMinos, opt.useHesse,opt.verbose,opt.useCUDA, opt.massMin,opt.massMax);
-    SaveMCResults(opt.outputMCDir,opt.outputMCFile, opt.saveWorkspace);
-    Clear();
-    // workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
-
-
-}
-template <typename SigMCPar>
-void MassFitter::PerformMCFit(FitOpt opt, RooDataSet* MCdataset, bool inclusive, const std::string pTbin, const std::string etabin, SigMCPar sigMCParams) {
-    full_data_ = MCdataset;
-
-    if (inclusive) {
-        ApplyCut(opt.cutMCExpr);
-    } else {
-        ApplyCut(opt.cutMCExpr + "&&" + pTbin + "&&" + etabin);
-    }
-    
-    SetSignalPDF(sigMCParams,"");
-    CombineMCPDFs(); // nsig, nbkg 없이 signal PDF만 사용
-    
-    // MC 전용 피팅 사용 (extended 없음)
-    if(opt.doFit) FitMC(opt.useMinos, opt.useHesse, opt.verbose, opt.useCUDA, opt.massMin, opt.massMax);
-    
-    SaveMCResults(opt.outputMCDir, opt.outputMCFile, opt.saveWorkspace);
-    Clear();
-}
-RooFitResult* MassFitter::FitMC(bool useMinos, bool useHesse, bool verbose, bool useCUDA, double rangeMin, double rangeMax) {
-    if (!total_pdf_) {
-        std::cerr << "Error: Signal PDF not set" << std::endl;
-        return nullptr;
-    }
-    
-    // MC는 extended 없이 피팅
-    mass_->setRange("analysis", rangeMin, rangeMax);
-
-
-     RooLinkedList fitOpts;
-    fitOpts.Add(new RooCmdArg(RooFit::NumCPU(24)));
-    fitOpts.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
-    #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
-    fitOpts.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
-    #endif
-    fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
-    fitOpts.Add(new RooCmdArg(RooFit::Save(true)));
-    fitOpts.Add(new RooCmdArg(RooFit::Minos(useMinos)));
-    fitOpts.Add(new RooCmdArg(RooFit::Optimize(true)));
-    fitOpts.Add(new RooCmdArg(RooFit::Hesse(useHesse)));
-    fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
-    fitOpts.Add(new RooCmdArg(RooFit::Range("analysis")));
-    // fitOpts.Add(new RooCmdArg(RooFit::Strategy(2))); // 전략 2로 설정 (더 강력한 피팅 전략)
-
-    
-    // [수정 시작] Fit과 동일한 자동 복구 로직 적용
-    // 1. 초기 피팅 수행
-    RooFitResult* initialResult = total_pdf_->fitTo(*reduced_data_,fitOpts);
-    initialResult->Print("v");
-
-    int ntry = 0;
-    while(((initialResult->statusCodeHistory(0) != 0) || (initialResult->statusCodeHistory(1) != 0)) && (ntry)<3){
-    delete initialResult; // 이전 결과 삭제
-    RooLinkedList fitOptstemp;
-    fitOptstemp.Add(new RooCmdArg(RooFit::NumCPU(24)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Minimizer("Minuit","Minimizer")));
-    #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
-    fitOptstemp.Add(new RooCmdArg(RooFit::EvalBackend(useCUDA ? "cuda" : "CPU")));
-    #endif
-    fitOptstemp.Add(new RooCmdArg(RooFit::Extended(true)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Save(true)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Minos(useMinos)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Optimize(true)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Hesse(useHesse)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::PrintLevel(verbose ? 1 : -1)));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Range("analysis")));
-    fitOptstemp.Add(new RooCmdArg(RooFit::Strategy(2-ntry))); 
-        std::cout << "Initial fit failed with status " << initialResult->status() 
-                  << ". Retrying..." << std::endl;
-        initialResult->Print("v");
-        initialResult = total_pdf_->fitTo(*reduced_data_,fitOptstemp);
-    cout << " #### Fit attempt " << ntry + 1 << " completed with status: " << initialResult->status() << "####" << std::endl;
-        ntry++;
-    }
-        
-    // int ntry = -1;
-    // while(initialResult->status() !=0 && (ntry+1)<3){
-    //     std::cout << "Initial fit failed with status " << initialResult->status() 
-    //               << ". Retrying..." << std::endl;
-    //     initialResult = total_pdf_->fitTo(*reduced_data_,fitOpts);
-    //     ntry++;
-    // }
-    // bool touchlimit = false;
-    // auto finalPars = initialResult->floatParsFinal();
-    //   for( int idx=0;idx<finalPars.getSize();idx++ ){
-    //             auto var = (RooRealVar*) &finalPars[idx];
-    //             double _val_ = var->getVal();
-    //             double _errup_ = var->getErrorHi();
-    //             double _errdo_ = var->getErrorLo();
-    //             double _errsym_ = var->getError();
-    //             double _limup_ = var->getMax();
-    //             double _limdown_ = var->getMin();
-    //             if(_val_==_limup_ || _val_==_limdown_) touchlimit=1;
-    //             if( _val_ + 3* _errup_ > _limup_ || (_val_ >0 && 1.2*_val_ > _limup_ )|| (_val_ <0 && 0.8*_val_ > _limup_ )) touchlimit=1;
-    //             if(_val_ + 3*_errdo_ < _limdown_ || (_val_ >0 && 0.8*_val_ < _limdown_ )|| (_val_ <0 && 1.2*_val_ < _limdown_ )) touchlimit=1;}
-
-
-    // bool needFinalFitRefit = (initialResult->statusCodeHistory(0) != 0) || (initialResult->statusCodeHistory(1) != 0) || touchlimit;
-
-    // // // 3. 필요시 fixFit 호출
-    // if (needFinalFitRefit && !useMinos) {
-    //     std::cout << "Initial constrained fit was unstable. Attempting to fix and refit..." << std::endl;
-    //     fit_result_ = fixFit(initialResult); // fixFit은 unique_ptr을 반환
-    // } else {
-    //     fit_result_.reset(initialResult); // 문제가 없으면 소유권만 이전
-    // }
-    // // 결과 출력
-    // if (verbose) {
-    //     fit_result_->Print("v");
-    // } else {
-    //     // std::cout << "Fit completed. Signal yield: " << GetSignalYield() 
-    //             //   << " ± " << GetSignalYieldError() << std::endl;
     //     std::cout << "Chi2/NDF = " << GetReducedChiSquare() << std::endl;
     // }
     

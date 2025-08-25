@@ -8,7 +8,37 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <chrono>
+#include <fstream>
+#include <functional>
+#include <memory>
 // #include <filesystem> // C++17 디렉토리 처리를 위한 헤더
+
+// 로깅 레벨 정의
+enum class LogLevel {
+    DEBUG = 0,
+    INFO = 1,
+    WARNING = 2,
+    ERROR = 3
+};
+
+// 간단한 로거 클래스
+class FittingLogger {
+private:
+    static LogLevel current_level_;
+    static std::unique_ptr<std::ofstream> log_file_;
+    static std::string getCurrentTimeString();
+    
+public:
+    static void setLogLevel(LogLevel level);
+    static void setLogFile(const std::string& filename);
+    static void log(LogLevel level, const std::string& message);
+    static void debug(const std::string& message);
+    static void info(const std::string& message);
+    static void warning(const std::string& message);
+    static void error(const std::string& message);
+    static void logFitResult(const RooFitResult* result, const std::string& context);
+};
 
 // Bin identification structure
 struct BinInfo {
@@ -98,6 +128,34 @@ void saveFitStatusToFile(const std::string& filename);
 std::pair<int, int> getFitStatusSummary(); // returns (total_fits, failed_fits)
 
 // =============================================================================
+// PERFORMANCE MONITORING UTILITIES
+// =============================================================================
+
+// RAII 스타일 타이머 클래스
+class ScopedTimer {
+private:
+    std::chrono::steady_clock::time_point start_time_;
+    std::string operation_name_;
+    
+public:
+    explicit ScopedTimer(const std::string& operation_name);
+    ~ScopedTimer();
+    double getElapsedSeconds() const;
+};
+
+// 성능 통계 수집 클래스
+class PerformanceMonitor {
+private:
+    static std::map<std::string, std::vector<double>> operation_times_;
+    
+public:
+    static void recordOperation(const std::string& operation, double time_seconds);
+    static void printStatistics();
+    static void saveStatistics(const std::string& filename);
+    static void reset();
+};
+
+// =============================================================================
 // DCA FITTER HELPER FUNCTIONS
 // =============================================================================
 
@@ -136,16 +194,26 @@ FitStatus extractFitStatus(RooFitResult* fitResult, const std::string& fitType,
 using ParamKey = std::pair<double, double>;
 using D0ParamValue = std::pair<PDFParams::DoubleGaussianParams, PDFParams::PolynomialBkgParams>;
 using D0MCParamValue = std::pair<PDFParams::DoubleGaussianParams, PDFParams::GaussianParams>;
+// using DStarParamValue1 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::DstBkgParams>;
 using DStarParamValue1 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>;
 using DStarParamValue2 = std::pair<PDFParams::DoubleDBCrystalBallParams, PDFParams::PhenomenologicalParams>;
 using DStarParamValue3 = std::pair<PDFParams::DoubleGaussianParams, PDFParams::PhenomenologicalParams>;
+// using DStarParamValue3 = std::pair<PDFParams::DoubleGaussianParams, PDFParams::DstBkgParams>;
+using DStarParamValue4 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::PolynomialBkgParams>;
+using DStarParamValue5 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::ExponentialBkgParams>;
 using DStarMCParamValue = std::pair<PDFParams::DBCrystalBallParams, PDFParams::DBCrystalBallParams>;
 using D0ParamMap = std::map<ParamKey, D0ParamValue>;
 using D0MCParamMap = std::map<ParamKey, D0MCParamValue>;
 using DStarParamMap1 = std::map<ParamKey, DStarParamValue1>;
 using DStarParamMap2 = std::map<ParamKey, DStarParamValue2>;
 using DStarParamMap3 = std::map<ParamKey, DStarParamValue3>;
+using DStarParamMap4 = std::map<ParamKey, DStarParamValue4>;
+using DStarParamMap5 = std::map<ParamKey, DStarParamValue5>;
 using DStarMCParamMap = std::map<ParamKey, DStarMCParamValue>;
+using DStarParamValue6 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::ExponentialBkgParams>;
+using DStarParamMap6 = std::map<ParamKey, DStarParamValue6>;
+using DStarParamValue7 = std::pair<PDFParams::DBCrystalBallParams, PDFParams::ExpErfBkgParams>;
+using DStarParamMap7 = std::map<ParamKey, DStarParamValue7>;
 
 // =============================================================================
 // GLOBAL VARIABLES
@@ -460,10 +528,10 @@ DStarParamMap1 DStarParamMaker1(const std::vector<double>& ptBins, const std::ve
                 value.first.nR_min = 1;
                 value.first.nR_max = 8;
                 value.second.p0 = 0.1;
-                value.second.p0_min = -0.5;
+                value.second.p0_min = 0.0001;
                 value.second.p0_max = 5.0;
                 value.second.p1 = 2;
-                value.second.p1_min = -10.0;
+                value.second.p1_min = 0.0;
                 value.second.p1_max = 10.0;
                 value.second.p2 = -2;
                 value.second.p2_min = -10.0;
@@ -553,11 +621,11 @@ DStarParamMap3 DStarParamMaker3(const std::vector<double>& ptBins, const std::ve
                 value.second.p0_min = 0.0;
                 value.second.p0_max = 5.0;
                 value.second.p1 = 2;
-                value.second.p1_min = -10.0;
-                value.second.p1_max = 10.0;
+                value.second.p1_min = -100.0;
+                value.second.p1_max = 100.0;
                 value.second.p2 = -2;
-                value.second.p2_min = -10.0;
-                value.second.p2_max = 10.0;
+                value.second.p2_min = -100.0;
+                value.second.p2_max = 100.0;
 
                 
             params[key] = value;
@@ -662,6 +730,185 @@ D0MCParamMap D0MCParamMaker(const std::vector<double>& ptBins, const std::vector
 
     return params;
 }
+D0ParamMap DStarParamMaker4(const std::vector<double>& ptBins, const std::vector<double>& etaBins, int order) {
+    D0ParamMap params;
+    
+
+    for (double pt : ptBins) {
+        for (double eta : etaBins) {
+            ParamKey key = std::make_pair(pt, eta);
+        D0ParamValue value;
+        value.first.mean = 2.010;        // D* mass in GeV
+        value.first.mean_min = 2.005;
+        value.first.mean_max = 2.015;
+        value.first.sigma1 = 0.001;
+        value.first.sigma1_min = 0.001;
+        value.first.sigma1_max = 0.02;
+        value.first.sigma2 = 0.005;
+        value.first.sigma2_min = 0.001;
+        value.first.sigma2_max = 0.03;
+        value.first.fraction = 0.5;
+            double polyinit = 0.;
+            double polymax = 1;
+            double polymin = -1;
+            for(int k =0; k < order; k++) {
+                value.second.coefficients.push_back(polyinit);
+                value.second.coef_max.push_back(polymax);
+                value.second.coef_min.push_back(polymin);
+            }
+            params[key] = value;
+        }
+    }
+
+    return params;
+}
+
+DStarParamMap4 DStarParamMaker5(const std::vector<double>& ptBins, const std::vector<double>& etaBins, int order) {
+    DStarParamMap4 params;
+
+    for (double pt : ptBins) {
+        for (double eta : etaBins) {
+            ParamKey key = std::make_pair(pt, eta);
+            DStarParamValue4 value;
+
+            // DoubleDBCrystalBallParams 설정
+                value.first.mean = 0.1455;        // D* mass in GeV
+                value.first.mean_min = 0.1452;
+                value.first.mean_max = 0.1458;
+                // value.first.sigmaR = 0.0005;
+                // value.first.sigmaR_min = 0.0001;
+                // value.first.sigmaR_max = 0.01;
+                // value.first.sigmaL = 0.0005;
+                // value.first.sigmaL_min = 0.0001;
+                // value.first.sigmaL_max = 0.01;
+                
+                value.first.alphaL = 2.;
+                value.first.alphaL_min = 0.01;
+                value.first.alphaL_max = 10;
+                value.first.nL = 1.5;
+                value.first.nL_min = 1;
+                value.first.nL_max = 8;
+
+                value.first.sigma = 0.0005;
+                value.first.sigma_min = 0.0001;
+                value.first.sigma_max = 0.01;
+            
+                value.first.alphaR = 2.;
+                value.first.alphaR_min = 0.01;
+                value.first.alphaR_max = 10.;
+                value.first.nR = 1.5;
+                value.first.nR_min = 1;
+                value.first.nR_max = 8;
+
+            // PolynomialBkgParams 설정
+            double poly_init = 0.01;
+            double poly_max = 1.0;
+            double poly_min = -1.0;
+            for (int k = 0; k < order; ++k) {
+                value.second.coefficients.push_back(poly_init);
+                value.second.coef_max.push_back(poly_max);
+                value.second.coef_min.push_back(poly_min);
+            }
+
+            params[key] = value;
+        }
+    }
+
+    return params;
+}
+DStarParamMap6 DStarParamMaker6(const std::vector<double>& ptBins, const std::vector<double>& etaBins) {
+    DStarParamMap6 params;
+
+    for (double pt : ptBins) {
+        for (double eta : etaBins) {
+            ParamKey key = std::make_pair(pt, eta);
+            DStarParamValue6 value;
+
+            // DBCrystalBallParams 설정 (Signal)
+            value.first.mean = 0.1455;        // D* mass in GeV
+            value.first.mean_min = 0.1452;
+            value.first.mean_max = 0.1458;
+            
+            value.first.sigma = 0.0005;
+            value.first.sigma_min = 0.0001;
+            value.first.sigma_max = 0.01;
+            
+            value.first.alphaL = 2.0;
+            value.first.alphaL_min = 0.01;
+            value.first.alphaL_max = 10.0;
+            value.first.nL = 1.5;
+            value.first.nL_min = 1.0;
+            value.first.nL_max = 8.0;
+        
+            value.first.alphaR = 2.0;
+            value.first.alphaR_min = 0.01;
+            value.first.alphaR_max = 10.0;
+            value.first.nR = 1.5;
+            value.first.nR_min = 1.0;
+            value.first.nR_max = 8.0;
+
+            // ExponentialBkgParams 설정 (Background)
+            value.second.lambda = -1.0;
+            value.second.lambda_min = -10.0;
+            value.second.lambda_max = 10.0;
+
+            params[key] = value;
+        }
+    }
+
+    return params;
+}
+DStarParamMap7 DStarParamMaker7(const std::vector<double>& ptBins, const std::vector<double>& etaBins) {
+    DStarParamMap7 params;
+
+    for (double pt : ptBins) {
+        for (double eta : etaBins) {
+            ParamKey key = std::make_pair(pt, eta);
+            DStarParamValue7 value;
+
+            // DBCrystalBallParams 설정 (Signal)
+            value.first.mean = 0.1455;        // D* mass in GeV
+            value.first.mean_min = 0.1452;
+            value.first.mean_max = 0.1458;
+            
+            value.first.sigma = 0.0005;
+            value.first.sigma_min = 0.0001;
+            value.first.sigma_max = 0.01;
+            
+            value.first.alphaL = 2.0;
+            value.first.alphaL_min = 0.01;
+            value.first.alphaL_max = 10.0;
+            value.first.nL = 1.5;
+            value.first.nL_min = 1.0;
+            value.first.nL_max = 8.0;
+        
+            value.first.alphaR = 2.0;
+            value.first.alphaR_min = 0.01;
+            value.first.alphaR_max = 10.0;
+            value.first.nR = 1.5;
+            value.first.nR_min = 1.0;
+            value.first.nR_max = 8.0;
+
+            // ExpErfBkgParams 설정 (Background)
+            value.second.err_mu = 0.139;
+            value.second.err_mu_min = 0;
+            value.second.err_mu_max = 1;
+            value.second.err_sigma = 0.5;
+            value.second.err_sigma_min = 0.0;
+            value.second.err_sigma_max = 10.0;
+            value.second.m_lambda = 1.0;
+            value.second.m_lambda_min = 0.0;
+            value.second.m_lambda_max = 20.0;
+
+            params[key] = value;
+        }
+    }
+
+    return params;
+}
+
+
+
 
 
 #endif

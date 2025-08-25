@@ -138,7 +138,7 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // --- Main Plot ---
     mainPad->cd();
-    RooPlot* frame = var_->frame(RooFit::Bins(120), RooFit::Title(""), RooFit::Range("analysis"));
+    RooPlot* frame = var_->frame(RooFit::Bins(60), RooFit::Title(""), RooFit::Range("analysis"));
 
     // 1. Plot Data
     dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
@@ -188,6 +188,7 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     frame->GetYaxis()->SetTitleOffset(1.2);
     frame->GetYaxis()->SetTitle(Form("Entries / (%.3f GeV/c^{2})", var_->getBinWidth(0)));
+    frame->GetYaxis()->SetLabelSize(0.0);
     frame->SetTitle("");
     frame->Draw();
 
@@ -221,19 +222,19 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     latex.DrawLatex(0.12, 0.90, "CMS");
     latex.SetTextFont(52);
     latex.SetTextSize(0.04);
-    latex.DrawLatex(0.20, 0.90, "Preliminary");
+    latex.DrawLatex(0.20, 0.90, "Internal");
 
     latex.SetTextFont(42);
     latex.SetTextSize(0.04);
     latex.SetTextAlign(11);
-    isPP_ ? latex.DrawLatex(0.55, 0.90, "ppRef #sqrt{s_{NN}} = 5.32 TeV") : latex.DrawLatex(0.55, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
+    latex.DrawLatex(0.55, 0.90, opt_.ELabel.c_str());
     // isPP_ ? latex.DrawLatex(0.55, 0.90, "Proton-Oxygen #sqrt{s_{NN}} = 9.62 TeV") : latex.DrawLatex(0.93, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
 
     double x_pos = 0.13;
     double y_pos = 0.80;
-    latex.DrawLatex(x_pos,y_pos, Form(" %.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax));
-    latex.DrawLatex(x_pos,y_pos - 0.07,"-1 < |y| < 1");
-    isDstar_ ? latex.DrawLatex(x_pos,y_pos-0.14, Form("%.2f < |cos#theta_{HX}| < %0.2f", opt_.cosMin, opt_.cosMax)) : latex.DrawLatex(0.93, 0.60, Form("mva < %f", opt_.mvaMin));
+    latex.DrawLatex(x_pos,y_pos, opt_.pTLegend.c_str());
+    latex.DrawLatex(x_pos,y_pos - 0.07, opt_.yLegend.c_str());
+    latex.DrawLatex(x_pos,y_pos-0.14, opt_.centLegend.c_str());
 
 
     latex.SetTextAlign(11);
@@ -265,7 +266,7 @@ void PlotManager::DrawPullFrame(RooPlot* frame) {
     pullFrame->GetYaxis()->SetTitleOffset(0.3);
     pullFrame->GetYaxis()->SetTitleSize(0.1);
     pullFrame->GetYaxis()->SetNdivisions(505);
-    pullFrame->GetYaxis()->SetLabelSize(0.1);
+    pullFrame->GetYaxis()->SetLabelSize(0.0);
     pullFrame->GetXaxis()->SetTitleSize(0.1);
     pullFrame->GetXaxis()->SetLabelSize(0.1);
     pullFrame->Draw();

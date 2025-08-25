@@ -6,7 +6,19 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include "Params.h" 
+#include <stdexcept>
+#include <limits>
+#include "Params.h"
+#include "../Tools/GlobalCuts.h"
+
+// 설정 관련 예외 클래스
+class ConfigException : public std::exception {
+private:
+    std::string message_;
+public:
+    explicit ConfigException(const std::string& msg) : message_(msg) {}
+    const char* what() const noexcept override { return message_.c_str(); }
+}; 
 
 struct FitOpt {
 
@@ -30,10 +42,11 @@ struct FitOpt {
     std::string plotName;
     std::string plotMCName;
     std::string pTLegend;
-    std::string etaLegend;
+    std::string yLegend;
     std::string centLegend;
     std::string cosLegend;
     std::string dcaLegend;
+    std::string ELabel;
     std::string subDir;
 
     
@@ -105,6 +118,7 @@ public:
         centVar("cent"),
         mvaVar("mva"),
         cosVar("cos"),
+        ELabel(""),
         massMin(0.0),
         massMax(10.0),
         centMin(0),
@@ -161,7 +175,6 @@ public:
     }
 
 private:
-    // 경로에 subDir을 추가하는 헬퍼 함수
     std::string addSubDirToPath(const std::string& basePath, const std::string& sub) const {
         std::string path = basePath;
         if (!path.empty() && path.back() != '/') path += "/";
@@ -169,6 +182,82 @@ private:
     }
 
 public:
+    
+    // 유효성 검증 메서드 추가
+    void validateConfiguration() const {
+        validateMassRange();
+        validatePtRange();
+        validateEtaRange();
+        validateCentRange();
+        validateDCARange();
+        validateFileNames();
+        validateBinning();
+    }
+    
+    void validateMassRange() const {
+        if (massMin >= massMax) {
+            throw ConfigException("Invalid mass range: massMin (" + std::to_string(massMin) + 
+                                ") >= massMax (" + std::to_string(massMax) + ")");
+        }
+        if (massMin < 0) {
+            throw ConfigException("Mass minimum cannot be negative: " + std::to_string(massMin));
+        }
+    }
+    
+    void validatePtRange() const {
+        if (pTMin >= pTMax) {
+            throw ConfigException("Invalid pT range: pTMin (" + std::to_string(pTMin) + 
+                                ") >= pTMax (" + std::to_string(pTMax) + ")");
+        }
+        if (pTMin < 0) {
+            throw ConfigException("pT minimum cannot be negative: " + std::to_string(pTMin));
+        }
+    }
+    
+    void validateEtaRange() const {
+        if (etaMin >= etaMax) {
+            throw ConfigException("Invalid eta range: etaMin (" + std::to_string(etaMin) + 
+                                ") >= etaMax (" + std::to_string(etaMax) + ")");
+        }
+    }
+    
+    void validateCentRange() const {
+        if (centMin >= centMax) {
+            throw ConfigException("Invalid centrality range: centMin (" + std::to_string(centMin) + 
+                                ") >= centMax (" + std::to_string(centMax) + ")");
+        }
+        if (centMin < 0 || centMax > 100) {
+            throw ConfigException("Centrality must be between 0 and 100");
+        }
+    }
+    
+    void validateDCARange() const {
+        if (dcaMin >= dcaMax) {
+            throw ConfigException("Invalid DCA range: dcaMin (" + std::to_string(dcaMin) + 
+                                ") >= dcaMax (" + std::to_string(dcaMax) + ")");
+        }
+    }
+    
+    void validateFileNames() const {
+        if (outputFile.empty()) {
+            throw ConfigException("Output file name cannot be empty");
+        }
+        if (datasetName.empty()) {
+            throw ConfigException("Dataset name cannot be empty");
+        }
+    }
+    
+    void validateBinning() const {
+        if (!ptBins.empty() && ptBins.size() < 2) {
+            throw ConfigException("pT bins must have at least 2 elements");
+        }
+        if (!etaBins.empty() && etaBins.size() < 2) {
+            throw ConfigException("Eta bins must have at least 2 elements");
+        }
+        if (!centBins.empty() && centBins.size() < 2) {
+            throw ConfigException("Centrality bins must have at least 2 elements");
+        }
+    }
     
     // 편의를 위한 D0 기본 설정 메서드
     // void D0MCDefault() {
@@ -227,9 +316,113 @@ public:
     void DStarMCAbsDefault() {
         this->name = "DStar";
         this->massVar ="massPion";
-        this->massMin = 0.140;
+        this->massMin = 0.139;
         this->massMax = 0.155;
         this->dcaVar = "dca3D";
+        this->dcaMin = 0.0;
+        this->dcaMax = 0.07;
+        // this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.1};
+        this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0118,0.0160,0.0214,0.0281,0.0367,0.0476,0.07};
+        this->ELabel= "ppRef #sqrt{s_{NN}} = 5.36 TeV";
+        this->pTLegend = Form("%0.1f < p_{T} < %0.1f", this->pTMin, this->pTMax);
+        this->yLegend = Form("|y| < 1");
+        // this->cutExpr = Form("%s > 2.0 && %s < 100.0 && abs(%s) < 1.6 && %s > %f", this->ptVar.c_str(),this->ptVar.c_str(), this->etaVar.c_str(), this->mvaVar.c_str(), this->mvaMin);
+        // this->cutExpr = Form("%s > %f", this->mvaVar.c_str(), this->mvaMin);
+        // this->cutMCExpr = Form("eta<1 && eta>-1 && pT>4 && matchGEN==1");
+        this->cutMCExpr = Form("y<1 && y>-1 && abs(cosThetaHX)<%0.2f && abs(cosThetaHX) >=%0.2f&&  pT<%0.2f && pT>=%0.2f  && matchGEN==1", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        this->cutExpr = Form("y<1 && y>-1 && abs(cosThetaHX)<%0.2f && abs(cosThetaHX) >=%0.2f&&  pT<%0.2f && pT>=%0.2f", this->cosMax, this->cosMin, this->pTMax, this->pTMin);
+        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->pdfName = "total_pdf";
+        this->wsName = Form("ws_%s",this->name.c_str());
+        this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s%sto%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->cosVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCFile = Form("MC_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {};
+        // this->constraintParameters= {"mean"};
+        // this->constraintParameters= {"mean","alpha","n"};
+        this->centLegend = Form("%0.2f < |cos#theta_{HX}| < %0.2f", this->cosMin, this->cosMax);
+        
+        this->outputFile = Form("Data_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->setBaseDirectories("roots/Data_DStar_ppRef/", "roots/MC_DStar_ppRef/", "plots/Data_DStar_ppRef/");
+        // this->datasetName = "reducedData";
+    }
+        void DStarOODefault() {
+        this->name = "DStar";
+        this->massVar ="massPion";
+        this->massMin = 0.139;
+        this->massMax = 0.154;
+        this->dcaVar = "dca3D";
+        this->dcaMin = 0.0;
+        this->dcaMax = 0.07;
+        this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0118,0.0160,0.0214,0.0281,0.0367,0.0476,0.07};
+        this->cutMCExpr = Form("abs(y)<1 &&  pT<%0.2f && pT>=%0.2f  && matchGEN==1",  this->pTMax, this->pTMin);
+        this->cutExpr = Form("abs(y)<1 &&  pT<%0.2f && pT>=%0.2f", this->pTMax, this->pTMin);
+        this->ELabel= "OO #sqrt{s_{NN}} = 5.36 TeV";
+        this->pTLegend = Form("%0.1f < p_{T} < %0.1f", this->pTMin, this->pTMax);
+        this->yLegend = Form("|y| < 1");
+        this->centLegend = "";
+        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->pdfName = "total_pdf";
+        this->wsName = Form("ws_%s",this->name.c_str());
+        this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->cosVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCFile = Form("MC_%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%s",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {};
+        // this->constraintParameters= {"mean"};
+        // this->constraintParameters= {"mean","alpha","n"};
+        
+        this->outputFile = Form("Data_%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->setBaseDirectories("roots/Data_DStar_ppRef/", "roots/MC_DStar_ppRef/", "plots/Data_DStar_ppRef/");
+        // this->datasetName = "reducedData";
+    }
+
+    void DStarPPDefault() {
+        this->name = "DStar";
+        this->massVar ="massPion";
+        this->massMin = 0.139;
+        this->massMax = 0.154;
+        this->dcaVar = "dca3D";
+        this->dcaMin = 0.0;
+        this->dcaMax = 0.07;
+        this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0118,0.0160,0.0214,0.0281,0.0367,0.0476,0.07};
+        this->cutMCExpr = Form("abs(y)<1 &&  pT<%0.2f && pT>=%0.2f  && matchGEN==1",  this->pTMax, this->pTMin);
+        this->cutExpr = Form("abs(y)<1 &&  pT<%0.2f && pT>=%0.2f", this->pTMax, this->pTMin);
+        this->ELabel= "ppRef #sqrt{s_{NN}} = 5.36 TeV";
+        this->pTLegend = Form("%0.1f < p_{T} < %0.1f", this->pTMin, this->pTMax);
+        this->yLegend = Form("|y| < 1");
+        this->centLegend = "";
+        // this->cutExpr = Form("eta<1 && eta>-1 && pT<%f && pT>%f", this->pTMax, this->pTMin);
+        this->pdfName = "total_pdf";
+        this->wsName = Form("ws_%s",this->name.c_str());
+        this->plotMCName = Form("PlotMC%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->plotName = Form("Plot%s_%s%sto%s_%s%s.pdf",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        // this->plotName = Form("Plot%s_%s_%s_%s_%s_%s.pdf",this->name.c_str(), this->ptVar.c_str(), this->etaVar.c_str(),this->cosVar.c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap0File = Form("MC_Swap0_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCSwap1File = Form("MC_Swap1_%s_%s%sto%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(),this->cosVar.c_str(),convertDotToP(this->cosMin).c_str(),convertDotToP(this->cosMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputMCFile = Form("MC_%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->outputDCAFile = Form("DCA_%s_%s%sto%s_%s%s",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->constraintParameters= {};
+        // this->constraintParameters= {"mean"};
+        // this->constraintParameters= {"mean","alpha","n"};
+        
+        this->outputFile = Form("Data_%s_%s%sto%s_%s%s.root",this->name.c_str(), this->ptVar.c_str(), convertDotToP(this->pTMin).c_str(),convertDotToP(this->pTMax).c_str(), this->mvaVar.c_str(), convertDotToP(this->mvaMin).c_str());
+        this->setBaseDirectories("roots/Data_DStar_ppRef/", "roots/MC_DStar_ppRef/", "plots/Data_DStar_ppRef/");
+        // this->datasetName = "reducedData";
+    }
+     void DStarMCAbsDefault2() {
+        this->name = "DStar";
+        this->massVar ="mass";
+        this->massMin = 1.9;
+        this->massMax = 2.1;
+        this->dcaVar = "dca2D";
         this->dcaMin = 0.0;
         this->dcaMax = 0.07;
         // this->dcaBins ={0,0.001,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.1};

@@ -1,0 +1,14 @@
+universe           = vanilla
+executable         = runCondor_DStarOO.sh
+getenv = True
+arguments          = $(pTMin) $(pTMax) 
+output             = logs/$(Cluster)_$(Process).out
+error              = logs/$(Cluster)_$(Process).err
+log                = logs/$(Cluster)_$(Process).log
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+transfer_input_files = MCMacroDstarOO_condor.cpp, kinematicRange_test.txt
+
+queue pTMin pTMax from kinematicRange_test.txt
+

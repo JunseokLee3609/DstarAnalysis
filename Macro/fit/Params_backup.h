@@ -1,0 +1,202 @@
+#ifndef PARAMS_H
+#define PARAMS_H
+
+#include <vector>
+
+namespace PDFParams {
+
+    // Gaussian Parameters
+    struct GaussianParams {
+        double mean = 1.864;
+        double sigma = 0.01;
+        double mean_min = 1.86;
+        double mean_max = 1.87;
+        double sigma_min = 0.001;
+        double sigma_max = 0.02;
+    };
+
+    // Double Gaussian Parameters
+    struct DoubleGaussianParams {
+        double mean = 0.0;
+        double sigma1 = 1.0;
+        double sigma2 = 2.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+        double sigma1_min = 0.1;
+        double sigma1_max = 10.0;
+        double sigma2_min = 0.1;
+        double sigma2_max = 10.0;
+        double fraction = 0.5;
+        double fraction_min = 0.0;
+        double fraction_max = 1.0;
+    };
+    struct ExpErfBkgParams {
+        double err_mu = 5.0;
+        double err_mu_min = 4.0;
+        double err_mu_max = 8.5;
+        double err_sigma = 0.5;
+        double err_sigma_min = 0.0;
+        double err_sigma_max = 10.0;
+        double m_lambda = 1.0;
+        double m_lambda_min = 0.0;
+        double m_lambda_max = 20.0;
+    };
+    struct DstBkgParams {
+        double p0 = 0.1; // p0 parameter
+        double p0_min = 0.0; // Minimum value for p0
+        double p0_max = 5.0; // Maximum value for p0
+        double p1 = 1.0; // p1 parameter
+        double p1_min = 0.0; // Minimum value for p1
+        double p1_max = 10.0; // Maximum value for p1
+        double p2 = -2.0; // p2 parameter
+        double p2_min = -10.0; // Minimum value for p2
+        double p2_max = 10.0; // Maximum value for p2
+    };
+    
+
+    // Crystal Ball Parameters
+    struct CrystalBallParams {
+        double mean = 0.0;
+        double sigma = 1.0;
+        double alpha = 1.0;
+        double n = 1.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+        double sigma_min = 0.1;
+        double sigma_max = 10.0;
+        double alpha_min = 0.1;
+        double alpha_max = 10.0;
+        double n_min = 0.1;
+        double n_max = 10.0;
+    };
+
+    // Double-Sided Crystal Ball Parameters
+    struct DBCrystalBallParams {
+        double mean = 0.0;
+        double sigmaL = 1.0;
+        double sigmaR = 1.0;
+        double sigma = 1.0;
+        double alphaL = 1.0;
+        double nL = 1.0;
+        double alphaR = 1.0;
+        double nR = 1.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+        double sigma_min = 0.1;
+        double sigma_max = 10.0;
+        double sigmaL_min = 0.1;
+        double sigmaL_max = 10.0;
+        double sigmaR_min = 0.1;
+        double sigmaR_max = 10.0;
+        double alphaL_min = 0.1;
+        double alphaL_max = 10.0;
+        double nL_min = 0.1;
+        double nL_max = 10.0;
+        double alphaR_min = 0.1;
+        double alphaR_max = 10.0;
+        double nR_min = 0.1;
+        double nR_max = 10.0;
+    };
+    struct DoubleDBCrystalBallParams {
+        double mean1 = 0.1455;
+        double mean2 = 0.1455;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+
+        double sigmaL1 = 1.0;
+        double sigmaL2 = 1.0;
+        double sigmaL_min = 0.1;
+        double sigmaL_max = 10.0;
+
+        double sigmaR2 = 1.0;
+        double sigmaR1 = 1.0;
+        double sigmaR_min = 0.1;
+        double sigmaR_max = 10.0;
+        
+        double alphaL1 = 1.0;
+        double alphaL2 = 1.0;
+        double alphaL_min = 0.1;
+        double alphaL_max = 10.0;
+
+        double alphaR1 = 1.0;
+        double alphaR2 = 1.0;
+        double alphaR_min = 0.1;
+        double alphaR_max = 10.0;
+
+        double nL1 = 1.0;
+        double nL2 = 1.0;
+        double nL_min = 0.1;
+        double nL_max = 10.0;
+
+        double nR1 = 1.0;
+        double nR2 = 1.0;
+        double nR_min = 0.1;
+        double nR_max = 10.0;
+        
+        double fraction = 0.5;
+        double fraction_min = 0.0;
+        double fraction_max = 1.0;
+        
+        
+    };
+
+    // Voigtian Parameters
+    struct VoigtianParams {
+        double mean = 0.0;
+        double sigma = 1.0;
+        double width = 1.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+        double sigma_min = 0.1;
+        double sigma_max = 10.0;
+        double width_min = 0.1;
+        double width_max = 10.0;
+    };
+
+    // Breit-Wigner Parameters
+    struct BreitWignerParams {
+        double mean = 0.0;
+        double width = 1.0;
+        double mean_min = -10.0;
+        double mean_max = 10.0;
+        double width_min = 0.1;
+        double width_max = 10.0;
+    };
+
+    // Phenomenological Parameters
+    struct PhenomenologicalParams {
+        double p0=0.1;
+        double p0_min= 0.0;
+        double p0_max=-5.0;
+        double p1=2.0;
+        double p1_min=10.0; 
+        double p1_max=-10.0; 
+        double p2=-2.0; 
+        double p2_min=-10.0; 
+        double p2_max=10.0;
+    };
+
+    // Exponential Background Parameters
+    struct ExponentialBkgParams {
+        double lambda = -1.0;
+        double lambda_min = -10.0;
+        double lambda_max = 0.0;
+    };
+
+    // Chebychev Background Parameters
+    struct ChebychevBkgParams {
+        std::vector<double> coefficients = {0.0};
+        std::vector<double> coef_min = {-10.0};
+        std::vector<double> coef_max = {10.0};
+    };
+
+    // Polynomial Background Parameters
+    struct PolynomialBkgParams {
+        std::vector<double> coefficients; 
+        std::vector<double> coef_min;
+        std::vector<double> coef_max;
+    };
+
+}
+
+#endif // PARAMS_H

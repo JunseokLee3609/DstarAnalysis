@@ -84,14 +84,32 @@ public:
         outFile_(nullptr),
         dcaBins_(opt.dcaBins)
     {
+        // 생성자 매개변수 유효성 검증
+        if (name.empty()) {
+            throw std::invalid_argument("DCAFitter name cannot be empty");
+        }
+        if (dcaMin >= dcaMax) {
+            throw std::invalid_argument("Invalid DCA range: dcaMin >= dcaMax");
+        }
+        if (nBins <= 0) {
+            throw std::invalid_argument("Number of bins must be positive");
+        }
+        if (massVarName.empty()) {
+            throw std::invalid_argument("Mass variable name cannot be empty");
+        }
+        
         ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt.name.c_str()), (name + " Workspace").c_str());
         
-        dcaVar_ = std::make_unique<RooRealVar>("dca3D", "Distance of Closest Approach", dcaMin_, dcaMax_, "cm");
+        dcaVar_ = std::make_unique<RooRealVar>(opt.dcaVar.c_str(), "Distance of Closest Approach", opt.dcaMin, opt.dcaMax, "cm");
         massVar_ = std::make_unique<RooRealVar>(opt.massVar.c_str(), "Mass Variable", opt.massMin, opt.massMax, "GeV/c^{2}");
-        // massVar_ = std::make_unique<RooRealVar>("massDaugther1", "Mass Variable", 1.75, 2.0, "GeV/c^{2}");
         
-        ws_->import(*dcaVar_);
-        ws_->import(*massVar_);
+        // workspace import에 대한 오류 검사
+        if (ws_->import(*dcaVar_) != 0) {
+            throw std::runtime_error("Failed to import DCA variable to workspace");
+        }
+        if (ws_->import(*massVar_) != 0) {
+            throw std::runtime_error("Failed to import mass variable to workspace");
+        }
         
         std::cout << "DCAFitter instance created: " << name_ << std::endl;
     }
@@ -170,12 +188,16 @@ public:
             return false;
         }
 
-        TFile* mcFile = TFile::Open(mcFileName_.c_str());
-        if (!mcFile || mcFile->IsZombie()) {
+        auto mcFile = openFile(mcFileName_, "READ");
+        if (!mcFile) {
             std::cerr << "Error: Could not open MC file: " << mcFileName_ << std::endl;
             return false;
         }
         RooDataSet* mcDataset = dynamic_cast<RooDataSet*>(mcFile->Get(mcRooDatsetName_.c_str()));
+        if (!mcDataset) {
+            std::cerr << "Error: Could not load dataset " << mcRooDatsetName_ << " from file" << std::endl;
+            return false;
+        }
 
         // --- Define variables needed from the TTree ---
         // Ensure dcaVar_ uses the correct branch name
@@ -205,9 +227,9 @@ public:
         if (!fullMCDataSet || fullMCDataSet->numEntries() == 0) {
             std::cerr << "Error: Failed to load MC data or no entries passed cuts: " << mcCuts_ << std::endl;
             mcFile->Close();
-            delete mcFile;
+            mcFile.reset();
              // Restore dcaVar_ name before returning
-             dcaVar_->SetName("dca3D");
+             dcaVar_->SetName(opt_.dcaVar.c_str());
             return false;
         }
         std::cout << "Loaded " << fullMCDataSet->sumEntries() << " MC entries (after cuts, weighted)." << std::endl;
@@ -226,9 +248,9 @@ public:
         } else {
              std::cerr << "Warning: No prompt PDG IDs specified. Cannot separate prompt/non-prompt." << std::endl;
              mcFile->Close();
-             delete mcFile;
+             mcFile.reset();
              // Restore dcaVar_ name before returning
-             dcaVar_->SetName("dca3D");
+             dcaVar_->SetName((opt_.dcaVar).c_str());
              return false;
         }
         cout << "Prompt cut: " << promptCut << endl;
@@ -247,9 +269,9 @@ public:
         } else {
              std::cerr << "Warning: No prompt PDG IDs specified. Cannot separate prompt/non-prompt." << std::endl;
              mcFile->Close();
-             delete mcFile;
+             mcFile.reset();
              // Restore dcaVar_ name before returning
-             dcaVar_->SetName("dca3D");
+             dcaVar_->SetName(opt_.dcaVar.c_str());
              return false;
         }
         cout << "Non-prompt cut: " << nonPromptCut << endl;
@@ -304,7 +326,10 @@ public:
         }
 
         if (!nonPromptDataSet || nonPromptDataSet->numEntries() == 0) {
-             std::cerr << "Warning: No non-prompt MC events found after selection." << std::endl;
+            std::cerr << "Warning: No non-prompt MC events found after selection." << std::endl;
+            std::cerr << "Will proceed with prompt-only fitting." << std::endl;
+            nonPromptTemplate_ = nullptr;
+            nonPromptHist_ = nullptr;
         } else {
              std::cout << "Non-prompt MC entries: " << nonPromptDataSet->sumEntries() << " (weighted)" << std::endl;
              // Create binned template (RooDataHist)
@@ -314,7 +339,7 @@ public:
         }
 
         mcFile->Close();
-        delete mcFile;
+        mcFile.reset();
 
         // Restore dcaVar_ name if it was temporarily changed
         // dcaVar_->SetName("dca3D");
@@ -381,7 +406,7 @@ public:
             dataFile->Close();
             delete dataFile;
             // Restore dcaVar_ name
-            dcaVar_->SetName("dca3D");
+            dcaVar_->SetName(opt_.dcaVar.c_str());
             return false;
         }
 
@@ -391,7 +416,7 @@ public:
         dataFile->Close();
         // delete dataFile;
         // Restore dcaVar_ name
-        dcaVar_->SetName("dca3D");
+        dcaVar_->SetName(opt_.dcaVar.c_str());
         return true;
     }
 
@@ -579,7 +604,7 @@ public:
                             std::string energyLabel = "ppRef #sqrt{s_{NN}} = 5.36 TeV"; // Adjust as needed
                             // Use legend strings from opt_ struct instead of hardcoded strings
                             std::string ptLabel = opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend;
-                            std::string yLabel = opt_.etaLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.etaLegend;
+                            std::string yLabel = opt_.yLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.yLegend;
                             std::string analysisCutLabel = opt_.centLegend.empty() ? Form("%.2f < cos#theta_{HX} < %.2f", opt_.cosMin, opt_.cosMax) : opt_.centLegend;
                             std::string dcaLabel = opt_.dcaLegend.empty() ? Form("%.3f < DCA < %.3f cm", dcaLow, dcaHigh) : opt_.dcaLegend;
 
@@ -691,11 +716,7 @@ public:
                 return false;
             }
 
-            if (pdfList.getSize() == 2 && n_prompt_ && n_nonprompt_) {
-                // delete fracPrompt_;
-                fracPrompt_ = new RooFormulaVar("fracPrompt", "Prompt Fraction from MC fit", "@0 / (@0 + @1)", RooArgList(*n_prompt_, *n_nonprompt_));
-                ws_->import(*fracPrompt_);
-            }
+
         
         return true;
     }
@@ -860,11 +881,6 @@ public:
 		return false;
 	}
 
-	if (pdfList.getSize() == 2 && n_prompt_ && n_nonprompt_) {
-		// delete fracPrompt_;
-		fracPrompt_ = new RooFormulaVar("fracPrompt", "Prompt Fraction from MC fit", "@0 / (@0 + @1)", RooArgList(*n_prompt_, *n_nonprompt_));
-		ws_->import(*fracPrompt_);
-	}
     if(nonPromptFunc_ && promptFunc_) {
         ws_->import(*promptFunc_);
         ws_->import(*nonPromptFunc_);
@@ -879,7 +895,7 @@ public:
             return nullptr;
         }
         // Ensure dcaVar_ has the standard name 'dca' before fitting
-        dcaVar_->SetName("dca3D");
+        dcaVar_->SetName((opt_.dcaVar).c_str());
         //TH1D* tempDataHist = new TH1D("tempDataHistForBinning", "Temporary Data Hist for Binning",dcaBins_.size() - 1, dcaBins_.data());
         //dataSet_->fillHistogram(tempDataHist, RooArgList(*dcaVar_));
 
@@ -924,10 +940,10 @@ public:
         fitResult->Print("v");
         ntry++;
     }
-        coef_prompt_ = new RooRealVar("coef_prompt", "Prompt Coefficient", fracPrompt_->getVal()/promptTemplate_->sum(false));
-        coef_nonprompt_ = new RooRealVar("coef_nonprompt", "Non-Prompt Coefficient", (1 - fracPrompt_->getVal())/nonPromptTemplate_->sum(false));
+        // coef_prompt_ = new RooRealVar("coef_prompt", "Prompt Coefficient", fracPrompt_->getVal()/promptTemplate_->sum(false));
+        // coef_nonprompt_ = new RooRealVar("coef_nonprompt", "Non-Prompt Coefficient", (1 - fracPrompt_->getVal())/nonPromptTemplate_->sum(false));
 
-        sumFunc_ = new RooRealSumFunc("sumFunc", "Sum of Prompt and Non-Prompt Functions", RooArgList(*promptFunc_, *nonPromptFunc_), RooArgList(*coef_prompt_, *coef_nonprompt_));
+        // sumFunc_ = new RooRealSumFunc("sumFunc", "Sum of Prompt and Non-Prompt Functions", RooArgList(*promptFunc_, *nonPromptFunc_), RooArgList(*coef_prompt_, *coef_nonprompt_));
 
 
 
@@ -965,13 +981,19 @@ public:
     //         // delete nonPromptHist_;
     //         // nonPromptHist_ = nullptr;
     //    }
+      
+    //  n_nonprompt_->setVal(1e-7);
+     fracPrompt_ = new RooFormulaVar("fracPrompt", "Prompt Fraction from MC fit", "@0 / (@0 + @1)", RooArgList(*n_prompt_, *n_nonprompt_));
+     
+        ws_->import(*fitResult); // Import fit result into workspace
+        ws_->import(*fracPrompt_); // Import prompt fraction into workspace
 
 
         return fitResult; // Caller is responsible for deleting this object
     }
    void plotResults(RooFitResult* fitResult = nullptr, const std::string& plotName = "dca_fit_plot", bool useDataTemplates = true) {
     std::cout << "Plotting results with pull distribution (CMS style)..." << std::endl;
-    RooRealVar* dca = ws_->var("dca3D"); 
+    RooRealVar* dca = ws_->var(opt_.dcaVar.c_str()); 
     if (!dca) {
         dca = dcaVar_.get(); 
         if (!dca) {
@@ -1122,21 +1144,25 @@ public:
         TObject* modelFitObj = frame->findObject("model_fit_to_mc");
         TObject* mcPromptObj = frame->findObject("mc_prompt_comp");
         TObject* mcNonPromptObj = frame->findObject("mc_nonprompt_comp");
+        TObject* myObject = nullptr;
 
         if (dataYieldObj) leg->AddEntry(dataYieldObj, "Data Yield (from Mass Fit)", "pe");
         if (modelFitObj) leg->AddEntry(modelFitObj, "Total MC Fit", "l");
         if (mcPromptObj) leg->AddEntry(mcPromptObj, "Prompt D^{*} (MC)", "f");
         if (mcNonPromptObj) leg->AddEntry(mcNonPromptObj, "Non-Prompt D^{*} (MC)", "f");
+        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fracPrompt_->getVal()));
     } else {
         TObject* dataOrigObj = frame->findObject("data_original");
         TObject* modelFitToDataObj = frame->findObject("model_fit_to_data");
         TObject* promptCompObj = frame->findObject("prompt_comp");
         TObject* nonPromptCompObj = frame->findObject("nonprompt_comp");
+        TObject* myObject = nullptr;
 
         if (dataOrigObj) leg->AddEntry(dataOrigObj, "Data", "pe");
         if (modelFitToDataObj) leg->AddEntry(modelFitToDataObj, "Total Fit", "l");
         if (promptCompObj) leg->AddEntry(promptCompObj, "Prompt D^{*} (MC)", "f");
         if (nonPromptCompObj) leg->AddEntry(nonPromptCompObj, "Non-Prompt D^{*} (MC)", "f");
+        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fracPrompt_->getVal()));
     }
     leg->Draw();
 
@@ -1144,13 +1170,14 @@ public:
     latex.SetNDC();
     latex.SetTextFont(42);
     latex.SetTextSize(0.045);
-    latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Preliminary}");
+    latex.DrawLatex(0.18, 0.93, "#bf{CMS} #it{Internal}");
     latex.SetTextSize(0.04);
     latex.SetTextAlign(31); // Align right
     latex.DrawLatex(0.94, 0.93, "PP #sqrt{s_{NN}} = 5.32 TeV"); // 예제 그림의 텍스트
 
     latex.SetTextAlign(11); // Align left
     latex.SetTextSize(0.035);
+    // latex.DrawLatex(0.55,0.50, Form("Prompt Fraction = %.2f", fracPrompt_->getVal()));
     // latex.DrawLatex(0.55, 0.67, opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
     // latex.DrawLatex(0.55, 0.62, opt_.centLegend.empty() ? Form("%.1f < cos#Theta_{HX} < %.1f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
     // latex.DrawLatex(0.55, 0.57, opt_.etaLegend.empty() ? Form("|y| < 1", opt_.etaMax) : opt_.etaLegend.c_str());
@@ -1341,10 +1368,16 @@ public:
              outFile_.reset(); 
              return;
          }
+            TParameter<double>* PromptFracValParam = new TParameter<double>("PromptFraction", fracPrompt_->getVal());
+            TParameter<double>* PromptFracErrParam = new TParameter<double>("PromptFractionError", fracPrompt_->getPropagatedError(*fitResult));
+            PromptFracValParam->Write();
+            PromptFracErrParam->Write();
+            delete PromptFracValParam;
+            delete PromptFracErrParam;
 
          // Write workspace
          if (ws_) {
-             ws_->Write(("ws_" + name_).c_str());
+             ws_->Write();
              std::cout << "Workspace saved." << std::endl;
          }
 
@@ -1662,8 +1695,8 @@ private:
     RooHistPdf* nonPromptPdf_;      // PDF from non-prompt template (workspace managed)  
     RooRealVar* coef_prompt_;
     RooRealVar* coef_nonprompt_;
-    RooHistFunc* promptFunc_;         // PDF from prompt template (workspace managed)
-    RooHistFunc* nonPromptFunc_;      // PDF from non-prompt template (workspace managed)  
+    RooHistFunc* promptFunc_ = nullptr;         // PDF from prompt template (workspace managed)
+    RooHistFunc* nonPromptFunc_= nullptr;      // PDF from non-prompt template (workspace managed)  
     RooRealSumFunc *sumFunc_;
     RooFormulaVar* fracPrompt_;        // Fraction of prompt component (workspace managed)
     RooAddPdf* model_;              // Combined model (workspace managed)
@@ -1743,7 +1776,7 @@ private:
 };
 inline void DCAFitter::plotSignalAndSidebandDCAFromHist(const std::string& plotName) {
     std::cout << "Using existing histograms to plot DCA distribution for signal and sideband regions..." << std::endl;
-    RooRealVar* dca = ws_->var("dca3D"); 
+    RooRealVar* dca = ws_->var(opt_.dcaVar.c_str()); 
     if (!dca) {
         std::cerr << "Error: dca3D variable not found in workspace." << std::endl;
         return;
@@ -1810,7 +1843,7 @@ inline void DCAFitter::plotSignalAndSidebandDCAFromHist(const std::string& plotN
     latex.SetTextSize(0.035);
     latex.DrawLatex(0.55, 0.67, opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
     latex.DrawLatex(0.55, 0.62, opt_.centLegend.empty() ? Form("%.1f < cos#Theta_{HX} < %.1f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
-    latex.DrawLatex(0.55, 0.57, opt_.etaLegend.empty() ? Form("|y| < 1", opt_.etaMax) : opt_.etaLegend.c_str());
+    latex.DrawLatex(0.55, 0.57, opt_.yLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.yLegend.c_str());
 
     // 5. 플롯 저장
     // std::string plotDir = opt_.outputPlotDir + "/mass_fits_" + name_ + "/slice_mass_distributions/";
@@ -1841,7 +1874,7 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     }
 
     if (!dcaVar_) {
-        RooRealVar* dcaFromWs = ws_->var("dca3D"); 
+        RooRealVar* dcaFromWs = ws_->var(opt_.dcaVar.c_str()); 
         if (!dcaFromWs && !dcaBranchName_.empty()) dcaFromWs = ws_->var(dcaBranchName_.c_str());
         
         if (dcaFromWs) {
@@ -1998,7 +2031,7 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     latex.SetTextSize(0.03);
     latex.SetTextAlign(22); 
     latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.03, opt_.pTLegend.empty() ? Form("%0.2f < p_{T} < %0.2f GeV/c",opt_.pTMin, opt_.pTMax) : opt_.pTLegend.c_str());
-    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.07, opt_.etaLegend.empty() ? "|y| < 1" : opt_.etaLegend.c_str());
+    latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.07, opt_.yLegend.empty() ? "|y| < 1" : opt_.yLegend.c_str());
     latex.DrawLatex(0.30, canvas->GetBottomMargin() + 0.11, opt_.centLegend.empty() ? Form("%0.2f < cos#theta_{HX} < %0.2f", opt_.cosMin, opt_.cosMax) : opt_.centLegend.c_str());
 
 

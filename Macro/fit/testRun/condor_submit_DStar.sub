@@ -1,0 +1,14 @@
+universe           = vanilla
+executable         = runCondor_DStar.sh
+getenv = True
+arguments          = $(pTMin) $(pTMax) $(cosMin) $(cosMax) 
+output             = logs/$(Cluster)_$(Process).out
+error              = logs/$(Cluster)_$(Process).err
+log                = logs/$(Cluster)_$(Process).log
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+transfer_input_files = MCMacroDstar_condor.cpp, kinematicRange_absDStar.txt
+
+queue pTMin pTMax cosMin cosMax from kinematicRange_absDStar.txt
+
