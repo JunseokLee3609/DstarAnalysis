@@ -1,6 +1,6 @@
 #include "EffHead.h"
 #include "commonSelectionVar.h"
-#include "../interface/simpleDMC.hxx"
+#include "../interface/simpleDMC.h"
 #include "../interface/simpleAlgos.hxx"
 #include "../Tools/Transformations.h"
 #include "../Tools/BasicHeaders.h"
@@ -160,7 +160,8 @@ void test(
 // string fileName="/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root"
     // string fileName="/home/jun502s/DstarAna/DStarAnalysis/Data/output_PbPb_noFilter_wOnlyGEN.root"
     // string fileName="/home/jun502s/DstarAna/DStarAnalysis/Data/output_pbpb_mc_wgeninfo.root"
-    string fileName="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root"
+    //string fileName="/home/jun502s/DstarAna/DStarAnalysis/Data/MC/Dstar2024ppRef/Mar30NonSwap/d0ana_tree_nonswapsample_ppref_30Mar.root"
+    string fileName="d0ana_tree_test.root"
 ){
     TFile* f = TFile::Open(fileName.c_str());
     TFile* feffMap = TFile::Open("output.root");
@@ -169,9 +170,9 @@ void test(
     /* Get tree*/
     auto t = (TTree*) f->Get(name_tree.c_str());
     
-    DataFormat::simpleDStarMCTreeevt evtMC;
-    evtMC.setTree(t);
-    evtMC.setGENTree(t);
+    DataFormat::simpleDStarMCTreeevt* evtMC = new DataFormat::simpleDStarMCTreeevt();
+    evtMC->setTree(t);
+    evtMC->setGENTree(t);
     int nEvts;
     nEvts = t->GetEntries();
     
@@ -192,14 +193,14 @@ void test(
     
     auto fillGEN = [&](int i){
         TLorentzVector Dstar, D0, D1, D0Dau1, D0Dau2;
-        Dstar.SetPtEtaPhiM(evtMC.gen_pT[i], evtMC.gen_eta[i], evtMC.gen_phi[i], evtMC.gen_mass[i]);
-        D0.SetPtEtaPhiM(evtMC.gen_D0pT[i], evtMC.gen_D0eta[i], evtMC.gen_D0phi[i], evtMC.gen_D0mass[i]);
-        D1.SetPtEtaPhiM(evtMC.gen_D0pT[i], evtMC.gen_D0eta[i], evtMC.gen_D0phi[i], evtMC.gen_D0mass[i]);
-        D0Dau1.SetPtEtaPhiM(evtMC.gen_D0Dau1_pT[i], evtMC.gen_D0Dau1_eta[i], evtMC.gen_D0Dau1_phi[i], evtMC.gen_D0Dau1_mass[i]);
-        D0Dau2.SetPtEtaPhiM(evtMC.gen_D0Dau2_pT[i], evtMC.gen_D0Dau2_eta[i], evtMC.gen_D0Dau2_phi[i], evtMC.gen_D0Dau2_mass[i]);
+        Dstar.SetPtEtaPhiM(evtMC->gen_pT[i], evtMC->gen_eta[i], evtMC->gen_phi[i], evtMC->gen_mass[i]);
+        D0.SetPtEtaPhiM(evtMC->gen_D0pT[i], evtMC->gen_D0eta[i], evtMC->gen_D0phi[i], evtMC->gen_D0mass[i]);
+        D1.SetPtEtaPhiM(evtMC->gen_D0pT[i], evtMC->gen_D0eta[i], evtMC->gen_D0phi[i], evtMC->gen_D0mass[i]);
+        D0Dau1.SetPtEtaPhiM(evtMC->gen_D0Dau1_pT[i], evtMC->gen_D0Dau1_eta[i], evtMC->gen_D0Dau1_phi[i], evtMC->gen_D0Dau1_mass[i]);
+        D0Dau2.SetPtEtaPhiM(evtMC->gen_D0Dau2_pT[i], evtMC->gen_D0Dau2_eta[i], evtMC->gen_D0Dau2_phi[i], evtMC->gen_D0Dau2_mass[i]);
         
         // 기본 조건 검사
-        if(evtMC.gen_pT[i] > DSGLPTLO && fabs(evtMC.gen_y[i]) < DSGLABSY) {
+        if(evtMC->gen_pT[i] > DSGLPTLO && fabs(evtMC->gen_y[i]) < DSGLABSY) {
 
             TVector3 vect = DstarDau1Vector_Helicity(Dstar, D0);
             
@@ -208,11 +209,11 @@ void test(
             h2DGEN->Fill(vect.CosTheta(), vect.Phi()/TMath::Pi()*180);
             
             // D1 전하에 따라 분리
-            if(evtMC.gen_D1pdgId[i] == 211) {
+            if(evtMC->gen_D1pdgId[i] == 211) {
                 // 양전하 히스토그램 채우기
                 hGEN_pos->Fill(vect.CosTheta());
                 h2DGEN_pos->Fill(vect.CosTheta(), vect.Phi()/TMath::Pi()*180);
-            }             else if(evtMC.gen_D1pdgId[i] == -211) {
+            }             else if(evtMC->gen_D1pdgId[i] == -211) {
                 // 음전하 히스토그램 채우기
                 hGEN_neg->Fill(vect.CosTheta());
                 h2DGEN_neg->Fill(vect.CosTheta(), vect.Phi()/TMath::Pi()*180);
@@ -220,8 +221,9 @@ void test(
         }
         if(
         
-            evtMC.gen_pT[i] > DSGLPTLO && 
-            evtMC.gen_pT[i] < 6 && 
+            evtMC->gen_pT[i] > 10 && 
+            evtMC->gen_pT[i] < 20 && 
+	    evtMC->gen_D0ancestorFlavor_[i] == 5 &&
             true){
             TVector3 vect = DstarDau1Vector_Helicity(Dstar,D0);
             hGEN2->Fill(vect.CosTheta());
@@ -229,11 +231,11 @@ void test(
     };
 auto fill2DGEN = [&](int i){
         TLorentzVector Dstar, D0;
-        Dstar.SetPtEtaPhiM(evtMC.gen_pT[i], evtMC.gen_eta[i], evtMC.gen_phi[i], evtMC.gen_mass[i]);
-        D0.SetPtEtaPhiM(evtMC.gen_D0pT[i], evtMC.gen_D0eta[i], evtMC.gen_D0phi[i], evtMC.gen_D0mass[i]);
+        Dstar.SetPtEtaPhiM(evtMC->gen_pT[i], evtMC->gen_eta[i], evtMC->gen_phi[i], evtMC->gen_mass[i]);
+        D0.SetPtEtaPhiM(evtMC->gen_D0pT[i], evtMC->gen_D0eta[i], evtMC->gen_D0phi[i], evtMC->gen_D0mass[i]);
            if(
-        evtMC.gen_pT[i] > DSGLPTLO && 
-        fabs(evtMC.gen_y[i]) < DSGLABSY && 
+        evtMC->gen_pT[i] > DSGLPTLO && 
+        fabs(evtMC->gen_y[i]) < DSGLABSY && 
         true){
         
         TVector3 vect = DstarDau1Vector_Helicity(Dstar,D0);
@@ -241,24 +243,24 @@ auto fill2DGEN = [&](int i){
 };
 
 auto fill = [&](int i, TH3D* effMap){
-    if(evtMC.matchGEN[i]  && !evtMC.isSwap[i])
+    if(evtMC->matchGEN[i]  && !evtMC->isSwap[i])
     {
         TLorentzVector Dstar, D0;
-        Dstar.SetPtEtaPhiM(evtMC.pT[i], evtMC.eta[i], evtMC.phi[i], evtMC.mass[i]);
-        D0.SetPtEtaPhiM(evtMC.pTD1[i], evtMC.EtaD1[i], evtMC.PhiD1[i], evtMC.massDaugther1[i]);
+        Dstar.SetPtEtaPhiM(evtMC->pT[i], evtMC->eta[i], evtMC->phi[i], evtMC->mass[i]);
+        D0.SetPtEtaPhiM(evtMC->pTD1[i], evtMC->EtaD1[i], evtMC->PhiD1[i], evtMC->massDaugther1[i]);
         TVector3 vect = DstarDau1Vector_Helicity(Dstar,D0);
 
-        double weight = findWeight(evtMC.pT[i], evtMC.y[i], evtMC.phi[i], effMap);
+        double weight = findWeight(evtMC->pT[i], evtMC->y[i], evtMC->phi[i], effMap);
         hNW->Fill(vect.CosTheta());
         h->Fill(vect.CosTheta(), weight);
     }
 };
 for( auto idx : ROOT::TSeqU(nEvts)){
     t->GetEntry(idx);
-    for( auto i : ROOT::TSeqI(evtMC.candSize)){
+    for( auto i : ROOT::TSeqI(evtMC->candSize)){
     fill(i,(TH3D*)feffMap->Get("pt_y_phi_pr_ratio"));
     }
-    for( auto i : ROOT::TSeqI(evtMC.candSize_gen)){
+    for( auto i : ROOT::TSeqI(evtMC->candSize_gen)){
     fillGEN(i);
     }
 } 
@@ -344,20 +346,20 @@ for( auto idx : ROOT::TSeqU(nEvts)){
     hNW->Draw();
     c4->cd(3);
     
-    hGEN->GetYaxis()->SetRangeUser(0, hGEN->GetMaximum()*1.2);
-    hGEN->SetMarkerStyle(20);
-    hGEN->SetMarkerSize(0.5);
-    hGEN->SetMarkerColor(kRed);
-    hGEN->SetLineColor(kRed);
+    hGEN2->GetYaxis()->SetRangeUser(0, hGEN2->GetMaximum()*1.2);
+    hGEN2->SetMarkerStyle(20);
+    hGEN2->SetMarkerSize(0.5);
+    hGEN2->SetMarkerColor(kRed);
+    hGEN2->SetLineColor(kRed);
     h->SetMarkerStyle(20);
     h->SetMarkerSize(0.5);
     h->SetMarkerColor(kBlue);
     h->SetLineColor(kBlue);
     TLegend* leg2 = new TLegend(0.11,0.11,0.28,0.25);
-    leg2->AddEntry(hGEN, "GEN", "l");
+    leg2->AddEntry(hGEN2, "GEN", "l");
     leg2->AddEntry(h, "reco with weight", "l");
     leg2->SetBorderSize(0);
-    hGEN->Draw("E");
+    hGEN2->Draw("E");
     h->Draw("same");
     leg->Draw("same");
     c4->SaveAs("test.png");

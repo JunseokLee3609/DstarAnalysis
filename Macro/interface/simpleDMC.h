@@ -1305,6 +1305,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     Float_t        Trk3DDCAErr[MAXCAND];   //[candSize]
     Float_t        mva[MAXCAND];   //[candSize]
     Float_t       dca3D[MAXCAND];   //[candSize]
+    Double_t       Psi2Raw_Trk[MAXCAND];   //[candSize]
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -1462,6 +1463,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
      Float_t        Trk3DDCAErr;   //[candSize]
      Float_t        mva;   //[candSize]
      Float_t       dca3D;   //[candSize]
+     Double_t       Psi2Raw_Trk;   //[candSize]
 
    bool isMC;
     simpleDTreeflat* getEventHandle(){ return this;}
@@ -1517,6 +1519,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     fChain->SetBranchAddress("mva",&mva);
    fChain->Branch("isMC",&isMC);
     fChain->SetBranchAddress("dca3D",&dca3D);
+    fChain->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
     };
         template <typename T>
     void setOutputTree(T *fChain){
@@ -1570,6 +1573,7 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     fChain->Branch("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->Branch("mva",&mva);
     fChain->Branch("dca3D",&dca3D);
+    fChain->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
           };
 void copyDn( simpleDTreeevt& evt, int idx){
 Npixel =evt.Npixel;
@@ -1620,6 +1624,7 @@ Trk3DDCA =evt.Trk3DDCA[idx];   //[candSize]
 Trk3DDCAErr =evt.Trk3DDCAErr[idx];   //[candSize]
 mva=evt.mva[idx];
 dca3D=evt.dca3D[idx];
+Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
 // isMC=isMC;
         };
     };
@@ -1700,6 +1705,7 @@ dca3D=evt.dca3D[idx];
    Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
    Float_t         mva[MAXCAND];   //[candSize]
    Float_t        dca3D[MAXCAND];   //[candSize]
+   Double_t         Psi2Raw_Trk[MAXCAND];   //[candSize]
 
     // Event plane 관련 변수들 추가
     Float_t         ephfpAngle[3];
@@ -1802,6 +1808,7 @@ dca3D=evt.dca3D[idx];
     TBranch        *b_Trk3DDCAErr;   //!
     TBranch        *b_mva;   //!
     TBranch        *b_dca3D;   //!
+    TBranch        *b_Psi2Raw_Trk;   //!
 
     // 대응하는 TBranch 포인터들 추가
     TBranch        *b_ephfpAngle;   //!
@@ -1907,6 +1914,7 @@ dca3D=evt.dca3D[idx];
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
     fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
+    fChain->SetBranchAddress("Psi2Raw_Trk", Psi2Raw_Trk, &b_Psi2Raw_Trk);
 
         // Event plane 관련 branch 추가
         fChain->SetBranchAddress("ephfpAngle", ephfpAngle, &b_ephfpAngle);
@@ -2140,6 +2148,7 @@ dca3D=evt.dca3D[idx];
             float Trk3DDCA[MAXCAND];
             float Trk3DDCAErr[MAXCAND];
             float dca3D[MAXCAND];
+            double Psi2Raw_Trk[MAXCAND];
             Int_t           candSize_gen;
    Float_t         gen_mass[MAXCAND];   //[candSize_gen]
    Float_t         gen_pT[MAXCAND];   //[candSize_gen]
@@ -2158,6 +2167,8 @@ dca3D=evt.dca3D[idx];
    Float_t         gen_D0y[MAXCAND];   //[candSize_gen]
    Int_t         gen_D0charge[MAXCAND];   //[candSize_gen]
    Int_t         gen_D0pdgId[MAXCAND];   //[candSize_gen]
+   Int_t         gen_D0ancestorId_[MAXCAND];   //[candSize_gen]
+   Int_t         gen_D0ancestorFlavor_[MAXCAND];   //[candSize_gen
    Float_t         gen_D0Dau1_pT[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0Dau1_eta[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0Dau1_phi[MAXCAND];   //[candSize_gen]
@@ -2197,6 +2208,8 @@ dca3D=evt.dca3D[idx];
    TBranch        *b_gen_D0y;   //!
    TBranch        *b_gen_D0charge;   //!
    TBranch        *b_gen_D0pdgId;   //!
+   TBranch        *b_gen_D0ancestorId;   //!
+   TBranch        *b_gen_D0ancestorFlavor;   //!
    TBranch        *b_gen_D0Dau1_pT;   //!
    TBranch        *b_gen_D0Dau1_eta;   //!
    TBranch        *b_gen_D0Dau1_phi;   //!
@@ -2381,6 +2394,7 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
             t->SetBranchAddress("dca3D",&dca3D);
 	    t->SetBranchAddress("mva",&mva);
+        t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
             };
             template <typename T>
             void setGENTree(T *t){
@@ -2402,6 +2416,8 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("gen_D0y", gen_D0y, &b_gen_D0y);
             t->SetBranchAddress("gen_D0charge", gen_D0charge, &b_gen_D0charge);
             t->SetBranchAddress("gen_D0pdgId", gen_D0pdgId, &b_gen_D0pdgId);
+            t->SetBranchAddress("gen_D0ancestorId_", gen_D0ancestorId_, &b_gen_D0ancestorId);
+            t->SetBranchAddress("gen_D0ancestorFlavor_", gen_D0ancestorFlavor_, &b_gen_D0ancestorFlavor);
             t->SetBranchAddress("gen_D0Dau1_pT", gen_D0Dau1_pT, &b_gen_D0Dau1_pT);
             t->SetBranchAddress("gen_D0Dau1_eta", gen_D0Dau1_eta, &b_gen_D0Dau1_eta);
             t->SetBranchAddress("gen_D0Dau1_phi", gen_D0Dau1_phi, &b_gen_D0Dau1_phi);
@@ -2423,6 +2439,7 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("gen_D1y", gen_D1y, &b_gen_D1y);
             t->SetBranchAddress("gen_D1charge", gen_D1charge, &b_gen_D1charge);
             t->SetBranchAddress("gen_D1pdgId", gen_D1pdgId, &b_gen_D1pdgId);
+            t->SetBranchAddress("Psi2Raw_Trk", &Psi2Raw_Trk);
             // t->SetBranchAddress("candSize_gen",&candSize_gen);
             // t->SetBranchAddress("gen_pT",&gen_pT);
             // t->SetBranchAddress("gen_eat",&gen_eat);
@@ -2586,6 +2603,7 @@ dca3D=evt.dca3D[idx];
             float dca3D;
             bool isMC;
 	   float mva;
+       double Psi2Raw_Trk;
 
                   Int_t           candSize_gen;
    Float_t         gen_mass;   //[candSize_gen]
@@ -2605,6 +2623,8 @@ dca3D=evt.dca3D[idx];
    Float_t         gen_D0y;   //[candSize_gen]
    Int_t         gen_D0charge;   //[candSize_gen]
    Int_t         gen_D0pdgId;   //[candSize_gen]
+    Int_t         gen_D0ancestorId_;   //[candSize_gen]
+    Int_t         gen_D0ancestorFlavor_;   //[candSize_gen]
    Float_t         gen_D0Dau1_pT;   //[candSize_gen]
    Float_t         gen_D0Dau1_eta;   //[candSize_gen]
    Float_t         gen_D0Dau1_phi;   //[candSize_gen]
@@ -2688,6 +2708,8 @@ dca3D=evt.dca3D[idx];
                 t->SetBranchAddress("gen_D0y",&gen_D0y);
                 t->SetBranchAddress("gen_D0charge",&gen_D0charge);
                 t->SetBranchAddress("gen_D0pdgId",&gen_D0pdgId);
+                t->SetBranchAddress("gen_D0ancestorId",&gen_D0ancestorId_);
+                t->SetBranchAddress("gen_D0ancestorFlavor",&gen_D0ancestorFlavor_);
                 t->SetBranchAddress("gen_D0Dau1_pT",&gen_D0Dau1_pT);
                 t->SetBranchAddress("gen_D0Dau1_eta",&gen_D0Dau1_eta);
                 t->SetBranchAddress("gen_D0Dau1_phi",&gen_D0Dau1_phi);
@@ -2709,6 +2731,7 @@ dca3D=evt.dca3D[idx];
                 t->SetBranchAddress("gen_D1y",&gen_D1y);
                 t->SetBranchAddress("gen_D1charge",&gen_D1charge);
                 t->SetBranchAddress("gen_D1pdgId",&gen_D1pdgId);
+                t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
         }; 
         template <typename T>
         void setTree(T *t){
@@ -2832,7 +2855,8 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
             t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
             t->SetBranchAddress("dca3D",&dca3D);
-	    t->SetBranchAddress("mva",&mva);};
+	    t->SetBranchAddress("mva",&mva);
+        t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);}
             template <typename T>
         void setOutputTree(T *t){
             t->Branch("Ntrkoffline",&Ntrkoffline);
@@ -2957,6 +2981,7 @@ dca3D=evt.dca3D[idx];
             t->Branch("dca3D",&dca3D);
             t->Branch("isMC",&isMC);
 	    t->Branch("mva",&mva);
+        t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
         };
         template <typename T>
         void setGENOutputTree(T *t){
@@ -2979,6 +3004,8 @@ dca3D=evt.dca3D[idx];
             t->Branch("gen_D0y",&gen_D0y);
             t->Branch("gen_D0charge",&gen_D0charge);
             t->Branch("gen_D0pdgId",&gen_D0pdgId);
+            t->Branch("gen_D0ancestorId_",&gen_D0ancestorId_);
+            t->Branch("gen_D0ancestorFlavor_",&gen_D0ancestorFlavor_);
             t->Branch("gen_D0Dau1_pT",&gen_D0Dau1_pT);
             t->Branch("gen_D0Dau1_eta",&gen_D0Dau1_eta);
             t->Branch("gen_D0Dau1_phi",&gen_D0Dau1_phi);
@@ -3000,6 +3027,7 @@ dca3D=evt.dca3D[idx];
             t->Branch("gen_D1y",&gen_D1y);
             t->Branch("gen_D1charge",&gen_D1charge);
             t->Branch("gen_D1pdgId",&gen_D1pdgId);
+            t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
     };
         void copyDn( simpleDStarMCTreeevt& evt, int idx){
             Ntrkoffline=evt.Ntrkoffline;
@@ -3123,6 +3151,7 @@ dca3D=evt.dca3D[idx];
             Trk3DDCAErr=evt.Trk3DDCAErr[idx];
             dca3D=evt.dca3D[idx];
 	    mva = evt.mva[idx];
+        Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             //isData=evt.isData;
             };
         void copyDn( simpleDStarDataTreeevt& evt, int idx){
@@ -3198,6 +3227,7 @@ dca3D=evt.dca3D[idx];
             Trk3DDCAErr=evt.Trk3DDCAErr[idx];
             dca3D=evt.dca3D[idx];
             mva = evt.mva[idx];
+            Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             //isData=evt.isData;
             };
         void copyGENDn( simpleDStarMCTreeevt& evt, int idx){
@@ -3222,6 +3252,8 @@ dca3D=evt.dca3D[idx];
             gen_D0y=evt.gen_D0y[idx];
             gen_D0charge=evt.gen_D0charge[idx];
             gen_D0pdgId=evt.gen_D0pdgId[idx];
+            gen_D0ancestorId_=evt.gen_D0ancestorId_[idx];
+            gen_D0ancestorFlavor_=evt.gen_D0ancestorFlavor_[idx];
             gen_D0Dau1_pT=evt.gen_D0Dau1_pT[idx];
             gen_D0Dau1_eta=evt.gen_D0Dau1_eta[idx];
             gen_D0Dau1_phi=evt.gen_D0Dau1_phi[idx];
@@ -3243,6 +3275,7 @@ dca3D=evt.dca3D[idx];
             gen_D1y=evt.gen_D1y[idx];
             gen_D1charge=evt.gen_D1charge[idx];
             gen_D1pdgId=evt.gen_D1pdgId[idx];
+            Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
         };
         void copyDn( simpleDStarMCTreeflat& evt){
             Ntrkoffline=evt.Ntrkoffline;
@@ -3363,6 +3396,7 @@ dca3D=evt.dca3D[idx];
             dedxHarmonic2GrandD1=evt.dedxHarmonic2GrandD1;
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2;
 	    mva = evt.mva;
+        Psi2Raw_Trk = evt.Psi2Raw_Trk;
             //isData=evt.isData;
             };
 };    struct simpleDStarDataTreeflat{
@@ -3440,6 +3474,7 @@ dca3D=evt.dca3D[idx];
             float dca3D;
             float mva;
             bool isMC;
+            double Psi2Raw_Trk;
             // int candSize_gen;
             // float gen_pT;
             // float gen_eat;
@@ -3600,7 +3635,9 @@ dca3D=evt.dca3D[idx];
             t->SetBranchAddress("Trk3DDCA",&Trk3DDCA);
             t->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
             t->SetBranchAddress("dca3D",&dca3D);
-	    t->SetBranchAddress("mva",&mva);};
+	    t->SetBranchAddress("mva",&mva);
+        t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
+    };
             template <typename T>
         void setOutputTree(T *t){
             t->Branch("Ntrkoffline",&Ntrkoffline);
@@ -3676,6 +3713,7 @@ dca3D=evt.dca3D[idx];
             t->Branch("dca3D",&dca3D);
             t->Branch("mva",&mva);
             t->Branch("isMC",&isMC);
+            t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
             // t->SetBranchAddress("candSize_gen",&candSize_gen);
             // t->SetBranchAddress("gen_pT",&gen_pT);
             // t->SetBranchAddress("gen_eat",&gen_eat);
@@ -3787,6 +3825,7 @@ dca3D=evt.dca3D[idx];
             Trk3DDCAErr=evt.Trk3DDCAErr[idx];
             dca3D=evt.dca3D[idx];
             mva=evt.mva[idx];
+            Psi2Raw_Trk=evt.Psi2Raw_Trk[idx];
             };
     };
  

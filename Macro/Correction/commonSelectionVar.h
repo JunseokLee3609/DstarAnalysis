@@ -4,7 +4,7 @@
 
 #define PDG_DAU1 211
 #define PDG_DAU2 321
-#define DSGLPTLO 5
+#define DSGLPTLO 1
 #define DSGLPTHI 30
 #define DSGLABSY 1.0
 #define DSGL3DPA 1.0

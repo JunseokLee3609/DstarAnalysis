@@ -78,3 +78,51 @@ TVector3 DstarDau1Vector_CollinsSoper(const TLorentzVector DstarLV_Lab, const TL
 
     return DstarDau1Vec_CS;
 }
+
+// Lab to Event Plane frame
+// Event plane angle (Psi2Raw_Trk) is used as the quantization axis
+TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLorentzVector DstarDau1LV_Lab, double eventPlaneAngle) {
+    // ******** Transform daughter to D* rest frame ******** //
+    TLorentzVector Dau1LV_DstarRestFrame(DstarDau1LV_Lab);
+    Dau1LV_DstarRestFrame.Boost(-DstarLV_Lab.BoostVector());
+
+    TVector3 Dau1Vec_Boosted = Dau1LV_DstarRestFrame.Vect();
+    // TVector3 DstarVec_Lab = DstarLV_Lab.Vect();
+
+    // ******** Rotate to align with standard coordinate system ******** //
+    // First rotate around Z to align with x-axis
+    // Dau1Vec_Boosted.RotateZ(-DstarVec_Lab.Phi());
+    // Then rotate around Y to align with z-axis  
+    // Dau1Vec_Boosted.RotateY(-DstarVec_Lab.Theta());
+
+    // ******** Rotate around z-axis by event plane angle ******** //
+    // The event plane angle defines the quantization axis in the lab frame
+    // We rotate the daughter momentum by this angle to use event plane as reference
+    Dau1Vec_Boosted.RotateZ(-eventPlaneAngle);
+
+    return Dau1Vec_Boosted;
+}
+// TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLorentzVector DstarDau1LV_Lab, double eventPlaneAngle) {
+    
+//     // 원본 TLorentzVector를 수정하지 않기 위해 복사본을 생성합니다.
+//     TLorentzVector DstarLV_rotated = DstarLV_Lab;
+//     TLorentzVector Dau1LV_rotated = DstarDau1LV_Lab;
+
+//     // ******** 1. 시스템 전체를 회전시켜 이벤트 평면을 X-Z 평면으로 정렬 ******** //
+//     // Z축을 중심으로 (-eventPlaneAngle) 만큼 회전시키면, 
+//     // 이벤트 평면의 방향 벡터 (cos(Psi), sin(Psi), 0)가 새로운 X축 (1, 0, 0) 방향을 향하게 됩니다.
+//     DstarLV_rotated.RotateZ(-eventPlaneAngle);
+//     Dau1LV_rotated.RotateZ(-eventPlaneAngle);
+
+//     // ******** 2. 회전된 D*의 정지 좌표계로 딸 입자를 변환(Boost) ******** //
+//     // 이제 D*와 딸 입자는 이벤트 평면이 X-Z 평면인 새로운 좌표계에 놓여 있습니다.
+//     // 이 상태에서 D* 정지 좌표계로 변환을 수행합니다.
+//     Dau1LV_rotated.Boost(-DstarLV_rotated.BoostVector());
+
+//     // ******** 3. 최종 3-Vector 반환 ******** //
+//     // 반환된 벡터의 각 좌표축은 다음과 같은 의미를 가집니다.
+//     // Py() : 이벤트 평면에 수직인(out-of-plane) 방향의 운동량 성분
+//     // Px() : 이벤트 평면 내에 있으면서 D* 운동량과 수직인(in-plane transverse) 방향의 성분
+//     // Pz() : D* 운동량 방향(in-plane longitudinal)과 관련된 성분 (주의: 헬리시티 좌표계는 아님)
+//     return Dau1LV_rotated.Vect();
+// }

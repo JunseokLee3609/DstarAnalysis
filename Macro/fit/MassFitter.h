@@ -786,7 +786,7 @@ MassFitter::MassFitter(const std::string& name, std::string& massVar, double mas
     activeMassVar_ = mass_.get();
     
     // 워크스페이스 초기화 (스마트 포인터 사용)
-    workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
+    workspace_ = std::make_unique<RooWorkspace>(("workspace_" + name_).c_str());
     
     // 견고한 매개변수 관리자 초기화
     try {
@@ -1226,7 +1226,7 @@ void MassFitter::PerformSwapMCFit(FitOpt opt, RooDataSet* MCdataset, bool inclus
     if(opt.doFit)Fit(opt.useMinos, opt.useHesse,opt.verbose,opt.useCUDA, opt.massMin,opt.massMax);
     SaveMCResults(opt.outputMCDir,opt.outputMCSwap0File, opt.saveWorkspace);
     Clear();
-    workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
+    workspace_ = std::make_unique<RooWorkspace>(("workspace_" + name_).c_str());
 
     full_data_ = MCdataset;
     if (inclusive) {
@@ -1243,7 +1243,7 @@ void MassFitter::PerformSwapMCFit(FitOpt opt, RooDataSet* MCdataset, bool inclus
     SaveMCResults(opt.outputMCDir,opt.outputMCSwap1File, opt.saveWorkspace);
     Clear();
 
-    workspace_ = std::make_unique<RooWorkspace>(("ws_" + name_).c_str());
+    workspace_ = std::make_unique<RooWorkspace>(("workspace_" + name_).c_str());
 
 }
 bool MassFitter::MapAndFixParametersFromMCSwap(
