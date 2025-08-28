@@ -1,12 +1,12 @@
-// DCAFitter.h - Optimized version with smart pointers and modern C++ features
-// Key optimizations:
-// 1. Smart pointers (unique_ptr) for automatic memory management
-// 2. Type aliases for cleaner code readability  
-// 3. constexpr for compile-time constants
-// 4. const member functions for better encapsulation
-// 5. RAII pattern for resource management
-// 6. Improved constructor with proper member initialization
-// 7. Simplified destructor relying on smart pointer cleanup
+// DCAFitter.h - Enhanced version compatible with MassFitterV2
+// Key improvements:
+// 1. MassFitterV2 integration with modular architecture
+// 2. Dependency injection pattern for enhanced testability
+// 3. Template-based fitting interface for type safety
+// 4. Enhanced error handling with exception safety
+// 5. Configuration management with ConfigManager
+// 6. Smart pointer-based memory management (RAII)
+// 7. Result management with ResultManager integration
 
 #ifndef DCA_FITTER_H
 #define DCA_FITTER_H
@@ -50,7 +50,12 @@
 #include "RooLinkedList.h" // Add this include
 #include "TSystem.h" // Added for gSystem
 
-#include "MassFitter.h"
+#include "MassFitterV2.h"  // Updated to use V2
+#include "PDFFactory.h"     // For modular PDF creation
+#include "FitStrategy.h"    // For configurable fitting strategies
+#include "ResultManager.h"  // For enhanced result management
+#include "ConfigManager.h"  // For configuration management
+#include "ErrorHandler.h"   // For enhanced error handling
 #include "Params.h"
 #include "Helper.h"
 using namespace RooFit;
@@ -64,8 +69,15 @@ using TFilePtr = std::unique_ptr<TFile>;
 
 class DCAFitter {
 public:
-    // Constructor
-    DCAFitter(FitOpt &opt, const std::string& name, const std::string& massVarName, double dcaMin, double dcaMax, int nBins) :
+    // Enhanced constructor with dependency injection and MassFitterV2 integration
+    DCAFitter(const FitOpt& opt, 
+              const std::string& name, 
+              const std::string& massVarName, 
+              double dcaMin, 
+              double dcaMax, 
+              int nBins,
+              std::unique_ptr<ConfigManager> configManager = nullptr,
+              std::unique_ptr<ErrorHandler> errorHandler = nullptr) :
         name_(name),
         opt_(opt),
         dcaMin_(dcaMin),
@@ -82,37 +94,46 @@ public:
         fracPrompt_(nullptr),
         model_(nullptr),
         outFile_(nullptr),
-        dcaBins_(opt.dcaBins)
+        dcaBins_(opt.dcaBins),
+        configManager_(std::move(configManager)),
+        errorHandler_(std::move(errorHandler))
     {
-        // 생성자 매개변수 유효성 검증
-        if (name.empty()) {
-            throw std::invalid_argument("DCAFitter name cannot be empty");
+        try {
+            // Initialize default dependencies if not provided
+            if (!configManager_) {
+                configManager_ = std::make_unique<ConfigManager>();
+            }
+            if (!errorHandler_) {
+                errorHandler_ = std::make_unique<ErrorHandler>();
+            }
+            
+            // Enhanced parameter validation with error handler
+            validateConstructorParameters(name, massVarName, dcaMin, dcaMax, nBins);
+            
+            // Initialize configuration
+            initializeConfiguration();
+            
+            // Create workspace with enhanced error handling
+            initializeWorkspace();
+            
+            // Initialize variables
+            initializeVariables();
+            
+            std::cout << "Enhanced DCAFitter instance created: " << name_ << std::endl;
+            
+        } catch (const std::exception& e) {
+            if (errorHandler_) {
+                errorHandler_->HandleError("DCAFitter Constructor", e.what());
+            }
+            throw;
         }
-        if (dcaMin >= dcaMax) {
-            throw std::invalid_argument("Invalid DCA range: dcaMin >= dcaMax");
-        }
-        if (nBins <= 0) {
-            throw std::invalid_argument("Number of bins must be positive");
-        }
-        if (massVarName.empty()) {
-            throw std::invalid_argument("Mass variable name cannot be empty");
-        }
-        
-        ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt.name.c_str()), (name + " Workspace").c_str());
-        
-        dcaVar_ = std::make_unique<RooRealVar>(opt.dcaVar.c_str(), "Distance of Closest Approach", opt.dcaMin, opt.dcaMax, "cm");
-        massVar_ = std::make_unique<RooRealVar>(opt.massVar.c_str(), "Mass Variable", opt.massMin, opt.massMax, "GeV/c^{2}");
-        
-        // workspace import에 대한 오류 검사
-        if (ws_->import(*dcaVar_) != 0) {
-            throw std::runtime_error("Failed to import DCA variable to workspace");
-        }
-        if (ws_->import(*massVar_) != 0) {
-            throw std::runtime_error("Failed to import mass variable to workspace");
-        }
-        
-        std::cout << "DCAFitter instance created: " << name_ << std::endl;
     }
+    
+    // Alternative constructor for backward compatibility
+    DCAFitter(FitOpt &opt, const std::string& name, const std::string& massVarName, 
+              double dcaMin, double dcaMax, int nBins) :
+        DCAFitter(static_cast<const FitOpt&>(opt), name, massVarName, dcaMin, dcaMax, nBins)
+    {}
 
     // Destructor
     virtual ~DCAFitter() {
@@ -180,7 +201,136 @@ public:
         return file;
     }
 
-    // --- Workflow ---
+    // --- Enhanced MassFitterV2 Integration Methods ---
+    
+    // Template-based DCA slice fitting with MassFitterV2
+    template<typename SignalParams, typename BackgroundParams>
+    bool FitDCASlice(RooDataSet* dataSlice, RooDataSet* mcSlice,
+                     const SignalParams& signalParams, 
+                     const BackgroundParams& backgroundParams,
+                     const std::string& sliceName,
+                     double& yield, double& yieldError) {
+        try {
+            if (!dataSlice) {
+                throw std::invalid_argument("Data slice is null");
+            }
+            
+            // Create MassFitterV2 instance for this slice
+            auto massFitter = createMassFitterV2ForSlice(sliceName);
+            
+            // Set data
+            massFitter->SetData(dataSlice);
+            
+            // Setup configuration for mass fitting
+            FitConfig massFitConfig = createMassFitConfig(sliceName);
+            massFitter->SetConfiguration(massFitConfig);
+            
+            // Perform template-based fit
+            bool fitSuccess = false;
+            if (mcSlice) {
+                fitSuccess = massFitter->PerformConstraintFit(
+                    opt_, dataSlice, mcSlice, signalParams, backgroundParams,
+                    {}, sliceName
+                );
+            } else {
+                fitSuccess = massFitter->PerformFit(
+                    opt_, dataSlice, signalParams, backgroundParams, sliceName
+                );
+            }
+            
+            if (fitSuccess) {
+                yield = massFitter->GetSignalYield(sliceName);
+                yieldError = massFitter->GetSignalYieldError(sliceName);
+                
+                // Store result for later access
+                sliceFitResults_[sliceName] = massFitter->GetFitResults(sliceName);
+                
+                std::cout << "Mass fit SUCCESS for DCA slice " << sliceName 
+                         << ": Yield = " << yield << " +/- " << yieldError << std::endl;
+                return true;
+            } else {
+                errorHandler_->HandleError("FitDCASlice", 
+                    "Mass fitting failed for slice: " + sliceName);
+                return false;
+            }
+            
+        } catch (const std::exception& e) {
+            errorHandler_->HandleError("FitDCASlice", e.what());
+            yield = 0.0;
+            yieldError = 0.0;
+            return false;
+        }
+    }
+    
+    // Enhanced DCA template fitting with configuration management
+    template<typename SignalParams, typename BackgroundParams>
+    bool FitDCATemplates(const SignalParams& signalParams,
+                        const BackgroundParams& backgroundParams,
+                        const std::string& strategyName = "Robust") {
+        try {
+            if (!validateSetup()) {
+                throw std::runtime_error("DCAFitter setup validation failed");
+            }
+            
+            // Create global configuration
+            FitConfig globalConfig = configManager_->GetConfiguration("DCAFitting");
+            
+            bool allFitsSuccessful = true;
+            sliceFitResults_.clear();
+            
+            // Iterate through DCA bins and fit each slice
+            for (size_t i = 0; i < dcaBins_.size() - 1; ++i) {
+                std::string sliceName = Form("dca_%.3f_%.3f", dcaBins_[i], dcaBins_[i+1]);
+                
+                // Create data slice
+                auto dataSlice = createDCASlice(dataSet_, dcaBins_[i], dcaBins_[i+1]);
+                auto mcSlice = mcDataSet_ ? createDCASlice(mcDataSet_, dcaBins_[i], dcaBins_[i+1]) : nullptr;
+                
+                double yield, yieldError;
+                bool sliceSuccess = FitDCASlice(dataSlice.get(), mcSlice.get(),
+                                              signalParams, backgroundParams,
+                                              sliceName, yield, yieldError);
+                
+                if (sliceSuccess) {
+                    // Store results in histogram
+                    updateYieldHistogram(i, yield, yieldError);
+                } else {
+                    allFitsSuccessful = false;
+                }
+            }
+            
+            return allFitsSuccessful;
+            
+        } catch (const std::exception& e) {
+            errorHandler_->HandleError("FitDCATemplates", e.what());
+            return false;
+        }
+    }
+    
+    // Configuration and dependency management
+    void SetConfigManager(std::unique_ptr<ConfigManager> configManager) {
+        configManager_ = std::move(configManager);
+    }
+    
+    void SetErrorHandler(std::unique_ptr<ErrorHandler> errorHandler) {
+        errorHandler_ = std::move(errorHandler);
+    }
+    
+    // Result access methods
+    FitResults* GetSliceFitResult(const std::string& sliceName) const {
+        auto it = sliceFitResults_.find(sliceName);
+        return (it != sliceFitResults_.end()) ? it->second : nullptr;
+    }
+    
+    std::vector<std::string> GetSliceNames() const {
+        std::vector<std::string> names;
+        for (const auto& pair : sliceFitResults_) {
+            names.push_back(pair.first);
+        }
+        return names;
+    }
+    
+    // --- Legacy Workflow Methods (Maintained for compatibility) ---
     bool createTemplatesFromMC() {
         std::cout << "Creating templates from MC file: " << mcFileName_ << std::endl;
         if (mcFileName_.empty() || mcRooDatsetName_.empty() || dcaBranchName_.empty() || motherPdgIdBranchName_.empty()) {
@@ -547,51 +697,56 @@ public:
 
                     std::cout << "Attempting to fit mass for slice: " << sliceName << std::endl;
                     
-                    std::string massVarNameStr = massVar_->GetName();
-                    MassFitter massFitter(opt_.name + "_" + sliceName, massVarNameStr, massVar_->getMin(), massVar_->getMax());
-                    FitOpt massFitOpt = opt_;
-                    // opt_.massVar = "massDaugther1"; 
-                    // opt_.massMin = massVar_->getMin();
-                    // opt_.massMax = massVar_->getMax();
-                    massFitOpt.outputDir = opt_.outputDir + "/mass_fits_" + name_ + "/" + sliceName + "/"; 
-                    gSystem->mkdir(massFitOpt.outputDir.c_str(), kTRUE);
-                    massFitOpt.outputFile = Form("massfit_details_%s.root",sliceName.c_str()); 
-                    massFitOpt.plotName = "massfit_detail_plot";
-                    massFitOpt.outputMCDir = opt_.outputMCDir + "/mass_fits_" + name_ + "/" + sliceName + "/";
-                    gSystem->mkdir(massFitOpt.outputMCDir.c_str(), kTRUE);
-                    massFitOpt.cutExpr = ""; 
-                    // massFitter.SetData(dcasliceData); 
+                    // Enhanced MassFitterV2 integration with proper error handling
+                    try {
+                        // Create MassFitterV2 instance with dependency injection
+                        auto massFitter = createMassFitterV2ForSlice(sliceName);
+                        
+                        // Setup configuration
+                        FitConfig massFitConfig = createMassFitConfig(sliceName);
+                        gSystem->mkdir(massFitConfig.outputDir.c_str(), kTRUE);
+                        
+                        massFitter->SetConfiguration(massFitConfig); 
+                        // Set data for fitting
+                        massFitter->SetData(dcaSliceData);
+                        
+                        // Use template-based fitting approach
+                        bool fitSuccess = false;
+                        if (dcaSliceMC) {
+                            // Perform constraint fitting with MC
+                            fitSuccess = massFitter->PerformConstraintFit(
+                                massFitConfig, dcaSliceData, dcaSliceMC,
+                                sigDBCBParams, bkgD0dstParams,
+                                {}, sliceName
+                            );
+                        } else {
+                            // Perform regular fitting without MC constraint
+                            fitSuccess = massFitter->PerformFit(
+                                massFitConfig, dcaSliceData,
+                                sigDBCBParams, bkgD0dstParams, sliceName
+                            );
+                        }
 
 
-                    // --- fitMassInSliceAndGetYield 호출 ---
-                    // fitSuccess = fitMassInSliceAndGetYield<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>(
-                    //     dcaSliceData, massVar_, yield, yieldError, sliceName, sigDBCBParams, bkgD0dstParams
-                    // );
-                    // --- 직접 MassFitter의 PerformFit 호출 (fitMassInSliceAndGetYield 함수 대신) ---
-                    // massFitter.PerformDCAConstraintFit<PDFParams::DBCrystalBallParams, PDFParams::PhenomenologicalParams>(
-                    //     massFitOpt, dcaSliceData,dcaSliceMC, true, "", "", sigDBCBParams, bkgD0dstParams
-                    // );
-                    massFitter.PerformDCAConstraintFit(
-                        massFitOpt, dcaSliceData,dcaSliceMC, true, "", "", params[{0,0}].first,params[{0,0}].second
-                    );
+                        // Enhanced result handling with MassFitterV2
+                        if (fitSuccess && massFitter->GetSignalYield(sliceName) >= 0) {
+                            yield = massFitter->GetSignalYield(sliceName);
+                            yieldError = massFitter->GetSignalYieldError(sliceName);
+                            std::cout << "Mass fit SUCCESS for DCA slice " << sliceName 
+                                     << ": Yield = " << yield << " +/- " << yieldError << std::endl;
 
+                            // Store results
+                            sliceFitResults_[sliceName] = massFitter->GetFitResults(sliceName);
+                            
+                            // Update yield histogram
+                            updateYieldHistogram(currentBin, yield, yieldError);
 
-                    if (massFitter.GetSignalYield() >= 0) {
-                        yield = massFitter.GetSignalYield();
-                        yieldError = massFitter.GetSignalYieldError();
-                        std::cout << "Mass fit SUCCESS for DCA slice " << sliceName << ": Yield = " << yield << " +/- " << yieldError << std::endl;
+                            // Get enhanced result objects
+                            RooWorkspace* mfWs = massFitter->GetWorkspace(sliceName);
+                            RooFitResult* mfFitResult = massFitter->GetRooFitResult(sliceName);
 
-                        // dataYieldHist_->SetBinContent(dataYieldHist_->GetXaxis()->FindBin((dcaLow + dcaHigh) / 2.0), yield);
-                        // dataYieldHist_->SetBinError(dataYieldHist_->GetXaxis()->FindBin((dcaLow + dcaHigh) / 2.0), yieldError);
-
-                        RooWorkspace* mfWs = massFitter.GetWorkspace();
-                        RooFitResult* mfFitResult = massFitter.GetFitResult();
-                        RooFitResult* mfFitResultMC = massFitter.GetMCFitResult();
-                        RooWorkspace* mfWsMC = massFitter.GetMCWorkspace();
-
-                        if (mfWs && mfFitResult) {
-                            // RooAbsPdf* sliceModel = mfWs->pdf("total_pdf"); 
-                            // RooAbsData* sliceDataForPlot = dcaSliceData; 
+                            if (mfWs && mfFitResult) {
+                                // Process successful fit results 
                             // RooRealVar* sliceMassVar = mfWs->var(massVar_->GetName());
 
                             notifyDCASliceFit(currentBin, sliceInfo, mfFitResult, "DCA_Mass_Slice");
@@ -644,9 +799,32 @@ public:
                 // } else {
                     // dataYieldHist_->SetBinContent(i + 1, 0);
                     // dataYieldHist_->SetBinError(i + 1, 1e9); 
-                // }
-                delete dcaSliceData;
-            }
+                            } else {
+                                // Handle failed fit
+                                std::string errorMsg = "Failed to get valid workspace or fit result for slice: " + sliceName;
+                                errorHandler_->HandleError("FitDCASlice", errorMsg);
+                                fitSuccess = false;
+                            }
+                        } else {
+                            // Handle failed fit
+                            std::string errorMsg = "Mass fitting failed for slice: " + sliceName;
+                            errorHandler_->HandleError("FitDCASlice", errorMsg);
+                            yield = 0.0;
+                            yieldError = 0.0;
+                        }
+                        
+                    } catch (const std::exception& e) {
+                        // Enhanced exception handling
+                        std::string errorMsg = "Exception in mass fitting for slice " + sliceName + ": " + std::string(e.what());
+                        errorHandler_->HandleError("FitDCASlice", errorMsg);
+                        yield = 0.0;
+                        yieldError = 0.0;
+                        fitSuccess = false;
+                    }
+                    
+                    // Cleanup
+                    delete dcaSliceData;
+                    if (dcaSliceMC) delete dcaSliceMC;
              // End of DCA bin loop
 
             delete dataDrivenTemplate_;
@@ -1715,6 +1893,19 @@ private:
 
     // ROOT Objects (using smart pointers for better memory management)
     TFilePtr outFile_;
+    
+    // --- Enhanced MassFitterV2 Integration Members ---
+    
+    // Configuration and dependency injection
+    std::unique_ptr<ConfigManager> configManager_;
+    std::unique_ptr<ErrorHandler> errorHandler_;
+    
+    // Result storage
+    std::map<std::string, FitResults*> sliceFitResults_;
+    std::map<std::string, std::unique_ptr<MassFitterV2>> sliceFitters_;
+    
+    // MC dataset for constraint fitting
+    RooDataSet* mcDataSet_ = nullptr;
 
     void Clear() {
         std::cout << "Clearing DCAFitter state..." << std::endl;
@@ -1772,6 +1963,120 @@ private:
     
     bool hasTemplates() const {
         return promptTemplate_ != nullptr && nonPromptTemplate_ != nullptr;
+    }
+    
+    // --- Enhanced MassFitterV2 Helper Methods ---
+    
+    // Validation and initialization helpers
+    void validateConstructorParameters(const std::string& name, const std::string& massVarName,
+                                     double dcaMin, double dcaMax, int nBins) {
+        if (name.empty()) {
+            throw std::invalid_argument("DCAFitter name cannot be empty");
+        }
+        if (dcaMin >= dcaMax) {
+            throw std::invalid_argument("Invalid DCA range: dcaMin >= dcaMax");
+        }
+        if (nBins <= 0) {
+            throw std::invalid_argument("Number of bins must be positive");
+        }
+        if (massVarName.empty()) {
+            throw std::invalid_argument("Mass variable name cannot be empty");
+        }
+    }
+    
+    void initializeConfiguration() {
+        // Set up default configuration if not provided
+        if (configManager_) {
+            FitConfig defaultConfig;
+            defaultConfig.strategyName = "Robust";
+            defaultConfig.useMinos = opt_.useMinos;
+            defaultConfig.useHesse = opt_.useHesse;
+            defaultConfig.verbose = true;
+            
+            configManager_->SetConfiguration("DCAFitting", defaultConfig);
+        }
+    }
+    
+    void initializeWorkspace() {
+        ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt_.name.c_str()), 
+                                           (name_ + " Enhanced Workspace").c_str());
+    }
+    
+    void initializeVariables() {
+        dcaVar_ = std::make_unique<RooRealVar>(opt_.dcaVar.c_str(), 
+                                             "Distance of Closest Approach", 
+                                             opt_.dcaMin, opt_.dcaMax, "cm");
+        massVar_ = std::make_unique<RooRealVar>(opt_.massVar.c_str(), 
+                                              "Mass Variable", 
+                                              opt_.massMin, opt_.massMax, "GeV/c^{2}");
+        
+        // Enhanced error handling for workspace import
+        if (ws_->import(*dcaVar_) != 0) {
+            throw std::runtime_error("Failed to import DCA variable to workspace");
+        }
+        if (ws_->import(*massVar_) != 0) {
+            throw std::runtime_error("Failed to import mass variable to workspace");
+        }
+    }
+    
+    bool validateSetup() const {
+        return dcaVar_ && massVar_ && ws_ && configManager_ && errorHandler_;
+    }
+    
+    // MassFitterV2 creation and management
+    std::unique_ptr<MassFitterV2> createMassFitterV2ForSlice(const std::string& sliceName) {
+        std::string fitterName = opt_.name + "_" + sliceName;
+        
+        auto massFitter = std::make_unique<MassFitterV2>(
+            fitterName, 
+            massVar_->GetName(),
+            massVar_->getMin(),
+            massVar_->getMax()
+        );
+        
+        // Store for later access
+        sliceFitters_[sliceName] = std::move(massFitter);
+        return std::move(sliceFitters_[sliceName]);
+    }
+    
+    FitConfig createMassFitConfig(const std::string& sliceName) const {
+        FitConfig config;
+        if (configManager_) {
+            config = configManager_->GetConfiguration("DCAFitting");
+        }
+        
+        // Customize for mass fitting
+        config.outputDir = opt_.outputDir + "/mass_fits_" + name_ + "/" + sliceName + "/";
+        config.outputFile = Form("massfit_details_%s.root", sliceName.c_str());
+        config.plotName = "massfit_detail_plot";
+        
+        return config;
+    }
+    
+    // Data slicing helper
+    std::unique_ptr<RooDataSet> createDCASlice(RooDataSet* fullDataset, 
+                                               double dcaMin, double dcaMax) {
+        if (!fullDataset || !dcaVar_) {
+            return nullptr;
+        }
+        
+        std::string cutString = Form("%s >= %f && %s < %f", 
+                                   dcaVar_->GetName(), dcaMin, 
+                                   dcaVar_->GetName(), dcaMax);
+        
+        return std::unique_ptr<RooDataSet>(
+            static_cast<RooDataSet*>(fullDataset->reduce(cutString.c_str()))
+        );
+    }
+    
+    // Result management helpers
+    void updateYieldHistogram(size_t binIndex, double yield, double yieldError) {
+        if (dataYieldHist_ && binIndex < dcaBins_.size() - 1) {
+            double binCenter = (dcaBins_[binIndex] + dcaBins_[binIndex + 1]) / 2.0;
+            int histBin = dataYieldHist_->FindBin(binCenter);
+            dataYieldHist_->SetBinContent(histBin, yield);
+            dataYieldHist_->SetBinError(histBin, yieldError);
+        }
     }
 };
 inline void DCAFitter::plotSignalAndSidebandDCAFromHist(const std::string& plotName) {

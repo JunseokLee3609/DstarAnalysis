@@ -14,6 +14,7 @@
 #include "TPad.h"
 #include "TLatex.h"
 #include "TLegend.h"
+#include "TLine.h"
 #include "RooFitResult.h"
 #include "TStyle.h"
 #include "TDirectory.h"
@@ -88,7 +89,7 @@ private:
     // Internal methods
     bool LoadWorkspace();
     bool ValidateObjects();
-    void DrawPullFrame(RooPlot* frame, TPad* pullPad);
+    void DrawPullFrame(RooPlot* frame);
     RooAbsPdf* ExtractComponent(const std::string& namePattern);
     void DrawParameterPad(TPad* paramPad);
     void AddLegendEntry(const std::string& name, int color, const std::string& option = "l");
@@ -98,41 +99,42 @@ private:
     std::string GetOutputFileName(const std::string& baseName, const std::string& suffix = "");
     void CleanupMemory();
 };
-PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
-    : opt_(opt), fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar),isPP_(isPP) {
-    file_ = TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str()));
-    if(file_) cout << "File Opened :: " << Form("%s/%s",fileDir_.c_str(), filename_.c_str()) <<endl;
+PlotManager::PlotManager(const FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
+    : opt_(opt), fileDir_(inputDir), filename_(outputFile), outputDir_(outputDir), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar), isPP_(isPP) {
+    file_.reset(TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str())));
+    if(file_) std::cout << "File Opened :: " << Form("%s/%s",fileDir_.c_str(), filename_.c_str()) << std::endl;
     if (!file_ || file_->IsZombie()) {
         std::cerr << "Error: Failed to open file " << filename_ << std::endl;
         return;
     }
-    ws_ = (RooWorkspace*)file_->Get(wsName_.c_str());
+    ws_ = (RooWorkspace*)file_->Get(opt_.wsName.c_str());
     if (!ws_) {
         std::cerr << "Error: Failed to load ws from file" << std::endl;
         file_->Close();
         return;
     }
 
-    dataset_ = (RooDataSet*)ws_->data(datasetName_.c_str());
+    dataset_ = (RooDataSet*)ws_->data(opt_.datasetName.c_str());
     if (!dataset_) {
-        std::cerr << "Error: Failed to load dataset from workspace : " << datasetName_ <<  std::endl;
+        std::cerr << "Error: Failed to load dataset from workspace : " << opt_.datasetName <<  std::endl;
         file_->Close();
         return;
     }
     cout << "Total Entry : " << dataset_->sumEntries() << endl;
     if(opt.doFit){ 
-    pdf_ = (RooAbsPdf*)ws_->pdf(pdfName_.c_str());
-    if (!pdf_) {
-        std::cerr << "Error: Failed to load PDF from file" << std::endl;
-        file_->Close();
-        return;
-    }}
+        // Try common PDF names
+        pdf_ = (RooAbsPdf*)ws_->pdf("total_pdf");
+        if (!pdf_) pdf_ = (RooAbsPdf*)ws_->pdf("model");
+        if (!pdf_) {
+            std::cerr << "Warning: Failed to find PDF 'total_pdf' or 'model' in workspace" << std::endl;
+        }
+    }
     const RooArgSet* vars = dataset_->get();
     
     if (vars) {
-            var_ = (RooRealVar*)vars->find(varName_.c_str());
+            var_ = (RooRealVar*)vars->find(opt_.massVar.c_str());
     }
-    var_=(RooRealVar*)ws_->var(varName_.c_str());
+    var_=(RooRealVar*)ws_->var(opt_.massVar.c_str());
     if (!var_) {
         std::cerr << "Error: Failed to load variable from RooDataSet" << std::endl;
         file_->Close();
@@ -142,7 +144,7 @@ PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::st
     var_->setMin(opt.massMin);
     var_->setMax(opt.massMax);
 
-    fitResult_ = (RooFitResult*)file_->Get(fitResultName_.c_str());
+    fitResult_ = (RooFitResult*)file_->Get(opt_.fitResultName.c_str());
     if (!fitResult_) {
         std::cerr << "Error: Failed to load fit result from file" << std::endl;
         file_->Close();
@@ -150,10 +152,10 @@ PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::st
     }
 }
 
-void PlotManager::DrawRawDistribution() {
+bool PlotManager::DrawRawDistribution(const std::string& outputName) {
     if (!dataset_ || !var_) {
         // std::cerr << "Error: Dataset or variable not loaded" << std::endl;
-        return;
+        return false;
     }
 
     TCanvas* canvas = new TCanvas("canvas", "Raw Distribution", 800, 600);
@@ -161,14 +163,18 @@ void PlotManager::DrawRawDistribution() {
     dataset_->plotOn(frame);
     frame->Draw();
     createDir(Form("%s/",outputDir_.c_str()));
-    canvas->SaveAs(Form("%s/RawDist%s",outputDir_.c_str(),plotName_.c_str()));
+    {
+        std::string outname = GetOutputFileName("RawDist" + opt_.plotName);
+        canvas->SaveAs(outname.c_str());
+    }
     delete canvas;
+    return true;
 }
 
-void PlotManager::DrawFittedModel(bool drawPull) {
+bool PlotManager::DrawFittedModel(bool drawPull, const std::string& outputName) {
     if (!dataset_ || !pdf_ || !var_ || !fitResult_) {
         std::cerr << "Error: Dataset, PDF, variable, or fit result not loaded" << std::endl;
-        return;
+        return false;
     }
 
     // --- Canvas and Pad Setup ---
@@ -298,13 +304,17 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // --- Parameter Pad ---
     paramPad->cd();
-    DrawParameterPad();
+    DrawParameterPad(paramPad);
 
     // --- Save Canvas ---
     createDir(Form("%s/", outputDir_.c_str()));
-    canvas->SaveAs(Form("%s/%s", outputDir_.c_str(), plotName_.c_str()));
+    {
+        std::string outName = GetOutputFileName(opt_.plotName);
+        canvas->SaveAs(outName.c_str());
+    }
 
     delete canvas;
+    return true;
 }
 
 void PlotManager::DrawPullFrame(RooPlot* frame) {
@@ -326,7 +336,7 @@ void PlotManager::DrawPullFrame(RooPlot* frame) {
     line0->Draw();
 }
 
-void PlotManager::DrawParameterPad() {
+void PlotManager::DrawParameterPad(TPad* paramPad) {
     TLatex latex;
     latex.SetNDC();
     latex.SetTextSize(0.03);
@@ -454,36 +464,7 @@ void PlotManager::PrintSummary() const {
     std::cout << "========================" << std::endl;
 }
 
-// Enhanced plotting methods
-bool PlotManager::DrawRawDistribution(const std::string& outputName) {
-    if (!dataset_ || !var_) {
-        std::cerr << "[PlotManager] Error: Dataset or variable not available" << std::endl;
-        return false;
-    }
-
-    TCanvas* canvas = new TCanvas("canvas_raw", "Raw Distribution", plotStyle_.canvasWidth, plotStyle_.canvasHeight);
-    SetupCanvas(canvas);
-    
-    RooPlot* frame = var_->frame(RooFit::Range("analysis"), RooFit::Title(""));
-    dataset_->plotOn(frame, RooFit::MarkerStyle(20), RooFit::MarkerSize(0.8));
-    
-    frame->SetXTitle((opt_.massVar + " [GeV/c^{2}]").c_str());
-    frame->SetYTitle("Events / bin");
-    frame->Draw();
-    
-    // Add labels
-    AddLabels(gPad);
-    
-    // Save plot
-    createDir(Form("%s/", outputDir_.c_str()));
-    std::string filename = outputName.empty() ? GetOutputFileName("RawDist" + opt_.plotName) : GetOutputFileName(outputName);
-    canvas->SaveAs(filename.c_str());
-    
-    std::cout << "[PlotManager] Raw distribution saved: " << filename << std::endl;
-    
-    delete canvas;
-    return true;
-}
+// Enhanced plotting methods (duplicate removed)
 
 void PlotManager::SetupCanvas(TCanvas* canvas) {
     canvas->SetLeftMargin(plotStyle_.leftMargin);

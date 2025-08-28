@@ -1,8 +1,68 @@
 #include "../DStarFitConfig.h"
 #include "../MassFitterV2.h"
 #include "../DataLoader.h"
-#include "../PlotManager.h"
+// #include "../PlotManager.h"  // Disabled - has compilation issues
+#include "../EnhancedPlotManager.h"  // Use our enhanced plotter instead
+#include "../SimpleParameterLoader.h"  // External parameter loading
 #include "../../Tools/ConfigManager.h"
+
+// ===== PARAMETER PRINTING UTILITY FUNCTIONS =====
+
+// Template function to get PDF type names
+template<typename T> std::string GetPDFTypeName() { return "Unknown"; }
+
+// Signal PDF type names
+template<> std::string GetPDFTypeName<PDFParams::GaussianParams>() { return "Gaussian"; }
+template<> std::string GetPDFTypeName<PDFParams::DoubleGaussianParams>() { return "DoubleGaussian"; }
+template<> std::string GetPDFTypeName<PDFParams::CrystalBallParams>() { return "CrystalBall"; }
+template<> std::string GetPDFTypeName<PDFParams::DBCrystalBallParams>() { return "DBCrystalBall"; }
+template<> std::string GetPDFTypeName<PDFParams::VoigtianParams>() { return "Voigtian"; }
+template<> std::string GetPDFTypeName<PDFParams::BreitWignerParams>() { return "BreitWigner"; }
+
+// Background PDF type names
+template<> std::string GetPDFTypeName<PDFParams::ExponentialBkgParams>() { return "Exponential"; }
+template<> std::string GetPDFTypeName<PDFParams::ChebychevBkgParams>() { return "Chebychev"; }
+template<> std::string GetPDFTypeName<PDFParams::PhenomenologicalParams>() { return "Phenomenological"; }
+template<> std::string GetPDFTypeName<PDFParams::PolynomialBkgParams>() { return "Polynomial"; }
+template<> std::string GetPDFTypeName<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
+template<> std::string GetPDFTypeName<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
+template<> std::string GetPDFTypeName<PDFParams::DstBkgParams>() { return "DstBg"; }
+
+// Parameter printing functions for each PDF type
+// void PrintParameters(const PDFParams::DoubleGaussianParams& params) {
+//     std::cout << "  Mean: " << params.mean << " [" << params.mean_min << ", " << params.mean_max << "]" << std::endl;
+//     std::cout << "  Sigma1: " << params.sigma1 << " [" << params.sigma1_min << ", " << params.sigma1_max << "]" << std::endl;
+//     std::cout << "  Sigma2: " << params.sigma2 << " [" << params.sigma2_min << ", " << params.sigma2_max << "]" << std::endl;
+//     std::cout << "  Fraction: " << params.fraction << " [" << params.fraction_min << ", " << params.fraction_max << "]" << std::endl;
+// }
+
+// void PrintParameters(const PDFParams::ThresholdFuncParams& params) {
+//     std::cout << "  p0 (init): " << params.p0_init << " [" << params.p0_min << ", " << params.p0_max << "]" << std::endl;
+//     std::cout << "  p1 (init): " << params.p1_init << " [" << params.p1_min << ", " << params.p1_max << "]" << std::endl;
+//     std::cout << "  p2 (init): " << params.p2_init << " [" << params.p2_min << ", " << params.p2_max << "]" << std::endl;
+//     std::cout << "  p3 (init): " << params.p3_init << " [" << params.p3_min << ", " << params.p3_max << "]" << std::endl;
+// }
+
+// void PrintParameters(const PDFParams::DBCrystalBallParams& params) {
+//     std::cout << "  Mean: " << params.mean << " [" << params.mean_min << ", " << params.mean_max << "]" << std::endl;
+//     std::cout << "  Sigma: " << params.sigma << " [" << params.sigma_min << ", " << params.sigma_max << "]" << std::endl;
+//     std::cout << "  AlphaL: " << params.alphaL << " [" << params.alphaL_min << ", " << params.alphaL_max << "]" << std::endl;
+//     std::cout << "  nL: " << params.nL << " [" << params.nL_min << ", " << params.nL_max << "]" << std::endl;
+//     std::cout << "  AlphaR: " << params.alphaR << " [" << params.alphaR_min << ", " << params.alphaR_max << "]" << std::endl;
+//     std::cout << "  nR: " << params.nR << " [" << params.nR_min << ", " << params.nR_max << "]" << std::endl;
+// }
+
+// void PrintParameters(const PDFParams::PhenomenologicalParams& params) {
+//     std::cout << "  p0: " << params.p0 << " [" << params.p0_min << ", " << params.p0_max << "]" << std::endl;
+//     std::cout << "  p1: " << params.p1 << " [" << params.p1_min << ", " << params.p1_max << "]" << std::endl;
+//     std::cout << "  p2: " << params.p2 << " [" << params.p2_min << ", " << params.p2_max << "]" << std::endl;
+// }
+
+// // Generic fallback for other parameter types
+// template<typename T>
+// void PrintParameters(const T& params) {
+//     std::cout << "  [Parameter details not implemented for this PDF type]" << std::endl;
+// }
 
 /**
  * @brief Modern D* meson analysis using the new modular framework
@@ -12,7 +72,8 @@
  */
 void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = true,
                      float pTMin = 10, float pTMax = 100, float cosMin = -2, float cosMax = 2,
-                     int centralityMin = 0, int centralityMax = 100) {
+                     int centralityMin = 0, int centralityMax = 100, 
+                     const std::string& parameterFile = "") {
     
     std::cout << "=== D* Meson Analysis V2 ===" << std::endl;
     std::cout << "Using new modular framework with MassFitterV2" << std::endl;
@@ -28,7 +89,7 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     config.SetOutputSubDir("/DStar_PbPb_Analysis_V2/");
     
     // Configure fit options
-    config.SetFitMethod(FitMethod::BinnedNLL);  // Use extended ML fit
+    config.SetFitMethod(FitMethod::NLL);  // Use extended ML fit
     config.SetUseCUDA(useCUDA);
     config.SetVerbose(false);
     config.SetDoRefit(doReFit);
@@ -43,7 +104,75 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     config.AddCosBin(cosMin, cosMax);
     config.AddCentralityBin(centralityMin, centralityMax);  // Dummy centrality for now
     
-    // Get all kinematic combinations
+    // ===== PARAMETER LOADING SYSTEM =====
+    std::cout << "Setting up parameters..." << std::endl;
+    
+    // Check if external parameter file is provided
+    if (!parameterFile.empty()) {
+        std::cout << "Loading parameters from external file: " << parameterFile << std::endl;
+        
+        try {
+            // Load parameters from file
+            ParameterLoaderUtils::LoadParametersToConfig(config, parameterFile);
+            std::cout << "✓ External parameters loaded successfully!" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "⚠ Failed to load external parameters: " << e.what() << std::endl;
+            std::cout << "Falling back to hardcoded parameters..." << std::endl;
+            // Will use hardcoded parameters below
+        }
+    } else {
+        std::cout << "No parameter file provided, using hardcoded parameters" << std::endl;
+        
+        // ===== HARDCODED PARAMETERS (FALLBACK) =====
+        auto allBins = config.GetAllKinematicBins();
+        
+        for (const auto& bin : allBins) {
+            // Create custom parameters for this bin
+            DStarBinParameters binParams;
+            
+            // ===== SIGNAL PDF CONFIGURATION =====
+            binParams.signalPdfType = PDFType::DoubleGaussian;
+            
+            // Configure DoubleGaussian signal parameters
+            binParams.doubleGaussianParams.mean = 0.1455;
+            binParams.doubleGaussianParams.mean_min = 0.1452;
+            binParams.doubleGaussianParams.mean_max = 0.1458;
+            binParams.doubleGaussianParams.sigma1 = 0.0005;
+            binParams.doubleGaussianParams.sigma1_min = 0.0001;
+            binParams.doubleGaussianParams.sigma1_max = 0.01;
+            binParams.doubleGaussianParams.sigma2 = 0.001;
+            binParams.doubleGaussianParams.sigma2_min = 0.0001;
+            binParams.doubleGaussianParams.sigma2_max = 0.01;
+            binParams.doubleGaussianParams.fraction = 0.7;
+            binParams.doubleGaussianParams.fraction_min = 0.0;
+            binParams.doubleGaussianParams.fraction_max = 1.0;
+            
+            // ===== BACKGROUND PDF CONFIGURATION =====
+            binParams.backgroundPdfType = PDFType::ThresholdFunction;
+            
+            // Configure ThresholdFunction background parameters
+            binParams.thresholdFuncParams.p0_init = 1.0;
+            binParams.thresholdFuncParams.p0_min = -10.0;
+            binParams.thresholdFuncParams.p0_max = 10.0;
+            binParams.thresholdFuncParams.p1_init = -1.0;
+            binParams.thresholdFuncParams.p1_min = -10.0;
+            binParams.thresholdFuncParams.p1_max = 10.0;
+            binParams.thresholdFuncParams.m_pi_value = 0.13957;  // Charged pion mass
+            
+            // Customize yield ratios
+            binParams.nsig_ratio = 0.005;
+            binParams.nsig_min_ratio = 0.0001;
+            binParams.nsig_max_ratio = 0.05;
+            binParams.nbkg_ratio = 0.02;
+            binParams.nbkg_min_ratio = 0.001;
+            binParams.nbkg_max_ratio = 0.5;
+            
+            // Apply these parameters to this specific bin
+            config.SetParametersForBin(bin, binParams);
+        }
+    }
+    
+    // Get all bins after parameter configuration
     auto allBins = config.GetAllKinematicBins();
     std::cout << "Analysis will run on " << allBins.size() << " kinematic bin(s)" << std::endl;
     
@@ -90,11 +219,36 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
             
             bool fitSuccess = false;
             if (doReFit) {
-                // Use the new templated fitting interface
-                fitSuccess = fitter->PerformFit(fitOpt, dataset, 
-                                               binParams.signalParams, 
-                                               binParams.backgroundParams,
-                                               bin.GetBinName());
+                // Get parameters automatically based on PDF type using std::visit
+                auto signalParamsVariant = binParams.GetSignalParamsByType();
+                auto backgroundParamsVariant = binParams.GetBackgroundParamsByType();
+                
+                std::cout << "\n=== PARAMETER CONFIGURATION ===" << std::endl;
+                
+                // Print signal parameters
+                std::visit([&](auto&& signalParams) {
+                    using ParamType = std::decay_t<decltype(signalParams)>;
+                    std::cout << "SIGNAL PDF PARAMETERS (" << GetPDFTypeName<ParamType>() << "):" << std::endl;
+                    // PrintParameters(signalParams);
+                }, signalParamsVariant);
+                
+                // Print background parameters  
+                std::visit([&](auto&& backgroundParams) {
+                    using ParamType = std::decay_t<decltype(backgroundParams)>;
+                    std::cout << "\nBACKGROUND PDF PARAMETERS (" << GetPDFTypeName<ParamType>() << "):" << std::endl;
+                    // PrintParameters(backgroundParams);
+                }, backgroundParamsVariant);
+                
+                std::cout << "===============================\n" << std::endl;
+                
+                std::visit([&](auto&& signalParams) {
+                    std::visit([&](auto&& backgroundParams) {
+                        fitSuccess = fitter->PerformFit(fitOpt, dataset, 
+                                                       signalParams, 
+                                                       backgroundParams,
+                                                       bin.GetBinName());
+                    }, backgroundParamsVariant);
+                }, signalParamsVariant);
             } else {
                 // Check if results already exist
                 std::cout << "Skipping fit (doReFit=false). Loading existing results..." << std::endl;
@@ -128,23 +282,58 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
                 std::cout << "  Significance: " << significance << " σ" << std::endl;
                 std::cout << "  Purity: " << purity * 100 << "%" << std::endl;
                 
-                // Create plots if requested
+                // Create plots if requested - using EnhancedPlotManager
                 if (plotFit) {
-                    std::cout << "Creating plots..." << std::endl;
+                    std::cout << "Creating plots using EnhancedPlotManager..." << std::endl;
                     
-                    PlotOptions plotOptions;
-                    plotOptions.title = "D* Meson Fit - " + bin.GetBinName();
-                    plotOptions.xAxisTitle = "Δm = m(Kππ) - m(Kπ) [GeV/c²]";
-                    plotOptions.yAxisTitle = "Events / (0.4 MeV/c²)";
-                    plotOptions.drawComponents = true;
-                    plotOptions.drawResiduals = true;
-                    plotOptions.nbins = 100;
-                    
-                    auto canvas = fitter->CreateCanvas(bin.GetBinName(), plotOptions);
-                    if (canvas) {
-                        std::string plotName = fitOpt.outputDir + "/" + fitOpt.outputFile + "_plot.pdf";
-                        canvas->SaveAs(plotName.c_str());
-                        std::cout << "Plot saved: " << plotName << std::endl;
+                    try {
+                        // Create EnhancedPlotManager with the saved fit results
+                        std::string inputDir = fitOpt.outputDir;
+                        std::string inputFile = fitOpt.outputFile + ".root";
+                        std::string plotDir = fitOpt.outputDir + "/plots";
+                        
+                        EnhancedPlotManager plotManager(fitOpt, inputDir, inputFile, plotDir, false, true);
+                        
+                        if (plotManager.IsValid()) {
+                            // Print summary
+                            plotManager.PrintSummary();
+                            
+                            // Draw raw distribution
+                            bool rawSuccess = plotManager.DrawRawDistribution("raw_" + bin.GetBinName());
+                            if (rawSuccess) {
+                                std::cout << "✓ Raw distribution plot created" << std::endl;
+                            }
+                            
+                            // Draw fitted model with pull plot
+                            bool fitSuccess = plotManager.DrawFittedModel(true, "fitted_" + bin.GetBinName());
+                            if (fitSuccess) {
+                                std::cout << "✓ Fitted model plot created" << std::endl;
+                            }
+                            
+                        } else {
+                            std::cout << "⚠ PlotManager initialization failed, falling back to basic plotting" << std::endl;
+                            
+                            // Fallback to basic plotting
+                            PlotOptions plotOptions;
+                            plotOptions.title = "D* Meson Fit - " + bin.GetBinName();
+                            plotOptions.xAxisTitle = "Δm = m(Kππ) - m(Kπ) [GeV/c²]";
+                            plotOptions.yAxisTitle = "Events / (0.4 MeV/c²)";
+                            plotOptions.drawComponents = true;
+                            plotOptions.drawResiduals = true;
+                            plotOptions.nbins = 100;
+                            
+                            auto canvas = fitter->CreateCanvas(bin.GetBinName(), plotOptions);
+                            if (canvas) {
+                                std::string plotName = fitOpt.outputDir + "/plots/" + fitOpt.outputFile + "_plot.pdf";
+                                createDir(Form("%s/plots/", fitOpt.outputDir.c_str()));
+                                canvas->SaveAs(plotName.c_str());
+                                std::cout << "Plot saved: " << plotName << std::endl;
+                            }
+                        }
+                        
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error during plotting: " << e.what() << std::endl;
+                        std::cout << "Continuing without plots..." << std::endl;
                     }
                 }
                 
@@ -187,7 +376,7 @@ void DStarMultiBinAnalysis(bool doReFit = false, bool plotFit = true, bool useCU
     config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetOutputSubDir("/DStar_PbPb_MultiBin_V2/");
     
-    config.SetFitMethod(FitMethod::Extended);
+    config.SetFitMethod(FitMethod::NLL);
     config.SetUseCUDA(useCUDA);
     config.SetDoRefit(doReFit);
     

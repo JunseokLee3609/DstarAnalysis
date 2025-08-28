@@ -23,7 +23,6 @@
 #include "PDFFactory.h"
 #include "FitStrategy.h"
 #include "ResultManager.h"
-#include "ConfigManager.h"
 #include "ErrorHandler.h"
 #include "TestFramework.h"
 #include "Params.h"
@@ -88,7 +87,7 @@ public:
     void SetBackgroundPDF(const BackgroundParams& params, const std::string& name = "background");
     
     // Mass variable configuration
-    void UseDeltaMass(bool use = true, double daughterMassMin = 1.8, double daughterMassMax = 1.9);
+    // void UseDeltaMass(bool use = true, double daughterMassMin = 1.8, double daughterMassMax = 1.9);
     RooRealVar* GetActiveMassVariable() const { return activeMassVar_; }
     double GetMassMin() const;
     double GetMassMax() const;
@@ -183,7 +182,7 @@ private:
     // Core member variables
     std::string name_;
     std::string massVarName_;
-    bool useDeltaMass_ = false;
+    // bool useDeltaMass_ = false;
     
     // Mass variables (smart pointers for automatic cleanup)
     std::unique_ptr<RooRealVar> mass_;
@@ -331,11 +330,7 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         }
         
         // Create fit configuration
-        FitConfig config = ConfigurableFitStrategyFactory::CreateFitConfigFromManager();
-        config.useMinos = options.useMinos;
-        config.useHesse = options.useHesse;
-        config.useCUDA = options.useCUDA;
-        config.verbose = options.verbose;
+        FitConfig config = options.ToFitConfig();
         
         // Perform fit with error handling
         if (!fitStrategy_) {
@@ -412,11 +407,8 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
         auto mcStrategy = FitStrategyFactory::CreateStrategy(FitStrategyFactory::StrategyType::MC);
         
         // Create MC fit configuration (simplified for MC)
-        FitConfig config = ConfigurableFitStrategyFactory::CreateFitConfigFromManager();
+        FitConfig config = options.ToFitConfig();
         config.useMinos = false; // MC fits typically don't need Minos
-        config.useHesse = options.useHesse;
-        config.useCUDA = options.useCUDA;
-        config.verbose = options.verbose;
         
         // Perform MC fit
         auto fitResult = mcStrategy->Execute(signalPdf_.get(), activeDataset_, config);
@@ -491,11 +483,7 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
             options.outputDir + "/" + options.outputFile, constraintParameters);
         
         // Create fit configuration
-        FitConfig config = ConfigurableFitStrategyFactory::CreateFitConfigFromManager();
-        config.useMinos = options.useMinos;
-        config.useHesse = options.useHesse;
-        config.useCUDA = options.useCUDA;
-        config.verbose = options.verbose;
+        FitConfig config = options.ToFitConfig();
         
         // Perform constraint fit
         auto fitResult = constraintStrategy->Execute(totalPdf_.get(), activeDataset_, config);
@@ -782,6 +770,21 @@ inline void MassFitterV2::SaveResult(const std::string& resultName, const std::s
     // Placeholder implementation
 }
 
+inline void MassFitterV2::LoadResults(const std::string& filePath, const std::string& fileName) {
+    std::string full = filePath + "/" + fileName;
+    std::cout << "Loading results from: " << full << std::endl;
+    if (!resultManager_) {
+        std::cout << "[MassFitterV2] ResultManager not configured; skipping load." << std::endl;
+        return;
+    }
+    try {
+        resultManager_->LoadResults(full);
+    } catch (const std::exception& e) {
+        std::cerr << "[MassFitterV2] LoadResults exception: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 inline void MassFitterV2::ExportResults(const std::string& format, const std::string& fileName) {
     std::cout << "Exporting results in " << format << " format to: " << fileName << std::endl;
     // Placeholder implementation
@@ -792,13 +795,13 @@ inline void MassFitterV2::RunDiagnostics(const std::string& outputFile) const {
     // Placeholder implementation
 }
 
-inline void MassFitterV2::UseDeltaMass(bool use, double daughterMassMin, double daughterMassMax) {
-    useDeltaMass_ = use;
-    if (use && !massDaughter1_) {
-        massDaughter1_ = std::make_unique<RooRealVar>("massDaughter1", "Daughter1 Mass", daughterMassMin, daughterMassMax);
-        massPion_ = std::make_unique<RooRealVar>("massPion", "Pion Mass", PION_MASS_V2);
-        massPion_->setConstant(true);
-    }
-}
+// inline void MassFitterV2::UseDeltaMass(bool use, double daughterMassMin, double daughterMassMax) {
+//     useDeltaMass_ = use;
+//     if (use && !massDaughter1_) {
+//         massDaughter1_ = std::make_unique<RooRealVar>("massDaughter1", "Daughter1 Mass", daughterMassMin, daughterMassMax);
+//         massPion_ = std::make_unique<RooRealVar>("massPion", "Pion Mass", PION_MASS_V2);
+//         massPion_->setConstant(true);
+//     }
+// }
 
 #endif // MASS_FITTER_V2_H

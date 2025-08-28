@@ -5,10 +5,34 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <variant>
 #include "MassFitterV2.h"
 #include "Params.h"
 #include "Opt.h"
 #include "FitStrategy.h"
+
+/**
+ * @brief PDF types available for signal and background
+ */
+enum class PDFType {
+    // Signal PDFs
+    Gaussian = 0,
+    DoubleGaussian = 1,
+    CrystalBall = 2,
+    DBCrystalBall = 3,
+    DoubleDBCrystalBall = 4,
+    Voigtian = 5,
+    BreitWigner = 6,
+    
+    // Background PDFs
+    Exponential = 10,
+    Chebychev = 11,
+    Phenomenological = 12,
+    Polynomial = 13,
+    ThresholdFunction = 14,
+    ExpErf = 15,
+    DstBkg = 16
+};
 
 /**
  * @brief Kinematic bin configuration for D* meson analysis
@@ -47,6 +71,10 @@ struct KinematicBin {
  * @brief Parameter configuration for different pT and cos(theta) bins
  */
 struct DStarBinParameters {
+    // PDF type selections
+    PDFType signalPdfType = PDFType::DBCrystalBall;
+    PDFType backgroundPdfType = PDFType::Phenomenological;
+    
     // Yield parameters
     double nsig_ratio = 0.01;
     double nsig_min_ratio = 0.0;
@@ -55,16 +83,89 @@ struct DStarBinParameters {
     double nbkg_min_ratio = 0.0;
     double nbkg_max_ratio = 1.0;
     
-    // Signal PDF parameters (DBCrystalBall)
-    PDFParams::DBCrystalBallParams signalParams;
+    // Dynamic parameter storage for different PDF types
+    std::map<std::string, double> signalParamValues;
+    std::map<std::string, std::pair<double, double>> signalParamRanges;  // {min, max}
+    std::map<std::string, double> backgroundParamValues;
+    std::map<std::string, std::pair<double, double>> backgroundParamRanges;  // {min, max}
     
-    // Background PDF parameters (Phenomenological)
-    PDFParams::PhenomenologicalParams backgroundParams;
+    // All possible signal PDF parameters
+    PDFParams::GaussianParams gaussianParams;
+    PDFParams::DoubleGaussianParams doubleGaussianParams;
+    PDFParams::CrystalBallParams crystalBallParams;
+    PDFParams::DBCrystalBallParams dbCrystalBallParams;
+    PDFParams::DoubleDBCrystalBallParams doubleDBCrystalBallParams;
+    PDFParams::VoigtianParams voigtianParams;
+    PDFParams::BreitWignerParams breitWignerParams;
+    
+    // All possible background PDF parameters
+    PDFParams::ExponentialBkgParams exponentialParams;
+    PDFParams::ChebychevBkgParams chebychevParams;
+    PDFParams::PhenomenologicalParams phenomenologicalParams;
+    PDFParams::PolynomialBkgParams polynomialParams;
+    PDFParams::ThresholdFuncParams thresholdFuncParams;
+    PDFParams::ExpErfBkgParams expErfParams;
+    PDFParams::DstBkgParams dstBkgParams;
+    
+    // Legacy parameters for backward compatibility
+    PDFParams::DBCrystalBallParams signalParams;    // Points to dbCrystalBallParams
+    PDFParams::PhenomenologicalParams backgroundParams;  // Points to phenomenologicalParams
     
     // Constructor with defaults
     DStarBinParameters() {
         SetDefaultSignalParams();
         SetDefaultBackgroundParams();
+    }
+    
+    // Get the correct signal parameters based on PDF type
+    template<typename T>
+    const T& GetSignalParams() const;
+    
+    // Get the correct background parameters based on PDF type
+    template<typename T>
+    const T& GetBackgroundParams() const;
+    
+    // Helper methods to get parameters by PDFType
+    std::variant<
+        PDFParams::GaussianParams,
+        PDFParams::DoubleGaussianParams,
+        PDFParams::CrystalBallParams,
+        PDFParams::DBCrystalBallParams,
+        PDFParams::DoubleDBCrystalBallParams,
+        PDFParams::VoigtianParams,
+        PDFParams::BreitWignerParams
+    > GetSignalParamsByType() const {
+        switch(signalPdfType) {
+            case PDFType::Gaussian: return gaussianParams;
+            case PDFType::DoubleGaussian: return doubleGaussianParams;
+            case PDFType::CrystalBall: return crystalBallParams;
+            case PDFType::DBCrystalBall: return dbCrystalBallParams;
+            case PDFType::DoubleDBCrystalBall: return doubleDBCrystalBallParams;
+            case PDFType::Voigtian: return voigtianParams;
+            case PDFType::BreitWigner: return breitWignerParams;
+            default: return dbCrystalBallParams; // fallback
+        }
+    }
+    
+    std::variant<
+        PDFParams::ExponentialBkgParams,
+        PDFParams::ChebychevBkgParams,
+        PDFParams::PhenomenologicalParams,
+        PDFParams::PolynomialBkgParams,
+        PDFParams::ThresholdFuncParams,
+        PDFParams::ExpErfBkgParams,
+        PDFParams::DstBkgParams
+    > GetBackgroundParamsByType() const {
+        switch(backgroundPdfType) {
+            case PDFType::Exponential: return exponentialParams;
+            case PDFType::Chebychev: return chebychevParams;
+            case PDFType::Phenomenological: return phenomenologicalParams;
+            case PDFType::Polynomial: return polynomialParams;
+            case PDFType::ThresholdFunction: return thresholdFuncParams;
+            case PDFType::ExpErf: return expErfParams;
+            case PDFType::DstBkg: return dstBkgParams;
+            default: return phenomenologicalParams; // fallback
+        }
     }
     
 private:
@@ -200,7 +301,10 @@ public:
     FitOpt CreateFitOpt(const KinematicBin& bin) const {
         FitOpt opt;
         
-        // Set kinematic range
+        // Apply DStar defaults first to set proper workspace name and other settings
+        opt.DStarDataDefault();
+        
+        // Override with bin-specific kinematic range
         opt.pTMin = bin.pTMin;
         opt.pTMax = bin.pTMax;
         opt.cosMin = bin.cosMin;
@@ -208,40 +312,43 @@ public:
         
         // Set cuts
         opt.cutExpr = GetFullCutString() + " && " + bin.GetCutString();
-        opt.cutMCExpr = opt.cutExpr;  // Same cuts for MC
+        opt.cutMCExpr = opt.cutExpr+ "&& matchGEN==1";  // Same cuts for MC
         
-        // Set fit configuration
+        // Override with configuration-specific settings
         opt.useCUDA = useCUDA_;
         opt.doFit = doRefit_;
         opt.verbose = verbose_;
         opt.useMinos = false;  // Usually not needed for D* fits
         opt.useHesse = true;
+        opt.fitMethod = fitMethod_;  // Use configured fit method
         
         // Set output configuration
         opt.outputDir = "results";
         opt.outputFile = "DStar_fit_" + bin.GetBinName();
         opt.subDir = outputSubDir_;
         
-        // Set mass range for D* (delta mass)
-        opt.massVar = "massDifference";
-        opt.massMin = 0.139;
-        opt.massMax = 0.180;
+        // Generate proper legends for this bin
+        opt.GenerateLegends();
         
         return opt;
     }
     
-    // Create FitConfig for modern fitting framework
+    // Create FitConfig for modern fitting framework (unified with FitOpt)
     FitConfig CreateFitConfig() const {
-        FitConfig config;
-        config.fitMethod = fitMethod_;
-        config.useCUDA = useCUDA_;
-        config.verbose = verbose_;
-        config.useMinos = false;
-        config.useHesse = true;
-        config.numCPU = 24;
-        config.maxRetries = 3;
-        config.histogramBins = 100;
-        return config;
+        // Create a base FitOpt and convert it to FitConfig for consistency
+        FitOpt tempOpt;
+        tempOpt.DStarDataDefault();  // Apply base D* settings
+        
+        // Override with DStarFitConfig specific settings
+        tempOpt.fitMethod = fitMethod_;
+        tempOpt.useCUDA = useCUDA_;
+        tempOpt.verbose = verbose_;
+        tempOpt.useMinos = false;
+        tempOpt.useHesse = true;
+        tempOpt.numCPU = 24;
+        // tempOpt.maxRetries = 3;
+        
+        return tempOpt.ToFitConfig();
     }
     
 private:
@@ -327,9 +434,9 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
     auto fitOpt = config.CreateFitOpt(bin);
     auto binParams = config.GetParametersForBin(bin);
     
-    // Create fitter with optimized yield parameters
+    // Create fitter with optimized yield parameters using name from opt.h
     auto fitter = std::make_unique<MassFitterV2>(
-        "DStar_" + bin.GetBinName(),
+        fitOpt.name,  // Use the name from opt.name instead of hardcoded "DStar_" + bin name
         fitOpt.massVar,
         fitOpt.massMin,
         fitOpt.massMax,
@@ -342,10 +449,18 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
     );
     
     // Configure for delta mass
-    fitter->UseDeltaMass(true, 1.82, 1.92);
+    // fitter->UseDeltaMass(true, 1.82, 1.92);
     
-    // Load configuration
-    fitter->SetConfiguration(config.CreateFitConfig());
+    // Configuration will be handled by FitOpt.ToFitConfig() in PerformFit()
+    // No need to set configuration here - it's redundant
+    
+    // Apply bin-specific PDF types and parameters
+    std::cout << "[Config] Applying custom PDF configuration for bin: " << bin.GetBinName() << std::endl;
+    std::cout << "[Config] Signal PDF: " << static_cast<int>(binParams.signalPdfType) 
+              << ", Background PDF: " << static_cast<int>(binParams.backgroundPdfType) << std::endl;
+    
+    // The fitter will use the binParams.signalPdfType and backgroundPdfType 
+    // when SetSignalPDF() and SetBackgroundPDF() are called in PerformFit()
     
     return fitter;
 }
