@@ -58,6 +58,9 @@ class FitStrategy {
 public:
     virtual ~FitStrategy() = default;
     virtual std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) = 0;
+    virtual std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config, RooRealVar* massVar) {
+        return Execute(pdf, data, config);  // Default implementation ignores massVar
+    }
     virtual std::string GetName() const = 0;
     
 protected:
@@ -103,6 +106,7 @@ private:
 class BinnedFitStrategy : public FitStrategy {
 public:
     std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) override;
+    std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config, RooRealVar* massVar) override;
     std::string GetName() const override { return "BinnedFit"; }
     
 private:
@@ -357,16 +361,13 @@ inline void ConstraintFitStrategy::ApplyConstraints(RooAbsPdf* pdf) {
 inline std::unique_ptr<RooFitResult> BinnedFitStrategy::Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) {
     if (!pdf || !data) return nullptr;
     
-    // Get mass variable from the dataset
-    auto massVar = dynamic_cast<RooRealVar*>(data->get()->find("mass"));
-    if (!massVar) {
-        // Try to find the first RooRealVar in the dataset
-        auto argSet = data->get();
-        for (auto it = argSet->fwdIterator(); auto* var = it.next();) {
-            if (auto* realVar = dynamic_cast<RooRealVar*>(var)) {
-                massVar = realVar;
-                break;
-            }
+    // Try to find the first RooRealVar in the dataset (fallback method)
+    RooRealVar* massVar = nullptr;
+    auto argSet = data->get();
+    for (auto it = argSet->fwdIterator(); auto* var = it.next();) {
+        if (auto* realVar = dynamic_cast<RooRealVar*>(var)) {
+            massVar = realVar;
+            break;
         }
     }
     
@@ -375,7 +376,13 @@ inline std::unique_ptr<RooFitResult> BinnedFitStrategy::Execute(RooAbsPdf* pdf, 
         return nullptr;
     }
     
-    // Create binned data
+    return Execute(pdf, data, config, massVar);
+}
+
+inline std::unique_ptr<RooFitResult> BinnedFitStrategy::Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config, RooRealVar* massVar) {
+    if (!pdf || !data || !massVar) return nullptr;
+    
+    // Create binned data using the provided mass variable
     auto binnedData = CreateBinnedData(data, massVar, config.histogramBins);
     if (!binnedData) {
         std::cerr << "BinnedFitStrategy: Failed to create binned data" << std::endl;

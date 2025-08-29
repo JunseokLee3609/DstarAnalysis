@@ -149,7 +149,13 @@ public:
     void ExportResults(const std::string& format = "json", const std::string& fileName = "");
     
     // Strategy management
-    void SetFitStrategy(std::unique_ptr<FitStrategy> strategy);
+    void SetFitStrategy(std::unique_ptr<FitStrategy> strategy) {
+        if (strategy) {
+            std::cout << "[MassFitterV2] Setting fit strategy to: " << strategy->GetName() << std::endl;
+            LogOperation("SetFitStrategy", "Changed to " + strategy->GetName());
+        }
+        fitStrategy_ = std::move(strategy);
+    }
     void SetFitStrategy(const std::string& strategyName);
     FitStrategy* GetFitStrategy() const { return fitStrategy_.get(); }
     std::vector<std::string> GetAvailableStrategies() const;
@@ -332,12 +338,32 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         // Create fit configuration
         FitConfig config = options.ToFitConfig();
         
-        // Perform fit with error handling
-        if (!fitStrategy_) {
-            fitStrategy_ = FitStrategyFactory::CreateStrategy(FitStrategyFactory::StrategyType::Binned);
+        // Select appropriate strategy based on FitMethod
+        FitStrategyFactory::StrategyType strategyType = FitStrategyFactory::StrategyType::Basic; // default
+        
+        switch (config.fitMethod) {
+            case FitMethod::NLL:
+                strategyType = FitStrategyFactory::StrategyType::Basic;
+                break;
+            case FitMethod::BinnedNLL:
+                strategyType = FitStrategyFactory::StrategyType::Binned;
+                break;
+            case FitMethod::Extended:
+                strategyType = FitStrategyFactory::StrategyType::Robust;
+                break;
         }
         
-        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, config);
+        // Override or set strategy based on fit method
+        fitStrategy_ = FitStrategyFactory::CreateStrategy(strategyType);
+        
+        LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + " for " + 
+                    (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+        std::cout << "[MassFitterV2] Using fit strategy: " << fitStrategy_->GetName() 
+                  << " (from " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << " method)" << std::endl;
+        
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, config, activeMassVar_);
         
         if (!fitResult) {
             ErrorHandlerManager::Instance().LogError("Fit execution returned null result", "PerformFit");
@@ -403,15 +429,36 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
             LOG_AND_THROW(PDFCreationException, "MC signal PDF creation failed", "PerformMCFit");
         }
         
-        // Use MC fit strategy
-        auto mcStrategy = FitStrategyFactory::CreateStrategy(FitStrategyFactory::StrategyType::MC);
-        
         // Create MC fit configuration (simplified for MC)
         FitConfig config = options.ToFitConfig();
         config.useMinos = false; // MC fits typically don't need Minos
         
+        // Select appropriate strategy based on FitMethod for MC
+        FitStrategyFactory::StrategyType mcStrategyType = FitStrategyFactory::StrategyType::MC; // default for MC
+        
+        switch (config.fitMethod) {
+            case FitMethod::NLL:
+                mcStrategyType = FitStrategyFactory::StrategyType::Basic;
+                break;
+            case FitMethod::BinnedNLL:
+                mcStrategyType = FitStrategyFactory::StrategyType::Binned;
+                break;
+            case FitMethod::Extended:
+                mcStrategyType = FitStrategyFactory::StrategyType::MC; // MC strategy for extended
+                break;
+        }
+        
+        auto mcStrategy = FitStrategyFactory::CreateStrategy(mcStrategyType);
+        
+        LogOperation("FitStrategy", "Auto-selected " + mcStrategy->GetName() + " for MC " + 
+                    (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+        std::cout << "[MassFitterV2] Using MC fit strategy: " << mcStrategy->GetName() 
+                  << " (from " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << " method)" << std::endl;
+        
         // Perform MC fit
-        auto fitResult = mcStrategy->Execute(signalPdf_.get(), activeDataset_, config);
+        auto fitResult = mcStrategy->Execute(signalPdf_.get(), activeDataset_, config, activeMassVar_);
         
         if (!fitResult) {
             ErrorHandlerManager::Instance().LogError("MC fit execution returned null result", "PerformMCFit");
@@ -478,15 +525,22 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         SetBackgroundPDF(backgroundParams, "background");
         CreateTotalPDF();
         
-        // Create constraint fit strategy with MC results
-        auto constraintStrategy = FitStrategyFactory::CreateConstraintStrategy(
-            options.outputDir + "/" + options.outputFile, constraintParameters);
-        
         // Create fit configuration
         FitConfig config = options.ToFitConfig();
         
+        // Create constraint fit strategy with MC results (always uses ConstraintStrategy)
+        auto constraintStrategy = FitStrategyFactory::CreateConstraintStrategy(
+            options.outputDir + "/" + options.outputFile, constraintParameters);
+        
+        LogOperation("FitStrategy", "Using " + constraintStrategy->GetName() + " for constraint fitting with " + 
+                    (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+        std::cout << "[MassFitterV2] Using constraint fit strategy: " << constraintStrategy->GetName() 
+                  << " (method: " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
+                                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << ")" << std::endl;
+        
         // Perform constraint fit
-        auto fitResult = constraintStrategy->Execute(totalPdf_.get(), activeDataset_, config);
+        auto fitResult = constraintStrategy->Execute(totalPdf_.get(), activeDataset_, config, activeMassVar_);
         
         if (!fitResult) {
             ErrorHandlerManager::Instance().LogError("Constraint fit execution returned null result", "PerformConstraintFit");
@@ -664,7 +718,7 @@ inline void MassFitterV2::SetupDefaultDependencies() {
         pdfFactory_ = std::make_unique<PDFFactory>(activeMassVar_);
     }
     if (!fitStrategy_) {
-        fitStrategy_ = std::make_unique<RobustFitStrategy>();
+        fitStrategy_ = std::make_unique<BinnedFitStrategy>();
     }
     if (!resultManager_) {
         resultManager_ = std::make_unique<ResultManager>();
@@ -767,7 +821,46 @@ inline std::unique_ptr<TCanvas> MassFitterV2::CreateCanvas(const std::string& re
 inline void MassFitterV2::SaveResult(const std::string& resultName, const std::string& filePath, 
                                      const std::string& fileName, bool saveWorkspace) {
     std::cout << "Saving results to: " << filePath << "/" << fileName << std::endl;
-    // Placeholder implementation
+    
+    if (!resultManager_) {
+        std::cout << "[MassFitterV2] ResultManager not configured; cannot save results." << std::endl;
+        return;
+    }
+    
+    try {
+        // Use ResultManager to save the result
+        std::string fullPath = filePath + "/" + fileName;
+        resultManager_->SaveToFile(resultName, fullPath, saveWorkspace);
+        std::cout << "[MassFitterV2] Results saved successfully: " << fullPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[MassFitterV2] Failed to save results: " << e.what() << std::endl;
+    }
+}
+
+inline void MassFitterV2::SaveResults(const std::string& filePath, const std::string& fileName, bool saveWorkspaces) {
+    std::cout << "Saving all results to: " << filePath << "/" << fileName << std::endl;
+    
+    if (!resultManager_) {
+        std::cout << "[MassFitterV2] ResultManager not configured; cannot save results." << std::endl;
+        return;
+    }
+    
+    try {
+        // Save all stored results
+        auto resultNames = GetResultNames();
+        if (resultNames.empty()) {
+            std::cout << "[MassFitterV2] No results to save." << std::endl;
+            return;
+        }
+        
+        std::string fullPath = filePath + "/" + fileName;
+        for (const auto& resultName : resultNames) {
+            resultManager_->SaveToFile(resultName, fullPath, saveWorkspaces);
+        }
+        std::cout << "[MassFitterV2] All results (" << resultNames.size() << ") saved successfully: " << fullPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[MassFitterV2] Failed to save results: " << e.what() << std::endl;
+    }
 }
 
 inline void MassFitterV2::LoadResults(const std::string& filePath, const std::string& fileName) {

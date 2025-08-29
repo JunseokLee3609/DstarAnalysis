@@ -89,7 +89,7 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     config.SetOutputSubDir("/DStar_PbPb_Analysis_V2/");
     
     // Configure fit options
-    config.SetFitMethod(FitMethod::NLL);  // Use extended ML fit
+    config.SetFitMethod(FitMethod::BinnedNLL);  // NLL, BinnedNLL, Extended 
     config.SetUseCUDA(useCUDA);
     config.SetVerbose(false);
     config.SetDoRefit(doReFit);
@@ -172,8 +172,6 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
         }
     }
     
-    // Get all bins after parameter configuration
-    auto allBins = config.GetAllKinematicBins();
     std::cout << "Analysis will run on " << allBins.size() << " kinematic bin(s)" << std::endl;
     
     // Process each kinematic bin
