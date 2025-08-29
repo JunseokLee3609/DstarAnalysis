@@ -1,0 +1,7 @@
+#!/bin/bash
+# ROOT 6.24 environment setup script
+export ROOTSYS=/software/ROOT/ROOT-v6.24/root-6.24-install
+export PATH=${ROOTSYS}/bin:${PATH}
+export LD_LIBRARY_PATH=${ROOTSYS}/lib:${LD_LIBRARY_PATH}
+export CMAKE_PREFIX_PATH=${ROOTSYS}:${CMAKE_PREFIX_PATH}
+export PYTHONPATH=${ROOTSYS}/lib:${PYTHONPATH}

@@ -2,86 +2,139 @@
 #define PLOTMANAGER_H
 
 #include <string>
+#include <memory>
+#include <vector>
 #include "TFile.h"
 #include "RooRealVar.h"
 #include "RooDataSet.h"
 #include "RooAbsPdf.h"
 #include "RooPlot.h"
+#include "RooWorkspace.h"
 #include "TCanvas.h"
 #include "TPad.h"
 #include "TLatex.h"
 #include "TLegend.h"
+#include "TLine.h"
 #include "RooFitResult.h"
+#include "TStyle.h"
+#include "TDirectory.h"
 #include "Opt.h"
 #include "Helper.h"
 
+/**
+ * @brief Enhanced PlotManager for D* meson analysis plotting
+ * 
+ * Features:
+ * - Automatic workspace loading and validation
+ * - Enhanced plotting with legends and annotations
+ * - Publication-ready plot formatting
+ * - Error handling and diagnostics
+ */
 class PlotManager {
 public:
-    PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar);
-    void DrawRawDistribution();
-    void DrawFittedModel(bool drawPull = false);
+    // Constructor
+    PlotManager(const FitOpt& opt, const std::string& inputDir, const std::string& outputFile, 
+                const std::string& outputDir, bool isPP = false, bool isDstar = true);
+    
+    // Destructor
+    ~PlotManager();
+    
+    // Main plotting methods
+    bool DrawRawDistribution(const std::string& outputName = "");
+    bool DrawFittedModel(bool drawPull = true, const std::string& outputName = "");
+    bool DrawComparisonPlot(const std::vector<std::string>& fileList, 
+                           const std::vector<std::string>& legendLabels);
+    
+    // Utility methods
+    bool IsValid() const { return isValid_; }
+    void SetPlotStyle(const std::string& style = "CMS");
+    void PrintSummary() const;
 
 private:
+    // Core data members
+    FitOpt opt_;
     std::string filename_;
-    std::string datasetName_;
-    std::string pdfName_;
-    std::string varName_;
-    std::string fitResultName_;
-    std::string wsName_;
-    std::string plotName_;
     std::string fileDir_;
     std::string outputDir_;
     bool isDstar_;
     bool isPP_;
-    TFile* file_;
-    RooDataSet* dataset_;
-    FitOpt opt_;
-    RooAbsPdf* pdf_;
-    RooRealVar* var_;
-    RooFitResult* fitResult_;
-    RooWorkspace* ws_;
-    int colorIndex = 1; // Start with a different color for each component
-    std::vector<std::pair<std::string, int>> legendEntries; // 컴포넌트 이름과 색상 저장
+    bool isValid_;
+    
+    // ROOT objects (using smart pointers for better memory management)
+    std::unique_ptr<TFile> file_;
+    RooWorkspace* ws_;          // Owned by file
+    RooDataSet* dataset_;       // Owned by workspace
+    RooAbsPdf* pdf_;           // Owned by workspace
+    RooRealVar* var_;          // Owned by workspace
+    RooFitResult* fitResult_;  // Owned by file
+    
+    // Plotting configuration
+    int colorIndex_;
+    std::vector<std::pair<std::string, int>> legendEntries_;
+    
+    // Style settings
+    struct PlotStyle {
+        int canvasWidth = 1200;
+        int canvasHeight = 800;
+        double leftMargin = 0.12;
+        double rightMargin = 0.05;
+        double topMargin = 0.08;
+        double bottomMargin = 0.12;
+        int titleFont = 42;
+        int labelFont = 42;
+        double titleSize = 0.05;
+        double labelSize = 0.04;
+    } plotStyle_;
 
+    // Internal methods
+    bool LoadWorkspace();
+    bool ValidateObjects();
     void DrawPullFrame(RooPlot* frame);
     RooAbsPdf* ExtractComponent(const std::string& namePattern);
-    void DrawParameterPad();
+    void DrawParameterPad(TPad* paramPad);
+    void AddLegendEntry(const std::string& name, int color, const std::string& option = "l");
+    TLegend* CreateLegend(double x1, double y1, double x2, double y2);
+    void SetupCanvas(TCanvas* canvas);
+    void AddLabels(TPad* pad);
+    std::string GetOutputFileName(const std::string& baseName, const std::string& suffix = "");
+    void CleanupMemory();
 };
-PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
-    : opt_(opt), fileDir_(inputDir), filename_(outputFile),outputDir_(outputDir), datasetName_(opt.datasetName), pdfName_(opt.pdfName), varName_(opt.massVar), fitResultName_(opt.fitResultName), wsName_(opt.wsName), plotName_(opt.plotName), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar),isPP_(isPP) {
-    file_ = TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str()));
-    if(file_) cout << "File Opened :: " << Form("%s/%s",fileDir_.c_str(), filename_.c_str()) <<endl;
+PlotManager::PlotManager(const FitOpt& opt, const std::string& inputDir, const std::string& outputFile, const std::string& outputDir,bool isPP, bool isDstar)
+    : opt_(opt), fileDir_(inputDir), filename_(outputFile), outputDir_(outputDir), file_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr), isDstar_(isDstar), isPP_(isPP) {
+    file_.reset(TFile::Open(Form("%s/%s",fileDir_.c_str(), filename_.c_str())));
+    if(file_) std::cout << "File Opened :: " << Form("%s/%s",fileDir_.c_str(), filename_.c_str()) << std::endl;
     if (!file_ || file_->IsZombie()) {
         std::cerr << "Error: Failed to open file " << filename_ << std::endl;
         return;
     }
-    ws_ = (RooWorkspace*)file_->Get(wsName_.c_str());
+    ws_ = (RooWorkspace*)file_->Get(opt_.wsName.c_str());
     if (!ws_) {
         std::cerr << "Error: Failed to load ws from file" << std::endl;
         file_->Close();
         return;
     }
 
-    dataset_ = (RooDataSet*)ws_->data(datasetName_.c_str());
+    dataset_ = (RooDataSet*)ws_->data(opt_.datasetName.c_str());
     if (!dataset_) {
-        std::cerr << "Error: Failed to load dataset from workspace : " << datasetName_ <<  std::endl;
+        std::cerr << "Error: Failed to load dataset from workspace : " << opt_.datasetName <<  std::endl;
         file_->Close();
         return;
     }
     cout << "Total Entry : " << dataset_->sumEntries() << endl;
     if(opt.doFit){ 
-    pdf_ = (RooAbsPdf*)ws_->pdf(pdfName_.c_str());
-    if (!pdf_) {
-        std::cerr << "Error: Failed to load PDF from file" << std::endl;
-        file_->Close();
-        return;
-    }}
+        // Try common PDF names
+        pdf_ = (RooAbsPdf*)ws_->pdf("total_pdf");
+        if (!pdf_) pdf_ = (RooAbsPdf*)ws_->pdf("model");
+        if (!pdf_) {
+            std::cerr << "Warning: Failed to find PDF 'total_pdf' or 'model' in workspace" << std::endl;
+        }
+    }
     const RooArgSet* vars = dataset_->get();
     
     if (vars) {
-            var_ = (RooRealVar*)vars->find(varName_.c_str());
+            var_ = (RooRealVar*)vars->find(opt_.massVar.c_str());
     }
-    var_=(RooRealVar*)ws_->var(varName_.c_str());
+    var_=(RooRealVar*)ws_->var(opt_.massVar.c_str());
     if (!var_) {
         std::cerr << "Error: Failed to load variable from RooDataSet" << std::endl;
         file_->Close();
@@ -91,7 +144,7 @@ PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::st
     var_->setMin(opt.massMin);
     var_->setMax(opt.massMax);
 
-    fitResult_ = (RooFitResult*)file_->Get(fitResultName_.c_str());
+    fitResult_ = (RooFitResult*)file_->Get(opt_.fitResultName.c_str());
     if (!fitResult_) {
         std::cerr << "Error: Failed to load fit result from file" << std::endl;
         file_->Close();
@@ -99,10 +152,10 @@ PlotManager::PlotManager(FitOpt& opt, const std::string& inputDir, const std::st
     }
 }
 
-void PlotManager::DrawRawDistribution() {
+bool PlotManager::DrawRawDistribution(const std::string& outputName) {
     if (!dataset_ || !var_) {
         // std::cerr << "Error: Dataset or variable not loaded" << std::endl;
-        return;
+        return false;
     }
 
     TCanvas* canvas = new TCanvas("canvas", "Raw Distribution", 800, 600);
@@ -110,14 +163,18 @@ void PlotManager::DrawRawDistribution() {
     dataset_->plotOn(frame);
     frame->Draw();
     createDir(Form("%s/",outputDir_.c_str()));
-    canvas->SaveAs(Form("%s/RawDist%s",outputDir_.c_str(),plotName_.c_str()));
+    {
+        std::string outname = GetOutputFileName("RawDist" + opt_.plotName);
+        canvas->SaveAs(outname.c_str());
+    }
     delete canvas;
+    return true;
 }
 
-void PlotManager::DrawFittedModel(bool drawPull) {
+bool PlotManager::DrawFittedModel(bool drawPull, const std::string& outputName) {
     if (!dataset_ || !pdf_ || !var_ || !fitResult_) {
         std::cerr << "Error: Dataset, PDF, variable, or fit result not loaded" << std::endl;
-        return;
+        return false;
     }
 
     // --- Canvas and Pad Setup ---
@@ -138,7 +195,7 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // --- Main Plot ---
     mainPad->cd();
-    RooPlot* frame = var_->frame(RooFit::Bins(120), RooFit::Title(""), RooFit::Range("analysis"));
+    RooPlot* frame = var_->frame(RooFit::Bins(60), RooFit::Title(""), RooFit::Range("analysis"));
 
     // 1. Plot Data
     dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
@@ -188,6 +245,7 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     frame->GetYaxis()->SetTitleOffset(1.2);
     frame->GetYaxis()->SetTitle(Form("Entries / (%.3f GeV/c^{2})", var_->getBinWidth(0)));
+    frame->GetYaxis()->SetLabelSize(0.0);
     frame->SetTitle("");
     frame->Draw();
 
@@ -221,19 +279,19 @@ void PlotManager::DrawFittedModel(bool drawPull) {
     latex.DrawLatex(0.12, 0.90, "CMS");
     latex.SetTextFont(52);
     latex.SetTextSize(0.04);
-    latex.DrawLatex(0.20, 0.90, "Preliminary");
+    latex.DrawLatex(0.20, 0.90, "Internal");
 
     latex.SetTextFont(42);
     latex.SetTextSize(0.04);
     latex.SetTextAlign(11);
-    isPP_ ? latex.DrawLatex(0.55, 0.90, "ppRef #sqrt{s_{NN}} = 5.32 TeV") : latex.DrawLatex(0.55, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
+    latex.DrawLatex(0.55, 0.90, opt_.ELabel.c_str());
     // isPP_ ? latex.DrawLatex(0.55, 0.90, "Proton-Oxygen #sqrt{s_{NN}} = 9.62 TeV") : latex.DrawLatex(0.93, 0.90, "PbPb #sqrt{s_{NN}} = 5.32 TeV");
 
     double x_pos = 0.13;
     double y_pos = 0.80;
-    latex.DrawLatex(x_pos,y_pos, Form(" %.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax));
-    latex.DrawLatex(x_pos,y_pos - 0.07,"-1 < |y| < 1");
-    isDstar_ ? latex.DrawLatex(x_pos,y_pos-0.14, Form("%.2f < |cos#theta_{HX}| < %0.2f", opt_.cosMin, opt_.cosMax)) : latex.DrawLatex(0.93, 0.60, Form("mva < %f", opt_.mvaMin));
+    latex.DrawLatex(x_pos,y_pos, opt_.pTLegend.c_str());
+    latex.DrawLatex(x_pos,y_pos - 0.07, opt_.yLegend.c_str());
+    latex.DrawLatex(x_pos,y_pos-0.14, opt_.centLegend.c_str());
 
 
     latex.SetTextAlign(11);
@@ -246,13 +304,17 @@ void PlotManager::DrawFittedModel(bool drawPull) {
 
     // --- Parameter Pad ---
     paramPad->cd();
-    DrawParameterPad();
+    DrawParameterPad(paramPad);
 
     // --- Save Canvas ---
     createDir(Form("%s/", outputDir_.c_str()));
-    canvas->SaveAs(Form("%s/%s", outputDir_.c_str(), plotName_.c_str()));
+    {
+        std::string outName = GetOutputFileName(opt_.plotName);
+        canvas->SaveAs(outName.c_str());
+    }
 
     delete canvas;
+    return true;
 }
 
 void PlotManager::DrawPullFrame(RooPlot* frame) {
@@ -265,7 +327,7 @@ void PlotManager::DrawPullFrame(RooPlot* frame) {
     pullFrame->GetYaxis()->SetTitleOffset(0.3);
     pullFrame->GetYaxis()->SetTitleSize(0.1);
     pullFrame->GetYaxis()->SetNdivisions(505);
-    pullFrame->GetYaxis()->SetLabelSize(0.1);
+    pullFrame->GetYaxis()->SetLabelSize(0.0);
     pullFrame->GetXaxis()->SetTitleSize(0.1);
     pullFrame->GetXaxis()->SetLabelSize(0.1);
     pullFrame->Draw();
@@ -274,7 +336,7 @@ void PlotManager::DrawPullFrame(RooPlot* frame) {
     line0->Draw();
 }
 
-void PlotManager::DrawParameterPad() {
+void PlotManager::DrawParameterPad(TPad* paramPad) {
     TLatex latex;
     latex.SetNDC();
     latex.SetTextSize(0.03);
@@ -315,6 +377,105 @@ RooAbsPdf* PlotManager::ExtractComponent(const std::string& namePattern) {
     }
 
     return foundPdf;
+}
+
+// === New Enhanced Methods ===
+
+void PlotManager::SetPlotStyle(const std::string& style) {
+    if (style == "CMS") {
+        gStyle->SetOptStat(0);
+        gStyle->SetOptTitle(0);
+        gStyle->SetPadLeftMargin(plotStyle_.leftMargin);
+        gStyle->SetPadRightMargin(plotStyle_.rightMargin);
+        gStyle->SetPadTopMargin(plotStyle_.topMargin);
+        gStyle->SetPadBottomMargin(plotStyle_.bottomMargin);
+        gStyle->SetTextFont(plotStyle_.titleFont);
+        gStyle->SetLabelFont(plotStyle_.labelFont, "XYZ");
+        gStyle->SetTitleFont(plotStyle_.titleFont, "XYZ");
+        gStyle->SetLabelSize(plotStyle_.labelSize, "XYZ");
+        gStyle->SetTitleSize(plotStyle_.titleSize, "XYZ");
+    }
+    std::cout << "[PlotManager] Applied " << style << " plot style" << std::endl;
+}
+
+std::string PlotManager::GetOutputFileName(const std::string& baseName, const std::string& suffix) {
+    std::string outputName = outputDir_ + "/" + baseName;
+    if (!suffix.empty()) {
+        outputName += "_" + suffix;
+    }
+    outputName += ".pdf";
+    return outputName;
+}
+
+TLegend* PlotManager::CreateLegend(double x1, double y1, double x2, double y2) {
+    TLegend* legend = new TLegend(x1, y1, x2, y2);
+    legend->SetBorderSize(0);
+    legend->SetFillStyle(0);
+    legend->SetTextFont(plotStyle_.labelFont);
+    legend->SetTextSize(plotStyle_.labelSize * 0.9);
+    return legend;
+}
+
+void PlotManager::AddLabels(TPad* pad) {
+    pad->cd();
+    
+    TLatex* cmsLabel = new TLatex();
+    cmsLabel->SetTextFont(plotStyle_.titleFont);
+    cmsLabel->SetTextSize(plotStyle_.titleSize * 1.1);
+    cmsLabel->SetNDC();
+    
+    // CMS label
+    cmsLabel->DrawLatex(0.12, 0.92, "CMS");
+    cmsLabel->SetTextFont(plotStyle_.labelFont);
+    cmsLabel->SetTextSize(plotStyle_.titleSize * 0.9);
+    cmsLabel->DrawLatex(0.20, 0.92, "Work in Progress");
+    
+    // Collision system and energy
+    std::string collisionText = isPP_ ? "pp" : "PbPb";
+    collisionText += ", #sqrt{s_{NN}} = 5.02 TeV";
+    cmsLabel->DrawLatex(0.65, 0.92, collisionText.c_str());
+    
+    // Physics labels from FitOpt - use auto-generated legends!
+    double yPos = 0.85;
+    if (!opt_.pTLegend.empty()) {
+        cmsLabel->DrawLatex(0.65, yPos, opt_.pTLegend.c_str());
+        yPos -= 0.05;
+    }
+    if (!opt_.cosLegend.empty()) {
+        cmsLabel->DrawLatex(0.65, yPos, opt_.cosLegend.c_str());
+        yPos -= 0.05;
+    }
+    if (!opt_.centLegend.empty() && !isPP_) {
+        cmsLabel->DrawLatex(0.65, yPos, ("Centrality " + opt_.centLegend).c_str());
+        yPos -= 0.05;
+    }
+}
+
+void PlotManager::PrintSummary() const {
+    std::cout << "\n=== PlotManager Summary ===" << std::endl;
+    std::cout << "File: " << fileDir_ << "/" << filename_ << std::endl;
+    std::cout << "Workspace: " << opt_.wsName << std::endl;
+    std::cout << "Dataset: " << opt_.datasetName;
+    if (dataset_) std::cout << " (" << dataset_->sumEntries() << " entries)";
+    std::cout << std::endl;
+    std::cout << "Variable: " << opt_.massVar << " [" << opt_.massMin << ", " << opt_.massMax << "]" << std::endl;
+    std::cout << "PDF available: " << (pdf_ ? "Yes" : "No") << std::endl;
+    std::cout << "Fit result available: " << (fitResult_ ? "Yes" : "No") << std::endl;
+    std::cout << "========================" << std::endl;
+}
+
+// Enhanced plotting methods (duplicate removed)
+
+void PlotManager::SetupCanvas(TCanvas* canvas) {
+    canvas->SetLeftMargin(plotStyle_.leftMargin);
+    canvas->SetRightMargin(plotStyle_.rightMargin);
+    canvas->SetTopMargin(plotStyle_.topMargin);
+    canvas->SetBottomMargin(plotStyle_.bottomMargin);
+}
+
+void PlotManager::CleanupMemory() {
+    // ROOT objects are owned by TFile or RooWorkspace
+    // std::unique_ptr<TFile> will handle cleanup automatically
 }
 
 #endif // PLOTMANAGER_H

@@ -1,6 +1,8 @@
 executable         = runSkim.sh
+universe           = vanilla
+executable         = runProcess_Mix.sh
 getenv = True
-arguments          = $(inputPath) $(num) 
+arguments          = $(Process)*100000 ($INT(Process)+1)*100000-1 $(Process)
 output             = logs/$(Cluster)_$(Process).out
 error              = logs/$(Cluster)_$(Process).err
 log                = logs/$(Cluster)_$(Process).log
@@ -12,5 +14,6 @@ when_to_transfer_output = ON_EXIT
 transfer_input_files = FlexibleFlattener.cpp, combined_file_list.txt
 
 queue inputPath num from combined_file_list.txt
+
 
 

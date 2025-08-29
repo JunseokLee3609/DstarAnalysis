@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <chrono>
+#include <iomanip>
 #include "TFile.h"
 #include "TTree.h"
 #include "TTreeIndex.h"
@@ -89,7 +90,11 @@ vector<RooDataSet*> RDSMaker(
     // Long64_t chunkSize = 100000,       // 청크 크기 (기본: 10만 이벤트)
     Long64_t maxEntries = -1,          // 최대 처리 이벤트 수 (기본: 전체)
     bool saveCS = true,                // CS 프레임 데이터셋 저장 여부
-    bool saveHX = true)                // HX 프레임 데이터셋 저장 여부
+    bool saveHX = true,                // HX 프레임 데이터셋 저장 여부
+    bool saveEP = false,               // EP 프레임 데이터셋 저장 여부
+    const string& effMapFile = "", // 효율 맵 파일 경로 (기본값: 비어있음)
+    const string& effMapName = "efficiency_map" // 효율 맵 이름
+)
 {
     auto startTime = chrono::high_resolution_clock::now();
     
@@ -107,6 +112,25 @@ vector<RooDataSet*> RDSMaker(
         file->Close();
         return {};
     }
+    TH3D* h_effMap = nullptr;
+    if (!effMapFile.empty()) {
+        TFile* f_eff = TFile::Open(effMapFile.c_str());
+        if (f_eff && !f_eff->IsZombie()) {
+            h_effMap = (TH3D*)f_eff->Get(effMapName.c_str());
+            if (h_effMap) {
+                cout << ">>> Efficiency map '" << effMapName << "' loaded from " << effMapFile << endl;
+                h_effMap->SetDirectory(0); 
+            } else {
+                cerr << "!!! WARNING: Efficiency map '" << effMapName << "' not found. Using weight 1.0" << endl;
+            }
+            f_eff->Close();
+        } else {
+            cerr << "!!! WARNING: Could not open efficiency file. Using weight 1.0" << endl;
+        }
+    } else {
+        cout << ">>> No efficiency map provided. Using weight 1.0" << endl;
+    }
+
     
     Long64_t nEntries = tree->GetEntries();
     cout << "File has been loaded: " << filename << endl;
@@ -151,7 +175,12 @@ vector<RooDataSet*> RDSMaker(
     map<string, short> shortBranchMap;
     map<string, int> intBranchMap;
     map<string, bool> boolBranchMap;
+    
+    // Event plane angle variable
+    Double_t Psi2Raw_Trk = -99.0f;
+    tree->SetBranchAddress("Psi2Raw_Trk", &Psi2Raw_Trk);
     vector<VarDef> formulaVars;
+    RooRealVar weightVar("weight", "Event Weight", 0.0, 10000.0); // 가중치 변수
 
     for (const auto& varDef : variables) {
         if (varDef.type == VarType::FORMULA) {
@@ -238,6 +267,8 @@ vector<RooDataSet*> RDSMaker(
     RooRealVar cosThetaHX("cosThetaHX", "CosThetaHX", -1, 1);
     // RooRealVar phiHX("phiHX", "phiHX", -180, 180);
     // RooRealVar phiTildeHX("phiTildeHX", "phiTildeHX", -180, 180);
+    RooRealVar cosThetaEP("cosThetaEP", "CosThetaEP", -1, 1);
+    baseVarSet.add(weightVar);
 
     csVarSet.add(baseVarSet);
     csVarSet.add(cosThetaCS);
@@ -246,43 +277,78 @@ vector<RooDataSet*> RDSMaker(
 
     hxVarSet.add(baseVarSet);
     hxVarSet.add(cosThetaHX);
+    hxVarSet.add(weightVar);
     // hxVarSet.add(phiHX);
     // hxVarSet.add(phiTildeHX);
 
-    // 데이터셋 생성
-    // TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
-    // RooDataSet::setDefaultStorageType(RooAbsData::Tree);
-    RooDataSet* baseDataset = new RooDataSet("dataset", "Base Dataset", baseVarSet);
-    RooDataSet* csDataset = saveCS ? new RooDataSet("datasetCS", "CS Frame Dataset", csVarSet) : nullptr;
-    RooDataSet* hxDataset = saveHX ? new RooDataSet("datasetHX", "HX Frame Dataset", hxVarSet) : nullptr;
+    RooArgSet epVarSet;    // Event plane frame variables
+    epVarSet.add(baseVarSet);
+    epVarSet.add(cosThetaEP);
+    epVarSet.add(weightVar);
+
+
+RooDataSet* baseDataset = new RooDataSet("dataset", "Base Dataset", baseVarSet);
+
+RooDataSet* csDataset = nullptr;
+if (saveCS) {
+    csDataset = new RooDataSet("datasetCS", "CS Frame Dataset", csVarSet, WeightVar(weightVar));
+}
+
+RooDataSet* hxDataset = nullptr;
+if (saveHX) {
+    hxDataset = new RooDataSet("datasetHX", "HX Frame Dataset", hxVarSet, WeightVar(weightVar));
+}
+
+RooDataSet* epDataset = nullptr;
+if (saveEP) {
+    epDataset = new RooDataSet("datasetEP", "Event Plane Frame Dataset", epVarSet, WeightVar(weightVar));
+}
 
     Long64_t totalProcessed = 0;
     for (Long64_t entry = 0; entry < nEntries; entry++) {
         tree->GetEntry(entry);
+        
+        // Progress bar - print every 100,000 events
+        if (entry % 100000 == 0 || entry == nEntries - 1) {
+            double progress = 100.0 * entry / nEntries;
+            cout << "Processing: " << entry << "/" << nEntries 
+                 << " (" << fixed << setprecision(1) << progress << "%)" << endl;
+        }
 
-        // 기본 변수 설정
+        bool skipCurrentEntry = false; // 현재 이벤트를 건너뛸지 여부를 나타내는 플래그
+
+        // 기본 변수 설정 및 컷 확인
         for (const auto& varDef : variables) {
             RooAbsArg* var = varMap[varDef.name];
             switch (varDef.type) {
                 case VarType::FLOAT: {
                     float value = floatBranchMap[varDef.name];
                     RooRealVar* realVar = static_cast<RooRealVar*>(var);
-                    // if (value < realVar->getMin() || value > realVar->getMax()) goto nextEntry;
-                    realVar->setVal(value);
+                    if (value < realVar->getMin() || value >= realVar->getMax()) {
+                        skipCurrentEntry = true;
+                    } else {
+                        realVar->setVal(value);
+                    }
                     break;
                 }
                 case VarType::SHORT: {
                     short value = shortBranchMap[varDef.name];
                     RooRealVar* realVar = static_cast<RooRealVar*>(var);
-                    // if (value < realVar->getMin() || value > realVar->getMax()) goto nextEntry;
-                    realVar->setVal(value);
+                    if (value < realVar->getMin() || value >= realVar->getMax()) {
+                        skipCurrentEntry = true;
+                    } else {
+                        realVar->setVal(value);
+                    }
                     break;
                 }
                 case VarType::INT: {
                     int value = intBranchMap[varDef.name];
                     RooRealVar* realVar = static_cast<RooRealVar*>(var);
-                    // if (value < realVar->getMin() || value > realVar->getMax()) goto nextEntry;
-                    realVar->setVal(value);
+                    if (value < realVar->getMin() || value >= realVar->getMax()) {
+                        skipCurrentEntry = true;
+                    } else {
+                        realVar->setVal(value);
+                    }
                     break;
                 }
                 case VarType::BOOL: {
@@ -293,12 +359,19 @@ vector<RooDataSet*> RDSMaker(
                 }
                 default: break;
             }
+            if (skipCurrentEntry) {
+                break; // 변수 루프를 빠져나감
+            }
         }
 
-        //  nextEntry:;
+        // 컷에 걸렸으면 다음 이벤트로 넘어감
+        if (skipCurrentEntry) {
+            continue;
+        }
 
+        double eventWeight = 1.0;
+ 
         // TLorentzVector 계산 (saveCS || saveHX가 true일 때만)
-        // if (saveCS || saveHX) {
         if (saveHX) {
             TLorentzVector dstar, dau1;
             dstar.SetPtEtaPhiM(floatBranchMap["pT"], floatBranchMap["eta"], floatBranchMap["phi"], floatBranchMap["mass"]);
@@ -318,7 +391,14 @@ vector<RooDataSet*> RDSMaker(
             // }
             // if (saveHX) {
                 TVector3 DstarDau1_HX = DstarDau1Vector_Helicity(dstar, dau1);
-                cosThetaHX.setVal(DstarDau1_HX.CosTheta());
+                float cos_val = DstarDau1_HX.CosTheta();
+                cosThetaHX.setVal(cos_val);
+                
+                // Event plane frame calculation
+                TVector3 DstarDau1_EP = DstarDau1Vector_EventPlane(dstar, dau1, Psi2Raw_Trk);
+                float cos_val_ep = DstarDau1_EP.CosTheta();
+                cosThetaEP.setVal(cos_val_ep);
+                
                 // phiHX.setVal(DstarDau1_HX.Phi() * 180 / TMath::Pi());
                 // double phiHXVal = phiHX.getVal();
                 // if (cosThetaHX.getVal() < 0) {
@@ -326,11 +406,43 @@ vector<RooDataSet*> RDSMaker(
                 // } else {
                 //     phiTildeHX.setVal((phiHXVal - 45 < -180) ? phiHXVal + 315 : phiHXVal - 45);
                 // }
-                hxDataset->add(hxVarSet);
+       if (h_effMap && saveHX) {
+            // TTree에서 pT, y, phi 값을 가져옴 (y는 직접 사용, 없으면 eta로 계산해야 함)
+            float pT_val = floatBranchMap["pT"];
+            float y_val = floatBranchMap["y"]; // 'y' 브랜치가 있다고 가정
+            // float phi_val = floatBranchMap["phi"];
+
+            TVector3 DstarDau1_HX = DstarDau1Vector_Helicity(dstar, dau1);
+            float cos_val = DstarDau1_HX.CosTheta();
+            
+            int bin = h_effMap->FindBin(pT_val, y_val, cos_val);
+            double efficiency = h_effMap->GetBinContent(bin);
+            // cout << efficiency << endl;
+
+            if (efficiency > 1e-6) {
+                eventWeight = 1.0 / efficiency;
+                if(eventWeight >10000) cout << "WARNING :: Efficiency is too high for event with " << eventWeight << " pT = " << pT_val << ", y = " << y_val << ", cos = " << cos_val << endl;
+            } else {
+                cout << "WARNING :: Efficiency is zero for event with pT = " << pT_val << ", y = " << y_val << ", cos = " << cos_val << endl;
+                cout << eventWeight << endl;
+                eventWeight = 0; // 효율이 0이면 가중치도 0
+            }
+            weightVar.setVal(eventWeight);
+
+        }
+
+        // 데이터셋에 추가
+        if(hxDataset){
+            hxDataset->add(hxVarSet,eventWeight);
+        }
+        if(epDataset){
+            epDataset->add(epVarSet,eventWeight);
+        }
             // }
         }
 
         baseDataset->add(baseVarSet);
+
         totalProcessed++;
     }
 
@@ -355,25 +467,32 @@ vector<RooDataSet*> RDSMaker(
     file->Close();
     for (auto& pair : varMap) delete pair.second;
 
+    if (h_effMap) {        
+        delete h_effMap;
+    }
+
     vector<RooDataSet*> result = {baseDataset};
     if (saveCS) result.push_back(csDataset);
     if (saveHX) result.push_back(hxDataset);
+    if (saveEP) result.push_back(epDataset);
     return result;
 }
 
 // 메인 함수
-void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string inputPath = "", std::string suffix = "") {
+void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string inputPath = "", std::string suffix = "",std::string effFile = "", std::string effMapNameInFile="") {
     RooDataSet::setDefaultStorageType(RooAbsData::Tree);
     TTree::SetMaxTreeSize(100LL * 1024 * 1024 * 1024);
+    // string effMapNameInFile = "pt_y_phi_pr_ratio";
     // 다양한 타입의 변수 정의
     vector<VarDef> variables = {
         {"mass", VarType::FLOAT, 1.7, 2.25},
-        {"pT", VarType::FLOAT, 0.0, 100.0},
+        {"pT", VarType::FLOAT, 0.0, 50.0},
         {"eta", VarType::FLOAT, -2.5, 2.5},
        {"phi", VarType::FLOAT, -TMath::Pi(), TMath::Pi()},
 	// {"Ncoll",VarType::FLOAT,0.0,3000},
         {"y", VarType::FLOAT, -1,1},
-        {"dca3D", VarType::FLOAT, 0, 10}
+        {"dca3D", VarType::FLOAT, 0, 10},
+    //    {"dca2D", VarType::FLOAT, 0, 10}
         // {"pT_ratio", "pTD1 / pT", {"pTD1", "pT"}},
         // {"deltaEta", "eta - EtaD1", {"eta", "EtaD1"}}
         
@@ -381,9 +500,22 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string
     if(!isD0){
         variables.push_back({"massDaugther1", VarType::FLOAT, 1.7, 2.1});
         variables.push_back({"massPion", "mass - massDaugther1", {"mass", "massDaugther1"}});
-        variables.push_back({"pTD1", VarType::FLOAT, 0.0, 100.0});
-        variables.push_back({"EtaD1", VarType::FLOAT, -2.5, 2.5});
-        variables.push_back({"PhiD1", VarType::FLOAT, -5, 5});
+        variables.push_back({"pTD1", VarType::FLOAT, 0.0, 50.0});
+        variables.push_back({"EtaD1", VarType::FLOAT, -2.5,2.5});
+        variables.push_back({"PhiD1", VarType::FLOAT, -TMath::Pi(), TMath::Pi()});
+        variables.push_back({"pTD2", VarType::FLOAT, 0.0, 50.0});
+        variables.push_back({"EtaD2", VarType::FLOAT, -2.5, 2.5});
+        variables.push_back({"pTGrandD1",VarType::FLOAT, 0.0, 50.0});
+        variables.push_back({"EtaGrandD1", VarType::FLOAT, -2.5, 2.5});
+        variables.push_back({"pTGrandD2", VarType::FLOAT, 0.0, 50.0});
+        variables.push_back({"EtaGrandD2", VarType::FLOAT, -2.5, 2.5});
+        // variables.push_back({"2DDecayLength", VarType::FLOAT, 0.0, 50.0});
+        // variables.push_back({"2DPointingAngle", VarType::FLOAT, -2.0, 2.0});
+        // variables.push_back({"dca2D", "TMath::Sin(2DPointingAngle) * 2DDecayLength", {"2DPointingAngle", "2DDecayLength"}});
+        // variables.push_back({"3DDecayLength", VarType::FLOAT, 0.0, 50.0});
+        // variables.push_back({"3DPointingAngle", VarType::FLOAT, -2.0, 2.0});
+        // variables.push_back({"dca3Dtemp", "TMath::Sin(3DPointingAngle) * 3DDecayLength", {"3DPointingAngle", "3DDecayLength"}});
+        // variables.push_back({"dca3D", })
         // variables.push_back({"3DDecayLength", VarType::FLOAT, 0.0, 50});
         // variables.push_back({"3DCosPointingAngle", VarType::FLOAT, -1, 1.0});
         // variables.push_back({"dcaDStar","3DDecayLength * 3DCosPointingAngle", {"3DDecayLength", "3DCosPointingAngle"}});
@@ -395,12 +527,12 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string
         variables.push_back({"isSwap", VarType::BOOL});
         variables.push_back({"isMC", VarType::BOOL});
         variables.push_back({"matchGEN", VarType::BOOL});
-        variables.push_back({"matchGen_D1ancestorFlavor_", VarType::INT, 0, 5});
+        variables.push_back({"matchGen_D1ancestorFlavor_", VarType::INT, 0, 10});
     }
     if(!isPP){
         variables.push_back({"centrality",VarType::SHORT, 0, 200}); // 중앙성 범위 설정
         variables.push_back({"Centrality","centrality/2",{"centrality"}});
-        variables.push_back({"mva", VarType::FLOAT, 0.2, 1});
+        variables.push_back({"mva", VarType::FLOAT, 0.9, 1});
     }
     // 청크 단위로 RooDataSet 생성
     // string inputfilename = "/home/jun502s/DstarAna/DStarAnalysis/Data/flatSkimForBDT_DStarMC_ppRef_0_20250320.root"; //Data
@@ -427,8 +559,10 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string
     
 
     
+    bool saveEP = true;  // Enable event plane frame saving
+    
     // 데이터셋 사용 예시 (chunkSize, ChunkedRDSMaker → RDSMaker로 변경)
-    vector<RooDataSet*> datasets = RDSMaker(inputfilename, treename, variables, maxEntries, saveCS, saveHX);
+    vector<RooDataSet*> datasets = RDSMaker(inputfilename, treename, variables, maxEntries, saveCS, saveHX, saveEP, effFile, effMapNameInFile);
 
     if (!datasets.empty()) {
         // 출력 파일 생성
@@ -441,7 +575,10 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string
             datasets[idx]->Write("datasetCS"); idx++;
         }
         if (saveHX && datasets.size() > idx) {
-            datasets[idx]->Write("datasetHX");
+            datasets[idx]->Write("datasetHX"); idx++;
+        }
+        if (saveEP && datasets.size() > idx) {
+            datasets[idx]->Write("datasetEP");
         }
 
         outputFile->Close();

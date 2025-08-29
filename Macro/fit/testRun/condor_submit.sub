@@ -1,0 +1,14 @@
+universe           = vanilla
+executable         = runCondor.sh
+getenv = True
+arguments          = $(pTMin) $(pTMax) $(centMin) $(centMax) $(mvaCut)
+output             = logs/$(Cluster)_$(Process).out
+error              = logs/$(Cluster)_$(Process).err
+log                = logs/$(Cluster)_$(Process).log
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+transfer_input_files = MCMacroD0_condor.cpp, kinematicRange.txt
+
+queue pTMin pTMax centMin centMax mvaCut from kinematicRange.txt
+

@@ -1,0 +1,40 @@
+# D* Analysis Parameter Configuration
+# Format: [bin_name] followed by key=value pairs
+# Available signal PDFs: Gaussian, DoubleGaussian, CrystalBall, DBCrystalBall, Voigtian, BreitWigner
+# Available background PDFs: Exponential, Chebychev, Phenomenological, Polynomial, ThresholdFunction, ExpErf, DstBkg
+
+[pT_10.000000_100.000000_cos_-2.000000_2.000000]
+# pT: 10-100, cos: -2-2
+signal_pdf=DoubleGaussian
+background_pdf=ThresholdFunction
+
+# Yield parameters
+nsig_ratio=0.01
+nsig_min_ratio=0.0
+nsig_max_ratio=1.0
+nbkg_ratio=0.01
+nbkg_min_ratio=0.0
+nbkg_max_ratio=1.0
+
+# Signal parameters (DoubleGaussian)
+signal.mean=0.1455
+signal.mean_min=0.1452
+signal.mean_max=0.1458
+signal.sigma1=0.0005
+signal.sigma1_min=0.0001
+signal.sigma1_max=0.01
+signal.sigma2=0.001
+signal.sigma2_min=0.0001
+signal.sigma2_max=0.01
+signal.fraction=0.7
+signal.fraction_min=0.0
+signal.fraction_max=1.0
+
+# Background parameters (ThresholdFunction)
+background.p0_init=1.0
+background.p0_min=-10.0
+background.p0_max=10.0
+background.p1_init=-1.0
+background.p1_min=-10.0
+background.p1_max=10.0
+background.m_pi_value=0.13957

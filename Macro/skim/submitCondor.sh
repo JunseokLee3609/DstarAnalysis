@@ -48,7 +48,7 @@ num=\$2
 
 echo "Processing input File: \$inputFile and \$num" 
 
-root -l -b -q "FlexibleFlattener.cpp(0,-1,\$num,$isMC,0,\"\$inputFile\",\"$prefix\")"
+root -l -b -q "FlexibleFlattener.cpp(0,-1,\$num,$isMC,0,1,\"\$inputFile\",\"$prefix\")"
 EOF
 
 chmod +x runSkim_temp.sh
@@ -76,4 +76,4 @@ echo "Condor submission completed!"
 echo "Monitor job status with: condor_q"
 echo "View logs in the logs/ directory"
 
-rm -f runSkim_temp.sh condor_submit_temp.sub
+#rm -f runSkim_temp.sh condor_submit_temp.sub

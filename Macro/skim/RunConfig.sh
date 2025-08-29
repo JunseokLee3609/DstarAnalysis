@@ -8,5 +8,7 @@
 #Data
 #root FlexibleFlattener.cpp\(0,-1,0,0,\"/home/CMS/Run3_2023/Data/SkimMVA/DStarAna_Data_Step2MVA_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA0p9_05May25_v2.root\",\"PbPb_Data_withEvtplaneInfo_May07\"\)
 #root FlexibleFlattener.cpp\(0,-1,0,0,\"output_dstarmeson_pOrun.root\",\"dstar_pORun_Jul1\"\)
-root FlexibleFlattener.cpp\(0,-1,0,1,\"/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/DStar/output_Mix_Jul08.root\",\"dstar_ppRef_NPPMix_Jul08\"\)
+#root FlexibleFlattener.cpp\(0,-1,0,1,\"/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/ppMC/DStar/output_Mix_Jul08.root\",\"dstar_ppRef_NPPMix_Jul08\"\)
 # root FlexibleFlattener.cpp\(0,-1,0,1,\"/home/CMS/Run3_2023/Data/SkimMVA/D0Ana_Data_Step2MVA_HIPhysicsRawPrime2_PromptRecov2_CMSSW_13_2_13_MVA_25Mar2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step2MVA_HIPhysicsRawPrime2_PromptRecov2_CMSSW_13_2_13_MVA_25Mar2025_v1/250328_181504/0000\",\"PbPb_MC_ONNX_withCent_16Apr\"\)
+#root FlexibleFlattener.cpp\(0,-1,0,0,1,\"/home/CMS/soohwan/store/Analysis/DmesonRun3/Dmeson2025/OO\",\"d0_OO_Data_Jul21\"\)
+root FlexibleFlattener.cpp\(0,-1,0,0,0,\"/home/CMS/soohwan/store/Analysis/DmesonRun3/Dmeson2025/OO\",\"dstar_OO_Data_Jul21\"\)

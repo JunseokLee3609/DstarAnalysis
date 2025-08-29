@@ -46,6 +46,11 @@ public:
     RooRealVar* massPion_;          // Calculated pion mass
     RooRealVar* activeMassVar_;        // Pointer to active mass variable (either mass_ or massPion_)
 
+    // Member variable for DCA branch name
+    std::string dcaBranchName_;      // Name of the DCA branch in the TTree/RooDataSet
+    RooRealVar* dcaVarVal_;          // Pointer to the DCA RooRealVar from the dataset
+
+
     // 외부 파라미터 구조체 사용을 위한 타입 별칭 정의
     using GaussianParams = PDFParams::GaussianParams;
     using DoubleGaussianParams = PDFParams::DoubleGaussianParams;
@@ -64,6 +69,8 @@ public:
         massDaughter1_(nullptr),
         massPion_(nullptr),
         activeMassVar_(nullptr),
+        dcaBranchName_(""), // Initialize dcaBranchName_
+        dcaVarVal_(nullptr), // Initialize new member
         pT_(nullptr),
         eta_(nullptr),
         phi_(nullptr),
@@ -78,6 +85,17 @@ public:
     {
         name = name_;
     }
+
+    // Method to set the DCA branch name
+    void setDCABranchName(const std::string& branchName) {
+        dcaBranchName_ = branchName;
+    }
+
+    // Method to get the DCA branch name (const version)
+    const std::string& getDCABranchName() const {
+        return dcaBranchName_;
+    }
+
     void setMassVariable(const std::string& massVar) {
         massVar_ = massVar;
         if (massVar == "mass") {
@@ -146,31 +164,65 @@ public:
         useMVA_ = useMVA;
         TFile* file = TFile::Open(filename.c_str());
         if (!file || file->IsZombie()) {
+            std::cerr << "Error: Could not open file: " << filename << std::endl;
             return false;
         }
         RooWorkspace* ws = (RooWorkspace*)file->Get(wsName.c_str());
         if (!ws) {
+            std::cerr << "Error: Could not get workspace: " << wsName << " from file: " << filename << std::endl;
             file->Close();
+            delete file;
             return false;
         }
         RooDataSet* newData = (RooDataSet*)ws->data(dataName.c_str());
         if (!newData) {
+            std::cerr << "Error: Could not get dataset: " << dataName << " from workspace: " << wsName << std::endl;
+            // ws is owned by file, no need to close ws directly.
             file->Close();
+            delete file;
             return false;
         }
-        data_ = (RooDataSet*)newData->Clone();
-        //mass_ = (RooRealVar*)data_->get()->find("mass");
-        pT_ = (RooRealVar*)data_->get()->find("pT");
-        eta_ = (RooRealVar*)data_->get()->find("eta");
-        phi_ = (RooRealVar*)data_->get()->find("phi");
-        // y_ = (RooRealVar*)data_->get()->find("y");
-        delete newData;
+        
+        // Clean up old data if any to prevent memory leaks if LoadData is called multiple times
+        if (data_) { delete data_; data_ = nullptr; }
+        data_ = (RooDataSet*)newData->Clone((std::string(dataName) + "_clone").c_str());
+        
+        // It's better to get these from the cloned data_ and check for existence
+        RooAbsArg* arg_pT = data_->get()->find("pT");
+        if (arg_pT) pT_ = dynamic_cast<RooRealVar*>(arg_pT); else std::cerr << "Warning: pT not found in dataset." << std::endl;
+        
+        RooAbsArg* arg_eta = data_->get()->find("eta");
+        if (arg_eta) eta_ = dynamic_cast<RooRealVar*>(arg_eta); else std::cerr << "Warning: eta not found in dataset." << std::endl;
+        
+        RooAbsArg* arg_phi = data_->get()->find("phi");
+        if (arg_phi) phi_ = dynamic_cast<RooRealVar*>(arg_phi); else std::cerr << "Warning: phi not found in dataset." << std::endl;
+        
+        // y_ is in cleanup, but not consistently loaded. If you use y_, ensure it's loaded similarly.
+        // RooAbsArg* arg_y = data_->get()->find("y");
+        // if (arg_y) y_ = dynamic_cast<RooRealVar*>(arg_y); else std::cerr << "Warning: y not found in dataset." << std::endl;
         
         if(useMVA_){
-            mva_ = (RooRealVar*)data_->get()->find("mva");
+            RooAbsArg* arg_mva = data_->get()->find("mva");
+            if (arg_mva) mva_ = dynamic_cast<RooRealVar*>(arg_mva); else std::cerr << "Warning: mva not found in dataset." << std::endl;
+        }
+
+        // Load DCA variable if branch name is set
+        if (!dcaBranchName_.empty()) {
+            RooAbsArg* arg_dca = data_->get()->find(dcaBranchName_.c_str());
+            if (arg_dca) {
+                dcaVarVal_ = dynamic_cast<RooRealVar*>(arg_dca);
+                if (!dcaVarVal_) {
+                    std::cerr << "Warning: DCA branch '" << dcaBranchName_ << "' found but is not a RooRealVar." << std::endl;
+                } else {
+                    std::cout << "Info: DCA branch '" << dcaBranchName_ << "' loaded successfully." << std::endl;
+                }
+            } else {
+                std::cerr << "Warning: DCA branch '" << dcaBranchName_ << "' not found in dataset." << std::endl;
+            }
         }
         
         file->Close();
+        delete file; 
         return true;
     }
 
@@ -602,22 +654,28 @@ private:
     
     // Utility methods
     void Cleanup(){
-        delete mass_;
-        delete massDaughter1_;
-        delete massPion_;
-        delete mass_;
-        delete eta_;              
-        delete pT_;              
-        delete phi_;              
-        delete y_;              
-        delete mva_;  
-        delete reduced_data_;
-        delete data_;
-        delete signal_pdf_;
-        delete background_pdf_;
-        delete total_pdf_;
-        delete fit_result_;
-    
+        // Delete objects created with 'new' by MassFitter
+        delete mass_; mass_ = nullptr;
+        delete massDaughter1_; massDaughter1_ = nullptr;
+        delete massPion_; massPion_ = nullptr;
+        activeMassVar_ = nullptr; // Points to one of the above, just nullify
+
+        // Pointers obtained from RooDataSet::get() are owned by the RooDataSet (data_).
+        // They should not be deleted here. Nullify them before data_ is deleted.
+        pT_ = nullptr;
+        eta_ = nullptr;
+        phi_ = nullptr;
+        y_ = nullptr; 
+        mva_ = nullptr;
+        dcaVarVal_ = nullptr; 
+
+        delete reduced_data_; reduced_data_ = nullptr;
+        delete data_; data_ = nullptr; // This will delete the RooRealVars obtained via data_->get()
+        
+        delete signal_pdf_; signal_pdf_ = nullptr;
+        delete background_pdf_; background_pdf_ = nullptr;
+        delete total_pdf_; total_pdf_ = nullptr;
+        delete fit_result_; fit_result_ = nullptr;
     } 
 
 };

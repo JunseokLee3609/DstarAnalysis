@@ -280,7 +280,7 @@ void RDSMaker() {
     string outputDirectory = "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC";  // 출력 파일 이름
     string treename = "skimTreeFlat";        // 실제 트리 이름으로 변경
     Long64_t chunkSize = 5000000;      // 청크 크기 설정 (필요에 따라 조정)
-    Long64_t maxEntries = -1;        // 전체 데이터 처리 (-1: 제한 없음)
+    Long64_t maxEntries = 3*chunkSize;        // 전체 데이터 처리 (-1: 제한 없음)
     
     RooDataSet* data = ChunkedRDSMaker(inputfilename, treename, variables, chunkSize, maxEntries);
 

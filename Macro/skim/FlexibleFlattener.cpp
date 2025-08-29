@@ -822,15 +822,20 @@ void FlexibleMC(
 
 
 
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=true, std::string path = "", std::string suffix="") {
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=true,bool isPP=true, std::string path = "", std::string suffix="") {
 
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
     bool setGEN = true;
     ParticleType particleType = isD0 ?  ParticleType::D0 :ParticleType::DStar;
-    bool doCent =  particleType == ParticleType::DStar ? true :false;
-    bool doEvtPlane = particleType == ParticleType::DStar ? true : false;
+    bool doCent = false;
+    bool doEvtPlane = false;
+    if(!isPP){
+    doCent =  particleType == ParticleType::DStar ? true :false;
+    doEvtPlane = particleType == ParticleType::DStar ? true : false;
+    }
+    
 
 
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
