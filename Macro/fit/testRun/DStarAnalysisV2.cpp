@@ -95,6 +95,9 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
         case PDFType::DoubleGaussian: std::cout << " (DoubleGaussian)"; break;
         case PDFType::CrystalBall: std::cout << " (CrystalBall)"; break;
         case PDFType::DBCrystalBall: std::cout << " (DBCrystalBall)"; break;
+        case PDFType::DoubleDBCrystalBall: std::cout << " (DoubleDBCrystalBall)"; break;
+        case PDFType::Voigtian: std::cout << " (Voigtian)"; break;
+        case PDFType::BreitWigner: std::cout << " (BreitWigner)"; break;
         default: std::cout << " (Other)"; break;
     }
     std::cout << std::endl;
@@ -105,6 +108,9 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
         case PDFType::ThresholdFunction: std::cout << " (ThresholdFunction)"; break;
         case PDFType::Chebychev: std::cout << " (Chebychev)"; break;
         case PDFType::Phenomenological: std::cout << " (Phenomenological)"; break;
+        case PDFType::Polynomial: std::cout << " (Polynomial)"; break;
+        case PDFType::ExpErf: std::cout << " (ExpErf)"; break;
+        case PDFType::DstBkg: std::cout << " (DstBkg)"; break;
         default: std::cout << " (Other)"; break;
     }
     std::cout << std::endl;
@@ -139,6 +145,50 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
                       << " [" << params.crystalBallParams.alpha_min << ", " << params.crystalBallParams.alpha_max << "]" << std::endl;
             std::cout << "   n: " << params.crystalBallParams.n 
                       << " [" << params.crystalBallParams.n_min << ", " << params.crystalBallParams.n_max << "]" << std::endl;
+            break;
+            
+        case PDFType::DBCrystalBall:
+            std::cout << "   mean: " << params.dbCrystalBallParams.mean 
+                      << " [" << params.dbCrystalBallParams.mean_min << ", " << params.dbCrystalBallParams.mean_max << "]" << std::endl;
+            std::cout << "   sigma: " << params.dbCrystalBallParams.sigma 
+                      << " [" << params.dbCrystalBallParams.sigma_min << ", " << params.dbCrystalBallParams.sigma_max << "]" << std::endl;
+            std::cout << "   alphaL: " << params.dbCrystalBallParams.alphaL 
+                      << " [" << params.dbCrystalBallParams.alphaL_min << ", " << params.dbCrystalBallParams.alphaL_max << "]" << std::endl;
+            std::cout << "   nL: " << params.dbCrystalBallParams.nL 
+                      << " [" << params.dbCrystalBallParams.nL_min << ", " << params.dbCrystalBallParams.nL_max << "]" << std::endl;
+            std::cout << "   alphaR: " << params.dbCrystalBallParams.alphaR 
+                      << " [" << params.dbCrystalBallParams.alphaR_min << ", " << params.dbCrystalBallParams.alphaR_max << "]" << std::endl;
+            std::cout << "   nR: " << params.dbCrystalBallParams.nR 
+                      << " [" << params.dbCrystalBallParams.nR_min << ", " << params.dbCrystalBallParams.nR_max << "]" << std::endl;
+            break;
+            
+        case PDFType::DoubleDBCrystalBall:
+            std::cout << "   mean1: " << params.doubleDBCrystalBallParams.mean1 
+                      << " [" << params.doubleDBCrystalBallParams.mean1_min << ", " << params.doubleDBCrystalBallParams.mean1_max << "]" << std::endl;
+            std::cout << "   sigma1: " << params.doubleDBCrystalBallParams.sigma1 
+                      << " [" << params.doubleDBCrystalBallParams.sigma1_min << ", " << params.doubleDBCrystalBallParams.sigma1_max << "]" << std::endl;
+            std::cout << "   mean2: " << params.doubleDBCrystalBallParams.mean2 
+                      << " [" << params.doubleDBCrystalBallParams.mean2_min << ", " << params.doubleDBCrystalBallParams.mean2_max << "]" << std::endl;
+            std::cout << "   sigma2: " << params.doubleDBCrystalBallParams.sigma2 
+                      << " [" << params.doubleDBCrystalBallParams.sigma2_min << ", " << params.doubleDBCrystalBallParams.sigma2_max << "]" << std::endl;
+            std::cout << "   fraction: " << params.doubleDBCrystalBallParams.fraction 
+                      << " [" << params.doubleDBCrystalBallParams.fraction_min << ", " << params.doubleDBCrystalBallParams.fraction_max << "]" << std::endl;
+            break;
+            
+        case PDFType::Voigtian:
+            std::cout << "   mean: " << params.voigtianParams.mean 
+                      << " [" << params.voigtianParams.mean_min << ", " << params.voigtianParams.mean_max << "]" << std::endl;
+            std::cout << "   sigma: " << params.voigtianParams.sigma 
+                      << " [" << params.voigtianParams.sigma_min << ", " << params.voigtianParams.sigma_max << "]" << std::endl;
+            std::cout << "   width: " << params.voigtianParams.width 
+                      << " [" << params.voigtianParams.width_min << ", " << params.voigtianParams.width_max << "]" << std::endl;
+            break;
+            
+        case PDFType::BreitWigner:
+            std::cout << "   mean: " << params.breitWignerParams.mean 
+                      << " [" << params.breitWignerParams.mean_min << ", " << params.breitWignerParams.mean_max << "]" << std::endl;
+            std::cout << "   width: " << params.breitWignerParams.width 
+                      << " [" << params.breitWignerParams.width_min << ", " << params.breitWignerParams.width_max << "]" << std::endl;
             break;
             
         default:
@@ -388,7 +438,7 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
         std::cout << "[JSON Loader] Signal PDF: " << signalPdfType 
                   << ", Background PDF: " << backgroundPdfType << std::endl;
         
-        // Set PDF types
+        // Set PDF types - ALL SIGNAL PDFs
         if (signalPdfType == "Gaussian") {
             binParams.signalPdfType = PDFType::Gaussian;
             auto param = jsonLoader.getParameter(matchingJsonBin, "signal_mean");
@@ -444,9 +494,130 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
             binParams.crystalBallParams.n = param.value;
             binParams.crystalBallParams.n_min = param.min;
             binParams.crystalBallParams.n_max = param.max;
+            
+        } else if (signalPdfType == "DBCrystalBall") {
+            binParams.signalPdfType = PDFType::DBCrystalBall;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "signal_mean");
+            binParams.dbCrystalBallParams.mean = param.value;
+            binParams.dbCrystalBallParams.mean_min = param.min;
+            binParams.dbCrystalBallParams.mean_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_sigma");
+            binParams.dbCrystalBallParams.sigma = param.value;
+            binParams.dbCrystalBallParams.sigma_min = param.min;
+            binParams.dbCrystalBallParams.sigma_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_alphaL");
+            binParams.dbCrystalBallParams.alphaL = param.value;
+            binParams.dbCrystalBallParams.alphaL_min = param.min;
+            binParams.dbCrystalBallParams.alphaL_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_nL");
+            binParams.dbCrystalBallParams.nL = param.value;
+            binParams.dbCrystalBallParams.nL_min = param.min;
+            binParams.dbCrystalBallParams.nL_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_alphaR");
+            binParams.dbCrystalBallParams.alphaR = param.value;
+            binParams.dbCrystalBallParams.alphaR_min = param.min;
+            binParams.dbCrystalBallParams.alphaR_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_nR");
+            binParams.dbCrystalBallParams.nR = param.value;
+            binParams.dbCrystalBallParams.nR_min = param.min;
+            binParams.dbCrystalBallParams.nR_max = param.max;
+            
+        } else if (signalPdfType == "DoubleDBCrystalBall") {
+            binParams.signalPdfType = PDFType::DoubleDBCrystalBall;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "signal_mean1");
+            binParams.doubleDBCrystalBallParams.mean1 = param.value;
+            binParams.doubleDBCrystalBallParams.mean1_min = param.min;
+            binParams.doubleDBCrystalBallParams.mean1_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_sigma1");
+            binParams.doubleDBCrystalBallParams.sigma1 = param.value;
+            binParams.doubleDBCrystalBallParams.sigma1_min = param.min;
+            binParams.doubleDBCrystalBallParams.sigma1_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_mean2");
+            binParams.doubleDBCrystalBallParams.mean2 = param.value;
+            binParams.doubleDBCrystalBallParams.mean2_min = param.min;
+            binParams.doubleDBCrystalBallParams.mean2_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_sigma2");
+            binParams.doubleDBCrystalBallParams.sigma2 = param.value;
+            binParams.doubleDBCrystalBallParams.sigma2_min = param.min;
+            binParams.doubleDBCrystalBallParams.sigma2_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_fraction");
+            binParams.doubleDBCrystalBallParams.fraction = param.value;
+            binParams.doubleDBCrystalBallParams.fraction_min = param.min;
+            binParams.doubleDBCrystalBallParams.fraction_max = param.max;
+            
+            // DB Crystal Ball shape parameters (assuming same for both)
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_alphaL");
+            binParams.doubleDBCrystalBallParams.alphaL1 = param.value;
+            binParams.doubleDBCrystalBallParams.alphaL1_min = param.min;
+            binParams.doubleDBCrystalBallParams.alphaL1_max = param.max;
+            binParams.doubleDBCrystalBallParams.alphaL2 = param.value;
+            binParams.doubleDBCrystalBallParams.alphaL2_min = param.min;
+            binParams.doubleDBCrystalBallParams.alphaL2_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_nL");
+            binParams.doubleDBCrystalBallParams.nL1 = param.value;
+            binParams.doubleDBCrystalBallParams.nL1_min = param.min;
+            binParams.doubleDBCrystalBallParams.nL1_max = param.max;
+            binParams.doubleDBCrystalBallParams.nL2 = param.value;
+            binParams.doubleDBCrystalBallParams.nL2_min = param.min;
+            binParams.doubleDBCrystalBallParams.nL2_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_alphaR");
+            binParams.doubleDBCrystalBallParams.alphaR1 = param.value;
+            binParams.doubleDBCrystalBallParams.alphaR1_min = param.min;
+            binParams.doubleDBCrystalBallParams.alphaR1_max = param.max;
+            binParams.doubleDBCrystalBallParams.alphaR2 = param.value;
+            binParams.doubleDBCrystalBallParams.alphaR2_min = param.min;
+            binParams.doubleDBCrystalBallParams.alphaR2_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_nR");
+            binParams.doubleDBCrystalBallParams.nR1 = param.value;
+            binParams.doubleDBCrystalBallParams.nR1_min = param.min;
+            binParams.doubleDBCrystalBallParams.nR1_max = param.max;
+            binParams.doubleDBCrystalBallParams.nR2 = param.value;
+            binParams.doubleDBCrystalBallParams.nR2_min = param.min;
+            binParams.doubleDBCrystalBallParams.nR2_max = param.max;
+            
+        } else if (signalPdfType == "Voigtian") {
+            binParams.signalPdfType = PDFType::Voigtian;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "signal_mean");
+            binParams.voigtianParams.mean = param.value;
+            binParams.voigtianParams.mean_min = param.min;
+            binParams.voigtianParams.mean_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_sigma");
+            binParams.voigtianParams.sigma = param.value;
+            binParams.voigtianParams.sigma_min = param.min;
+            binParams.voigtianParams.sigma_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_width");
+            binParams.voigtianParams.width = param.value;
+            binParams.voigtianParams.width_min = param.min;
+            binParams.voigtianParams.width_max = param.max;
+            
+        } else if (signalPdfType == "BreitWigner") {
+            binParams.signalPdfType = PDFType::BreitWigner;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "signal_mean");
+            binParams.breitWignerParams.mean = param.value;
+            binParams.breitWignerParams.mean_min = param.min;
+            binParams.breitWignerParams.mean_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "signal_width");
+            binParams.breitWignerParams.width = param.value;
+            binParams.breitWignerParams.width_min = param.min;
+            binParams.breitWignerParams.width_max = param.max;
         }
         
-        // Set background PDF types
+        // Set background PDF types - ALL BACKGROUND PDFs
         if (backgroundPdfType == "ThresholdFunction") {
             binParams.backgroundPdfType = PDFType::ThresholdFunction;
             auto param = jsonLoader.getParameter(matchingJsonBin, "background_p0");
@@ -464,7 +635,7 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
             
         } else if (backgroundPdfType == "Exponential") {
             binParams.backgroundPdfType = PDFType::Exponential;
-            auto param = jsonLoader.getParameter(matchingJsonBin, "background_tau");
+            auto param = jsonLoader.getParameter(matchingJsonBin, "background_lambda");
             binParams.exponentialParams.lambda = param.value;
             binParams.exponentialParams.lambda_min = param.min;
             binParams.exponentialParams.lambda_max = param.max;
@@ -480,6 +651,80 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
             binParams.chebychevParams.coefficients.push_back(param.value);
             binParams.chebychevParams.coef_min.push_back(param.min);
             binParams.chebychevParams.coef_max.push_back(param.max);
+            
+        } else if (backgroundPdfType == "Phenomenological") {
+            binParams.backgroundPdfType = PDFType::Phenomenological;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "background_p0");
+            binParams.phenomenologicalParams.p0 = param.value;
+            binParams.phenomenologicalParams.p0_min = param.min;
+            binParams.phenomenologicalParams.p0_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_p1");
+            binParams.phenomenologicalParams.p1 = param.value;
+            binParams.phenomenologicalParams.p1_min = param.min;
+            binParams.phenomenologicalParams.p1_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_p2");
+            binParams.phenomenologicalParams.p2 = param.value;
+            binParams.phenomenologicalParams.p2_min = param.min;
+            binParams.phenomenologicalParams.p2_max = param.max;
+            
+        } else if (backgroundPdfType == "Polynomial") {
+            binParams.backgroundPdfType = PDFType::Polynomial;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "background_c0");
+            binParams.polynomialParams.coefficients = {param.value};
+            binParams.polynomialParams.coef_min = {param.min};
+            binParams.polynomialParams.coef_max = {param.max};
+            
+            // Try to load additional polynomial coefficients
+            for (int i = 1; i <= 5; ++i) {  // Support up to 5th order polynomial
+                std::string coef_name = "background_c" + std::to_string(i);
+                if (jsonLoader.hasParameter(matchingJsonBin, coef_name)) {
+                    param = jsonLoader.getParameter(matchingJsonBin, coef_name);
+                    binParams.polynomialParams.coefficients.push_back(param.value);
+                    binParams.polynomialParams.coef_min.push_back(param.min);
+                    binParams.polynomialParams.coef_max.push_back(param.max);
+                }
+            }
+            
+        } else if (backgroundPdfType == "ExpErf") {
+            binParams.backgroundPdfType = PDFType::ExpErf;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "background_lambda");
+            binParams.expErfParams.lambda = param.value;
+            binParams.expErfParams.lambda_min = param.min;
+            binParams.expErfParams.lambda_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_offset");
+            binParams.expErfParams.offset = param.value;
+            binParams.expErfParams.offset_min = param.min;
+            binParams.expErfParams.offset_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_width");
+            binParams.expErfParams.width = param.value;
+            binParams.expErfParams.width_min = param.min;
+            binParams.expErfParams.width_max = param.max;
+            
+        } else if (backgroundPdfType == "DstBkg") {
+            binParams.backgroundPdfType = PDFType::DstBkg;
+            auto param = jsonLoader.getParameter(matchingJsonBin, "background_dm0");
+            binParams.dstBkgParams.dm0 = param.value;
+            binParams.dstBkgParams.dm0_min = param.min;
+            binParams.dstBkgParams.dm0_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_c");
+            binParams.dstBkgParams.c = param.value;
+            binParams.dstBkgParams.c_min = param.min;
+            binParams.dstBkgParams.c_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_a");
+            binParams.dstBkgParams.a = param.value;
+            binParams.dstBkgParams.a_min = param.min;
+            binParams.dstBkgParams.a_max = param.max;
+            
+            param = jsonLoader.getParameter(matchingJsonBin, "background_b");
+            binParams.dstBkgParams.b = param.value;
+            binParams.dstBkgParams.b_min = param.min;
+            binParams.dstBkgParams.b_max = param.max;
         }
         
         // Load yield parameters

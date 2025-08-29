@@ -18,17 +18,17 @@ private:
     std::string current_path_;
     
     void parseObject(const std::string& json, const std::string& prefix = "");
-    std::string trim(const std::string& str);
-    std::string extractStringValue(const std::string& value);
+    std::string trim(const std::string& str) const;
+    std::string extractStringValue(const std::string& value) const;
     
 public:
     void parse(const std::string& json);
     void loadFromFile(const std::string& filename);
     
-    std::string getString(const std::string& key, const std::string& defaultValue = "");
-    double getDouble(const std::string& key, double defaultValue = 0.0);
-    int getInt(const std::string& key, int defaultValue = 0);
-    bool getBool(const std::string& key, bool defaultValue = false);
+    std::string getString(const std::string& key, const std::string& defaultValue = "") const;
+    double getDouble(const std::string& key, double defaultValue = 0.0) const;
+    int getInt(const std::string& key, int defaultValue = 0) const;
+    bool getBool(const std::string& key, bool defaultValue = false) const;
     
     bool hasKey(const std::string& key) const;
     std::vector<std::string> getKeys(const std::string& prefix = "") const;
@@ -60,6 +60,36 @@ struct BinIdentifier {
             << "_cent_" << centralityMin << "_" << centralityMax;
         return oss.str();
     }
+    
+    // Find matching bin from JSON bins using range matching
+    std::string findMatchingBinKey(const SimpleJSON& json) const {
+        auto keys = json.getKeys("dstar_parameters.bins");
+        for (const auto& key : keys) {
+            if (key.find("dstar_parameters.bins.") == 0 && key.find(".bin_info.pt_min") != std::string::npos) {
+                size_t start = key.find("bins.") + 5;
+                size_t end = key.find(".bin_info");
+                if (end != std::string::npos) {
+                    std::string binKey = key.substr(start, end - start);
+                    
+                    // Check if ranges match
+                    std::string binPrefix = "dstar_parameters.bins." + binKey + ".bin_info";
+                    double pt_min = json.getDouble(binPrefix + ".pt_min", -999.0);
+                    double pt_max = json.getDouble(binPrefix + ".pt_max", -999.0);
+                    double cos_min = json.getDouble(binPrefix + ".cos_min", -999.0);
+                    double cos_max = json.getDouble(binPrefix + ".cos_max", -999.0);
+                    double cent_min = json.getDouble(binPrefix + ".cent_min", -999.0);
+                    double cent_max = json.getDouble(binPrefix + ".cent_max", -999.0);
+                    
+                    if (std::abs(pt_min - ptMin) < 0.001 && std::abs(pt_max - ptMax) < 0.001 &&
+                        std::abs(cos_min - cosMin) < 0.001 && std::abs(cos_max - cosMax) < 0.001 &&
+                        std::abs(cent_min - centralityMin) < 0.001 && std::abs(cent_max - centralityMax) < 0.001) {
+                        return binKey;
+                    }
+                }
+            }
+        }
+        return ""; // No matching bin found
+    }
 };
 
 // JSON Parameter Loader class
@@ -78,12 +108,15 @@ public:
     void loadFromFile(const std::string& filename);
     
     // Get parameter for specific bin and parameter name
-    FitParameter getParameter(const BinIdentifier& bin, const std::string& paramName);
-    FitParameter getParameter(const std::string& binKey, const std::string& paramName);
+    FitParameter getParameter(const BinIdentifier& bin, const std::string& paramName) const;
+    FitParameter getParameter(const std::string& binKey, const std::string& paramName) const;
+    
+    // Get bin info from JSON
+    BinIdentifier getBinInfo(const std::string& binKey) const;
     
     // Check if parameter exists
-    bool hasParameter(const BinIdentifier& bin, const std::string& paramName);
-    bool hasParameter(const std::string& binKey, const std::string& paramName);
+    bool hasParameter(const BinIdentifier& bin, const std::string& paramName) const;
+    bool hasParameter(const std::string& binKey, const std::string& paramName) const;
     
     // Get all available bins
     std::vector<std::string> getAvailableBins() const;
@@ -93,19 +126,19 @@ public:
     
     // Utility functions
     void printLoadedParameters() const;
-    std::string getPDFType(const BinIdentifier& bin, const std::string& pdfCategory); // signal or background
-    std::string getPDFType(const std::string& binKey, const std::string& pdfCategory);
+    std::string getPDFType(const BinIdentifier& bin, const std::string& pdfCategory) const; // signal or background
+    std::string getPDFType(const std::string& binKey, const std::string& pdfCategory) const;
 };
 
 // Implementation
-inline std::string SimpleJSON::trim(const std::string& str) {
+inline std::string SimpleJSON::trim(const std::string& str) const {
     size_t start = str.find_first_not_of(" \t\r\n\"");
     if (start == std::string::npos) return "";
     size_t end = str.find_last_not_of(" \t\r\n\"");
     return str.substr(start, end - start + 1);
 }
 
-inline std::string SimpleJSON::extractStringValue(const std::string& value) {
+inline std::string SimpleJSON::extractStringValue(const std::string& value) const {
     std::string trimmed = trim(value);
     if (trimmed.front() == '"' && trimmed.back() == '"') {
         return trimmed.substr(1, trimmed.length() - 2);
@@ -192,7 +225,7 @@ inline void SimpleJSON::loadFromFile(const std::string& filename) {
     parse(buffer.str());
 }
 
-inline std::string SimpleJSON::getString(const std::string& key, const std::string& defaultValue) {
+inline std::string SimpleJSON::getString(const std::string& key, const std::string& defaultValue) const {
     auto it = data_.find(key);
     if (it != data_.end()) {
         return extractStringValue(it->second);
@@ -200,7 +233,7 @@ inline std::string SimpleJSON::getString(const std::string& key, const std::stri
     return defaultValue;
 }
 
-inline double SimpleJSON::getDouble(const std::string& key, double defaultValue) {
+inline double SimpleJSON::getDouble(const std::string& key, double defaultValue) const {
     auto it = data_.find(key);
     if (it != data_.end()) {
         try {
@@ -212,7 +245,7 @@ inline double SimpleJSON::getDouble(const std::string& key, double defaultValue)
     return defaultValue;
 }
 
-inline int SimpleJSON::getInt(const std::string& key, int defaultValue) {
+inline int SimpleJSON::getInt(const std::string& key, int defaultValue) const {
     auto it = data_.find(key);
     if (it != data_.end()) {
         try {
@@ -224,7 +257,7 @@ inline int SimpleJSON::getInt(const std::string& key, int defaultValue) {
     return defaultValue;
 }
 
-inline bool SimpleJSON::getBool(const std::string& key, bool defaultValue) {
+inline bool SimpleJSON::getBool(const std::string& key, bool defaultValue) const {
     auto it = data_.find(key);
     if (it != data_.end()) {
         std::string value = extractStringValue(it->second);
@@ -344,11 +377,17 @@ inline void JSONParameterLoader::loadFromFile(const std::string& filename) {
     std::cout << "[JSONParameterLoader] Loaded " << binKeys.size() << " bins with parameters." << std::endl;
 }
 
-inline FitParameter JSONParameterLoader::getParameter(const BinIdentifier& bin, const std::string& paramName) {
+inline FitParameter JSONParameterLoader::getParameter(const BinIdentifier& bin, const std::string& paramName) const {
+    // First try to find matching bin using new format
+    std::string matchingBin = bin.findMatchingBinKey(json_);
+    if (!matchingBin.empty()) {
+        return getParameter(matchingBin, paramName);
+    }
+    // Fallback to old format
     return getParameter(bin.getBinKey(), paramName);
 }
 
-inline FitParameter JSONParameterLoader::getParameter(const std::string& binKey, const std::string& paramName) {
+inline FitParameter JSONParameterLoader::getParameter(const std::string& binKey, const std::string& paramName) const {
     auto binIt = binParameters_.find(binKey);
     if (binIt != binParameters_.end()) {
         auto paramIt = binIt->second.find(paramName);
@@ -362,11 +401,17 @@ inline FitParameter JSONParameterLoader::getParameter(const std::string& binKey,
     return FitParameter(); // Return default
 }
 
-inline bool JSONParameterLoader::hasParameter(const BinIdentifier& bin, const std::string& paramName) {
+inline bool JSONParameterLoader::hasParameter(const BinIdentifier& bin, const std::string& paramName) const {
+    // First try to find matching bin using new format
+    std::string matchingBin = bin.findMatchingBinKey(json_);
+    if (!matchingBin.empty()) {
+        return hasParameter(matchingBin, paramName);
+    }
+    // Fallback to old format
     return hasParameter(bin.getBinKey(), paramName);
 }
 
-inline bool JSONParameterLoader::hasParameter(const std::string& binKey, const std::string& paramName) {
+inline bool JSONParameterLoader::hasParameter(const std::string& binKey, const std::string& paramName) const {
     auto binIt = binParameters_.find(binKey);
     if (binIt != binParameters_.end()) {
         return binIt->second.find(paramName) != binIt->second.end();
@@ -404,13 +449,33 @@ inline void JSONParameterLoader::printLoadedParameters() const {
     }
 }
 
-inline std::string JSONParameterLoader::getPDFType(const BinIdentifier& bin, const std::string& pdfCategory) {
+inline std::string JSONParameterLoader::getPDFType(const BinIdentifier& bin, const std::string& pdfCategory) const {
+    // First try to find matching bin using new format
+    std::string matchingBin = bin.findMatchingBinKey(json_);
+    if (!matchingBin.empty()) {
+        return getPDFType(matchingBin, pdfCategory);
+    }
+    // Fallback to old format
     return getPDFType(bin.getBinKey(), pdfCategory);
 }
 
-inline std::string JSONParameterLoader::getPDFType(const std::string& binKey, const std::string& pdfCategory) {
+inline std::string JSONParameterLoader::getPDFType(const std::string& binKey, const std::string& pdfCategory) const {
     std::string key = "dstar_parameters.bins." + binKey + "." + pdfCategory + "_pdf.type";
     return json_.getString(key, "");
+}
+
+inline BinIdentifier JSONParameterLoader::getBinInfo(const std::string& binKey) const {
+    BinIdentifier bin;
+    std::string binPrefix = "dstar_parameters.bins." + binKey + ".bin_info";
+    
+    bin.ptMin = json_.getDouble(binPrefix + ".pt_min", 0.0);
+    bin.ptMax = json_.getDouble(binPrefix + ".pt_max", 100.0);
+    bin.cosMin = json_.getDouble(binPrefix + ".cos_min", -1.0);
+    bin.cosMax = json_.getDouble(binPrefix + ".cos_max", 1.0);
+    bin.centralityMin = json_.getDouble(binPrefix + ".cent_min", 0.0);
+    bin.centralityMax = json_.getDouble(binPrefix + ".cent_max", 100.0);
+    
+    return bin;
 }
 
 #endif // JSON_PARAMETER_LOADER_H

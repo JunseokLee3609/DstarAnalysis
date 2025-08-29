@@ -384,7 +384,7 @@ private:
         // Default cuts (can be overridden)
         slowPionCut_ = "pTD2 > 0.3 && abs(EtaD2) < 2.4";
         grandDaughterCut_ = "abs(EtaD2) < 1.2 && abs(EtaGrandD1) < 1.2 && abs(EtaGrandD2) < 1.2 && massDaugther1 > 1.82 && massDaugther1 < 1.92";
-        mvaCut_ = "mva > 0.99";
+        mvaCut_ = "";
         
         // Default output subdirectory
         outputSubDir_ = "/DStar_PbPb_Analysis/";
