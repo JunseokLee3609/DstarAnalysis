@@ -2,10 +2,10 @@
 #include <ROOT/TThreadExecutor.hxx>
 #include "../interface/simpleDMC.h"
 
-// 루트 파일 생성 함수
+// ë£¨í¸ íì¼ ìì± í¨ì
 TFile* createOutputFile(const std::string& date, int jobIdx) {
-    // 배치 번호에 맞는 새로운 파일을 생성
-    std::string fileName = Form("../../Data/flatSkimForBDT_Mix_100to1_%d_%s.root", 
+    // ë°°ì¹ ë²í¸ì ë§ë ìë¡ì´ íì¼ì ìì±
+    std::string fileName = Form("Data/flatSkimForBDT_Mix_100to1_OnlyNonPrompt_%d_%s.root", 
                                  jobIdx, date.c_str());
     TFile* fout = new TFile(fileName.c_str(), "RECREATE");
     std::cout << "Output file " << fileName << " has been created." << std::endl;
@@ -16,7 +16,7 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
 
 
     const unsigned int workers = 1;
-    string date = "2500227";
+    string date = "250426";
 
     
 
@@ -41,21 +41,28 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
         std::unique_ptr<TChain> evt_chainMCHighPT(new TChain(treeNameEvt.c_str()));
         std::unique_ptr<TChain> evt_chainMCNP(new TChain(treeNameEvt.c_str()));
         std::unique_ptr<TChain> evt_chainData(new TChain(treeNameEvt.c_str()));
-        chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130407/0000/*.root");
-        chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132646/0000/*.root");
-        chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132712/0000/*.root");
-        chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132838/0000/*.root");
-        chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_133232/0000/*.root");
-        chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132733/0000/*.root");
-        chainData->Add("/home/CMS/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/HIPhysicsRawPrime0/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130532/0000/*.root");
+        //chainMCNP->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/nonpromptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/250425_164900/0000/*.root");
+        //chainMCNP->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/nonpromptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131600/0000/*.root");
+        //chainMCHighPT->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/nonpromptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131624/0000/*.root");
+        chainMCHighPT->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131450/0000/*.root");
+        chainMC->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/promptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/250425_164744/0000/*.root");
+        chainMC->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131426/0000/*.root");
+        chainData->Add("/u/user/jun502s/SE_UserHome/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/250424_165928/0000/*.root");
+        //evt_chainMCNP->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/nonpromptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/250425_164900/0000/*.root");
+        //evt_chainMCNP->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/nonpromptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131600/0000/*.root");
+        //evt_chainMCHighPT->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCNonPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/nonpromptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCNonPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131624/0000/*.root");
+        evt_chainMCHighPT->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT8_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131450/0000/*.root");
+        evt_chainMC->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/promptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT0_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr24_v2/250425_164744/0000/*.root");
+        evt_chainMC->Add("/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131426/0000/*.root");
+        evt_chainData->Add("/u/user/jun502s/SE_UserHome/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/250424_165928/0000/*.root");
 
-        evt_chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130407/0000/*.root");
-        evt_chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132646/0000/*.root");
-        evt_chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132712/0000/*.root");
-        evt_chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132838/0000/*.root");
-        evt_chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_133232/0000/*.root");
-        evt_chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132733/0000/*.root");
-        evt_chainData->Add("/home/CMS/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/HIPhysicsRawPrime0/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130532/0000/*.root");
+        //evt_chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_PromptD0DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130407/0000/*.root");
+        //evt_chainMC->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132646/0000/*.root");
+        //evt_chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/promptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_Prompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132712/0000/*.root");
+        //evt_chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-0_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132838/0000/*.root");
+        //evt_chainMCHighPT->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-8_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt8_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_133232/0000/*.root");
+        //evt_chainMCNP->Add("/home/CMS/Run3_2023/MC/SkimMVA/D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/nonpromptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MC_Step1_NonPrompt_DPt1_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_132733/0000/*.root");
+        //evt_chainData->Add("/home/CMS/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/HIPhysicsRawPrime0/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_CMSSW_13_2_13_MVA_17Mar2025_v1/250317_130532/0000/*.root");
 
 
         Short_t centrality1, centrality2, centrality3, centrality4, centrality5, centrality6, centrality7, centrality8;
@@ -110,7 +117,8 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
         int counts = 0;
         cout << "loopstart" << endl;
         end = std::min(end, totEvt);
-		end = std::max(end, 1);
+	if(end<0) end = totEvt;
+		//end = std::max(end, 1);
 		cout << "End : " << end << endl;
         int idxMC = 0;
         int idxMCNP = 0;
@@ -190,35 +198,35 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
             	    }
             	}
 			}
-			if(iEvt < nEvtNP){
-            	chainMCNP->GetEntry(iEvt);
-            	evt_chainMCNP->GetEntry(iEvt);
-            	for (auto iD1 : ROOT::TSeqI(dinMCNP->candSize))
-            	{
-            	    if (dinMCNP->matchGEN[iD1] == true)
-            	    {
-            	        doutMC->isMC = true;
-            	        doutMC->copyDn(*dinMCNP, iD1);
-						isPR = doutMC->matchGen_D1ancestorFlavor_ !=5 ? true : false;
-                        centrality8 = centrality3;
-            	        tskim->Fill();
-            	    }
-            	    else
-            	    {
-            	        if (idxMCNP % 100 == 0)
-            	        {
-            	            doutMC->isMC = true;
-            	            doutMC->copyDn(*dinMCNP, iD1);
-							isPR= false;
-                            centrality8 = centrality3;
-            	            tskim->Fill();
-            	        // cout << idxMCNP << "fill mc" << endl;
-            	            
-            	        }
-            	            idxMCNP++;
-            	    }
-            	}
-			}
+	//	if(iEvt < nEvtNP){
+        //    	chainMCNP->GetEntry(iEvt);
+        //    	evt_chainMCNP->GetEntry(iEvt);
+        //    	for (auto iD1 : ROOT::TSeqI(dinMCNP->candSize))
+        //    	{
+        //    	    if (dinMCNP->matchGEN[iD1] == true)
+        //    	    {
+        //    	        doutMC->isMC = true;
+        //    	        doutMC->copyDn(*dinMCNP, iD1);
+	//					isPR = doutMC->matchGen_D1ancestorFlavor_ !=5 ? true : false;
+        //                centrality8 = centrality3;
+        //    	        tskim->Fill();
+        //    	    }
+        //    	    else
+        //    	    {
+        //    	        if (idxMCNP % 100 == 0)
+        //    	        {
+        //    	            doutMC->isMC = true;
+        //    	            doutMC->copyDn(*dinMCNP, iD1);
+	//						isPR= false;
+        //                    centrality8 = centrality3;
+        //    	            tskim->Fill();
+        //    	        // cout << idxMCNP << "fill mc" << endl;
+        //    	            
+        //    	        }
+        //    	            idxMCNP++;
+        //    	    }
+        //    	}
+	//		}
             chainData->GetEntry(iEvt);
             evt_chainData->GetEntry(iEvt);
             // cout << "Data" << endl;
@@ -270,12 +278,12 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
         }
         // break;
         // if ((iEvt + 1) % batchSize == 0) {
-        //         // 기존 파일 저장 후 새로운 파일을 열기
+        //         // ê¸°ì¡´ íì¼ ì ì¥ í ìë¡ì´ íì¼ì ì´ê¸°
         //         tskim->Write();
         //         fout->Write();
         //         fout->Close();
 
-        //         // 배치 번호 증가 및 새로운 파일 생성
+        //         // ë°°ì¹ ë²í¸ ì¦ê° ë° ìë¡ì´ íì¼ ìì±
         //         batchIdx++;
         //         fout = createOutputFile(date, jobIdx, batchIdx);
         //         tskim = new TTree("skimTreeFlat", "");
@@ -285,7 +293,7 @@ void FlatMixWithPromptNP(int start, int end, int jobIdx){
         // }
         
 
-        // 마지막 파일 저장
+        // ë§ì§ë§ íì¼ ì ì¥
         if (fout) {
             tskim->Write();
             fout->Write();
