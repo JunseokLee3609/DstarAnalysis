@@ -535,6 +535,7 @@ void FlexibleData(
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
 
              //   if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 0.5 || dinData->pTGrandD2[iD1] <0.5 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
+                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->mva[iD1] < 0.99) continue;
                     doutData->isMC = false;
                     doutData->isSwap = 0;
                     doutData->matchGEN = 0;
@@ -572,6 +573,7 @@ void FlexibleMC(
     const std::string& mcPath,            // MC 파일 경로 패턴
     const std::string& treeName,          // 트리 이름
     const std::string& eventInfoTreeName, // Event Info 트리 이름 (예: "eventinfo/tree")
+    const std::string& eventPlaneInfoTreeName, // Event Plane Info 트리 이름 추가
     const std::string& outputPath,        // 출력 파일 경로
     const std::string& outputPrefix,      // 출력 파일 접두사
     int start,                            // 시작 이벤트
@@ -580,6 +582,7 @@ void FlexibleMC(
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
     bool setGEN = true,                  // GEN 트리 설정 여부
     bool doCent = true,                 // 중앙값 설정 여부
+    bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250331"  // 날짜 문자열
 ) {
     std::cout << "Starting FlexibleMC job #" << jobIdx << std::endl;
@@ -587,6 +590,7 @@ void FlexibleMC(
     std::cout << "Particle type: " << (particleType == ParticleType::D0 ? "D0" : "DStar") << std::endl;
     std::cout << "Setting GEN tree: " << (setGEN ? "true" : "false") << std::endl;
     std::cout << "Setting doCent: " << (doCent ? "true" : "false") << std::endl;
+    std::cout << "Setting doEvtPlane: " << (doEvtPlane ? "true" : "false") << std::endl;
 
     // 메인 트리 체인
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
@@ -623,6 +627,24 @@ void FlexibleMC(
             doCent = false; // Centrality 처리 비활성화
         }
     }
+    
+    // Event Plane 체인 (doEvtPlane이 true일 경우에만 생성 및 사용)
+    std::unique_ptr<TChain> chainEventPlane = nullptr;
+    Double_t trkQx = -99; // 기본값 초기화
+    Double_t trkQy = -99; // 기본값 초기화
+    Double_t Psi2Raw_Trk = -99; // 기본값 초기화
+    if (doEvtPlane) {
+        chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
+        FillChain(chainEventPlane.get(),files);
+        if (chainEventPlane->GetEntries() > 0) {
+            chainEventPlane->SetBranchAddress("trkQx", &trkQx);
+            chainEventPlane->SetBranchAddress("trkQy", &trkQy);
+            std::cout << "Event plane branches linked from " << eventPlaneInfoTreeName << std::endl;
+        } else {
+            std::cerr << "Warning: Event plane tree '" << eventPlaneInfoTreeName << "' not found or empty. Event plane will not be saved." << std::endl;
+            doEvtPlane = false; // Event plane 처리 비활성화
+        }
+    }
 
     using namespace DataFormat;
 
@@ -655,6 +677,14 @@ void FlexibleMC(
                       << ") and event info entries (" << nEntriesEventInfo << "). Centrality might be incorrect." << std::endl;
         }
     }
+    if (doEvtPlane && chainEventPlane) {
+        long long nEntriesEventPlane = chainEventPlane->GetEntries();
+        std::cout << "Event Plane entries: " << nEntriesEventPlane << std::endl;
+        if (nEntriesMC != nEntriesEventPlane) {
+            std::cerr << "Warning: Mismatch between main tree entries (" << nEntriesMC
+                      << ") and event plane entries (" << nEntriesEventPlane << "). Event plane might be incorrect." << std::endl;
+        }
+    }
 
     TFile* fout = createOutputFile(outputPath, outputPrefix, jobIdx, date);
     TTree* tskim = new TTree("skimTreeFlat", "Flattened MC Skim Tree");
@@ -672,11 +702,21 @@ void FlexibleMC(
     if (doCent) {
         tskim->Branch("centrality", &centrality, "centrality/S");
         tskim->Branch("Ncoll", &ncoll, "Ncoll/F");
-	    tskimGEN->Branch("centrality",&centrality,"centrality/S");
-        tskimGEN->Branch("Ncoll", &ncoll, "Ncoll/F");
-
-        std::cout << "Added 'centrality' branch to output tree(s)." << std::endl;
+        if(setGEN && tskimGEN) {
+            tskimGEN->Branch("centrality",&centrality,"centrality/S");
+            tskimGEN->Branch("Ncoll", &ncoll, "Ncoll/F");
+        }
+        std::cout << "Added 'centrality' and 'Ncoll' branches to output tree(s)." << std::endl;
     }
+    if (doEvtPlane) {
+        tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+        if(setGEN && tskimGEN) {
+            tskimGEN->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+        }
+        std::cout << "Added 'Psi2Raw_Trk' branch to output tree(s)." << std::endl;
+    }
+
+
 
     int totEvt = nEntriesMC;
     std::cout << "Total events available: " << totEvt << std::endl;
@@ -698,6 +738,13 @@ void FlexibleMC(
             // cout << ncoll << endl;
         } else {
             centrality = -1.0f;
+        }
+        
+        if (doEvtPlane && chainEventPlane) {
+            chainEventPlane->GetEntry(iEvt);
+            Psi2Raw_Trk = atan2(trkQy, trkQx);
+        } else {
+            Psi2Raw_Trk = -99.0f;
         }
 
         chainMC->GetEntry(iEvt);
@@ -775,16 +822,15 @@ void FlexibleMC(
 
 
 
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::string path = "", std::string suffix="") {
+int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=true, std::string path = "", std::string suffix="") {
 
     int start_ = start;
     int end_ = end;
     int jobIdx_ = idx;
     bool setGEN = true;
-    ParticleType particleType = ParticleType::DStar;
-    bool doCent = false;
+    ParticleType particleType = isD0 ?  ParticleType::D0 :ParticleType::DStar;
+    bool doCent =  particleType == ParticleType::DStar ? true :false;
     bool doEvtPlane = particleType == ParticleType::DStar ? true : false;
-    doEvtPlane=false;
 
 
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
@@ -810,7 +856,8 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 	    outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
  	    if(!path.empty()) mcPath = path;
 	    if(!suffix.empty()) outputPrefix += "_"+ suffix;
-		    FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_,particleType, setGEN, doCent, date);
+	    outputPath += "/"+suffix;
+		    FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, setGEN, doCent, doEvtPlane, date);
 
     } else if (type == 0) {
 	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppData/D0" : "./Data/FlatSample/ppData/DStar";
@@ -818,6 +865,7 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, std::strin
 
 	    if(!path.empty()) dataPath = path;
 	    if(!suffix.empty()) outputPrefix += "_"+suffix;
+	    outputPath += "/"+suffix;
 
 	    FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date);
 
