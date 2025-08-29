@@ -22,7 +22,7 @@ rm -f "$OUTPUT_DIR"/files*.txt
 rm -f "combined_file_list.txt"
 
 # 10개씩 묶어 파일 생성
-find "$INPUT_PATH" -maxdepth 2 -type f -name "*.root" | awk -v n=10 -v outdir="$OUTPUT_DIR" '{
+find "$INPUT_PATH" -maxdepth 10 -type f -name "*.root" | awk -v n=10 -v outdir="$OUTPUT_DIR" '{
     file = outdir "/files" int((NR-1)/n)+1 ".txt";
     print $0 > file
 }'

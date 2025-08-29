@@ -2165,10 +2165,11 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
    Float_t         gen_D0phi[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0mass[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0y[MAXCAND];   //[candSize_gen]
-   Int_t         gen_D0charge[MAXCAND];   //[candSize_gen]
+   Float_t         gen_D0charge[MAXCAND];   //[candSize_gen]
    Int_t         gen_D0pdgId[MAXCAND];   //[candSize_gen]
    Int_t         gen_D0ancestorId_[MAXCAND];   //[candSize_gen]
-   Int_t         gen_D0ancestorFlavor_[MAXCAND];   //[candSize_gen
+   Int_t         gen_D0ancestorFlavor_[MAXCAND];   //[candSize_gen]
+
    Float_t         gen_D0Dau1_pT[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0Dau1_eta[MAXCAND];   //[candSize_gen]
    Float_t         gen_D0Dau1_phi[MAXCAND];   //[candSize_gen]
@@ -2621,10 +2622,11 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
    Float_t         gen_D0phi;   //[candSize_gen]
    Float_t         gen_D0mass;   //[candSize_gen]
    Float_t         gen_D0y;   //[candSize_gen]
-   Int_t         gen_D0charge;   //[candSize_gen]
+   Float_t         gen_D0charge;   //[candSize_gen]
    Int_t         gen_D0pdgId;   //[candSize_gen]
-    Int_t         gen_D0ancestorId_;   //[candSize_gen]
-    Int_t         gen_D0ancestorFlavor_;   //[candSize_gen]
+   Int_t        gen_D0ancestorId_;   //[candSize_gen]
+    Int_t        gen_D0ancestorFlavor_;   //[candSize_gen]
+
    Float_t         gen_D0Dau1_pT;   //[candSize_gen]
    Float_t         gen_D0Dau1_eta;   //[candSize_gen]
    Float_t         gen_D0Dau1_phi;   //[candSize_gen]
@@ -2708,8 +2710,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
                 t->SetBranchAddress("gen_D0y",&gen_D0y);
                 t->SetBranchAddress("gen_D0charge",&gen_D0charge);
                 t->SetBranchAddress("gen_D0pdgId",&gen_D0pdgId);
-                t->SetBranchAddress("gen_D0ancestorId",&gen_D0ancestorId_);
-                t->SetBranchAddress("gen_D0ancestorFlavor",&gen_D0ancestorFlavor_);
+                t->SetBranchAddress("gen_D0ancestorId_",&gen_D0ancestorId_);
+                t->SetBranchAddress("gen_D0ancestorFlavor_",&gen_D0ancestorFlavor_);
                 t->SetBranchAddress("gen_D0Dau1_pT",&gen_D0Dau1_pT);
                 t->SetBranchAddress("gen_D0Dau1_eta",&gen_D0Dau1_eta);
                 t->SetBranchAddress("gen_D0Dau1_phi",&gen_D0Dau1_phi);
@@ -3252,8 +3254,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             gen_D0y=evt.gen_D0y[idx];
             gen_D0charge=evt.gen_D0charge[idx];
             gen_D0pdgId=evt.gen_D0pdgId[idx];
-            gen_D0ancestorId_=evt.gen_D0ancestorId_[idx];
             gen_D0ancestorFlavor_=evt.gen_D0ancestorFlavor_[idx];
+            gen_D0ancestorId_=evt.gen_D0ancestorId_[idx];
             gen_D0Dau1_pT=evt.gen_D0Dau1_pT[idx];
             gen_D0Dau1_eta=evt.gen_D0Dau1_eta[idx];
             gen_D0Dau1_phi=evt.gen_D0Dau1_phi[idx];
