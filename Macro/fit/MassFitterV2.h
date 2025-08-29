@@ -830,7 +830,7 @@ inline void MassFitterV2::SaveResult(const std::string& resultName, const std::s
     try {
         // Use ResultManager to save the result
         std::string fullPath = filePath + "/" + fileName;
-        resultManager_->SaveToFile(resultName, fullPath, saveWorkspace);
+        resultManager_->SaveResult(resultName, fullPath, saveWorkspace);
         std::cout << "[MassFitterV2] Results saved successfully: " << fullPath << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "[MassFitterV2] Failed to save results: " << e.what() << std::endl;
@@ -855,7 +855,7 @@ inline void MassFitterV2::SaveResults(const std::string& filePath, const std::st
         
         std::string fullPath = filePath + "/" + fileName;
         for (const auto& resultName : resultNames) {
-            resultManager_->SaveToFile(resultName, fullPath, saveWorkspaces);
+            resultManager_->SaveResult(resultName, fullPath, saveWorkspaces);
         }
         std::cout << "[MassFitterV2] All results (" << resultNames.size() << ") saved successfully: " << fullPath << std::endl;
     } catch (const std::exception& e) {
