@@ -46,6 +46,30 @@ public:
     const std::vector<std::unique_ptr<RooRealVar>>& GetParameters() const { return parameters_; }
     void ClearParameters() { parameters_.clear(); }
     
+    // Fixed parameter management
+    void ApplyFixedSettings(const std::map<std::string, bool>& fixedFlags, const std::string& pdfName = "") {
+        std::cout << "[PDFFactory] Applying fixed settings for PDF: " << pdfName << std::endl;
+        for (auto& param : parameters_) {
+            std::string paramName = param->GetName();
+            
+            // Try direct match first
+            if (fixedFlags.count(paramName) && fixedFlags.at(paramName)) {
+                std::cout << "[PDFFactory] Setting parameter FIXED: " << paramName << std::endl;
+                param->setConstant(true);
+                continue;
+            }
+            
+            // Try pattern matching for different naming conventions
+            for (const auto& fixedPair : fixedFlags) {
+                if (fixedPair.second && paramName.find(fixedPair.first) != std::string::npos) {
+                    std::cout << "[PDFFactory] Setting parameter FIXED (pattern match): " << paramName << " -> " << fixedPair.first << std::endl;
+                    param->setConstant(true);
+                    break;
+                }
+            }
+        }
+    }
+    
 private:
     RooRealVar* massVar_;
     std::vector<std::unique_ptr<RooRealVar>> parameters_;

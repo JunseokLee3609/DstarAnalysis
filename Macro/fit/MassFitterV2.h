@@ -709,8 +709,9 @@ inline void MassFitterV2::InitializeMassVariables(double massMin, double massMax
 
 inline void MassFitterV2::InitializeYieldVariables(double nsigRatio, double nsigMinRatio, double nsigMaxRatio,
                                                    double nbkgRatio, double nbkgMinRatio, double nbkgMaxRatio) {
-    nsig_ = std::make_unique<RooRealVar>("nsig", "Signal Yield", 1000*nsigRatio, 1000*nsigMinRatio, 1000*nsigMaxRatio);
-    nbkg_ = std::make_unique<RooRealVar>("nbkg", "Background Yield", 1000*nbkgRatio, 1000*nbkgMinRatio, 1000*nbkgMaxRatio);
+    // Store ratios directly - will be updated with actual data size later
+    nsig_ = std::make_unique<RooRealVar>("nsig", "Signal Yield", nsigRatio, nsigMinRatio, nsigMaxRatio);
+    nbkg_ = std::make_unique<RooRealVar>("nbkg", "Background Yield", nbkgRatio, nbkgMinRatio, nbkgMaxRatio);
 }
 
 inline void MassFitterV2::SetupDefaultDependencies() {
@@ -728,11 +729,78 @@ inline void MassFitterV2::SetupDefaultDependencies() {
 inline void MassFitterV2::SetData(RooDataSet* dataset) {
     fullDataset_ = dataset;
     activeDataset_ = dataset;
+    
+    // Update yield variables based on actual dataset size
+    if (dataset && nsig_ && nbkg_) {
+        int dataSize = dataset->sumEntries();
+        std::cout << "total Entries : " << dataSize << std::endl;
+        
+        // // Use ratios directly - these are now stored as ratios, not absolute values
+        // double nsigRatio = nsig_->getVal();  // Direct ratio from JSON
+        // double nbkgRatio = nbkg_->getVal();  // Direct ratio from JSON
+        
+        // double nsigMinRatio = nsig_->getMin();
+        // double nsigMaxRatio = nsig_->getMax();
+        // double nbkgMinRatio = nbkg_->getMin();
+        // double nbkgMaxRatio = nbkg_->getMax();
+        
+        // // Calculate yields as ratio * max_possible_entries (dataSize)
+        // double nsig_init = dataSize * nsigRatio;
+        // double nsig_min = dataSize * nsigMinRatio;
+        // double nsig_max = dataSize * nsigMaxRatio;
+        
+        // double nbkg_init = dataSize * nbkgRatio;
+        // double nbkg_min = dataSize * nbkgMinRatio;
+        // double nbkg_max = dataSize * nbkgMaxRatio;
+        
+        // nsig_->setRange(nsig_min, nsig_max);
+        // nsig_->setVal(nsig_init);
+        // nbkg_->setRange(nbkg_min, nbkg_max);
+        // nbkg_->setVal(nbkg_init);
+        
+        // std::cout << "Updated yield parameters based on data size:" << std::endl;
+        // std::cout << "  Signal: " << nsig_init << " [" << nsig_min << ", " << nsig_max << "]" << std::endl;
+        // std::cout << "  Background: " << nbkg_init << " [" << nbkg_min << ", " << nbkg_max << "]" << std::endl;
+    }
 }
 
 inline void MassFitterV2::ApplyCut(const std::string& cutExpr) {
     if (fullDataset_ && !cutExpr.empty()) {
         activeDataset_ = (RooDataSet*)fullDataset_->reduce(cutExpr.c_str());
+        
+        // Update yield variables based on cut dataset size
+        if (activeDataset_ && nsig_ && nbkg_) {
+            int cutDataSize = activeDataset_->sumEntries();
+            std::cout << "Cut applied. New data size: " << cutDataSize << std::endl;
+            
+            // Extract stored ratios - these are already ratios from previous calculation
+            double nsigRatio = nsig_->getVal(); 
+            double nbkgRatio = nbkg_->getVal();
+            
+            // Calculate for min/max ratios
+            double nsigMinRatio = nsig_->getMin();
+            double nsigMaxRatio = nsig_->getMax(); 
+            double nbkgMinRatio = nbkg_->getMin(); 
+            double nbkgMaxRatio = nbkg_->getMax(); 
+            
+            // Update with cut data size-based calculations
+            double nsig_init = cutDataSize * nsigRatio;
+            double nsig_min = cutDataSize * nsigMinRatio;
+            double nsig_max = cutDataSize * nsigMaxRatio;
+            
+            double nbkg_init = cutDataSize * nbkgRatio;
+            double nbkg_min = cutDataSize * nbkgMinRatio;
+            double nbkg_max = cutDataSize * nbkgMaxRatio;
+            
+            nsig_->setRange(nsig_min, nsig_max);
+            nsig_->setVal(nsig_init);
+            nbkg_->setRange(nbkg_min, nbkg_max);
+            nbkg_->setVal(nbkg_init);
+            
+            std::cout << "Updated yield parameters after cut:" << std::endl;
+            std::cout << "  Signal: " << nsig_init << " [" << nsig_min << ", " << nsig_max << "]" << std::endl;
+            std::cout << "  Background: " << nbkg_init << " [" << nbkg_min << ", " << nbkg_max << "]" << std::endl;
+        }
     }
 }
 

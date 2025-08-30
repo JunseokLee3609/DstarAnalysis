@@ -4,8 +4,7 @@
 // #include "../PlotManager.h"  // Disabled - has compilation issues
 #include "../EnhancedPlotManager.h"  // Use our enhanced plotter instead
 #include "../SimpleParameterLoader.h"  // External parameter loading
-#include "../JSONParameterLoader.h"    // JSON parameter loading
-#include "../JSONParameterUtils.h"     // JSON parameter utilities
+#include "../JSONParameterUtils.h"     // JSON parameter utilities (includes JSONParameterLoader)
 #include "../../Tools/ConfigManager.h"
 
 // ===== PARAMETER PRINTING UTILITY FUNCTIONS =====
@@ -314,13 +313,14 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
         std::cout << "[JSON Loader] Loading parameters for bin: " << bin.GetBinName() << std::endl;
         
         try {
-            // Use utility function for automatic parameter loading
-            DStarBinParameters binParams = LoadBinParametersFromJSON(jsonLoader, binId);
+            // Use utility function for automatic parameter and fixed flags loading
+            auto [binParams, fixedInfo] = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
             
-            // Apply parameters to config
+            // Apply parameters and fixed flags to config
             config.SetParametersForBin(bin, binParams);
+            config.SetFixedFlagsForBin(bin, fixedInfo.fixedFlags);
             
-            std::cout << "[JSON Loader] ✅ Successfully loaded parameters for bin: " << bin.GetBinName() << std::endl;
+            std::cout << "[JSON Loader] ✅ Successfully loaded parameters and fixed flags for bin: " << bin.GetBinName() << std::endl;
         } catch (const std::exception& e) {
             std::cout << "[JSON Loader] ❌ Failed to load parameters for bin " << bin.GetBinName() 
                       << ": " << e.what() << ". Using defaults." << std::endl;
@@ -349,7 +349,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     config.SetOutputSubDir("/DStar_PbPb_Analysis_V2/");
     
     // Configure fit options
-    config.SetFitMethod(FitMethod::BinnedNLL);  // NLL, BinnedNLL, Extended 
+    config.SetFitMethod(FitMethod::Extended);  // NLL, BinnedNLL, Extended 
     config.SetUseCUDA(useCUDA);
     config.SetVerbose(false);
     config.SetDoRefit(doReFit);
@@ -424,6 +424,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
         std::cout << "useHardcodedParams = " << (useHardcodedParams ? "true" : "false") << std::endl;
     }
     
+    std::cout << "\n🔍 FINAL DEBUG: useHardcodedParams = " << (useHardcodedParams ? "true" : "false") << std::endl;
     if (useHardcodedParams) {
         // Use hardcoded parameters as fallback for single bin
         std::cout << "\n🔧 Setting hardcoded parameters for target bin..." << std::endl;
@@ -515,9 +516,20 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
         // Create optimized fitter for this bin
         auto fitter = CreateDStarFitter(bin, config);
         
-        // Get bin-specific parameters
+        // Get bin-specific parameters and fixed flags
         auto binParams = config.GetParametersForBin(bin);
+        auto fixedFlags = config.GetFixedFlagsForBin(bin);
         auto fitOpt = config.CreateFitOpt(bin);
+        
+        // Debug print fixed flags
+        if (!fixedFlags.empty()) {
+            std::cout << "Fixed flags for bin " << bin.GetBinName() << ":" << std::endl;
+            for (const auto& flag : fixedFlags) {
+                if (flag.second) {
+                    std::cout << "  " << flag.first << ": FIXED" << std::endl;
+                }
+            }
+        }
         
         std::cout << "Cut expression: " << fitOpt.cutExpr << std::endl;
         std::cout << "Expected signal ratio: " << binParams.nsig_ratio << std::endl;

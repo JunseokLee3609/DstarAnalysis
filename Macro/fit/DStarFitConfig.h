@@ -247,6 +247,20 @@ public:
         binParameters_[bin.GetBinName()] = params;
     }
     
+    // Set fixed flags for specific bins
+    void SetFixedFlagsForBin(const KinematicBin& bin, const std::map<std::string, bool>& fixedFlags) {
+        binFixedFlags_[bin.GetBinName()] = fixedFlags;
+    }
+    
+    // Get fixed flags for a specific bin
+    std::map<std::string, bool> GetFixedFlagsForBin(const KinematicBin& bin) const {
+        auto it = binFixedFlags_.find(bin.GetBinName());
+        if (it != binFixedFlags_.end()) {
+            return it->second;
+        }
+        return std::map<std::string, bool>();  // Return empty map if not found
+    }
+    
     // Get parameters for a specific bin
     DStarBinParameters GetParametersForBin(const KinematicBin& bin) const {
         auto it = binParameters_.find(bin.GetBinName());
@@ -359,6 +373,9 @@ private:
     
     // Parameters for each bin
     std::map<std::string, DStarBinParameters> binParameters_;
+    
+    // Fixed flags for each bin's parameters
+    std::map<std::string, std::map<std::string, bool>> binFixedFlags_;
     
     // File paths
     std::string dataFilePath_;
