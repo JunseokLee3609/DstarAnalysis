@@ -20,7 +20,8 @@
 enum class FitMethod {
     NLL,        // Negative Log Likelihood (unbinned)
     BinnedNLL,  // Binned Negative Log Likelihood  
-    Extended    // Extended Maximum Likelihood
+    Extended,   // Extended Maximum Likelihood (no robust range expansion)
+    Robust      // Robust Extended fit (iterative with range expansion)
 };
 
 struct FitConfig {
@@ -127,6 +128,16 @@ public:
     static std::unique_ptr<FitStrategy> CreateStrategy(StrategyType type);
     static std::unique_ptr<FitStrategy> CreateConstraintStrategy(const std::string& mcFilePath, 
                                                                 const std::vector<std::string>& constraintParams);
+    // Map FitMethod to StrategyType explicitly
+    static StrategyType GetStrategyTypeFromFitMethod(FitMethod method) {
+        switch (method) {
+            case FitMethod::NLL:       return StrategyType::Basic;
+            case FitMethod::BinnedNLL: return StrategyType::Binned;
+            case FitMethod::Extended:  return StrategyType::Basic;   // Extended-only (no robust widening)
+            case FitMethod::Robust:    return StrategyType::Robust;  // Robust (iterative)
+        }
+        return StrategyType::Basic;
+    }
 };
 
 // Implementation
@@ -155,6 +166,10 @@ inline RooLinkedList FitStrategy::CreateFitOptions(const FitConfig& config) {
             
         case FitMethod::Extended:
             // Extended maximum likelihood fit
+            fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
+            break;
+        case FitMethod::Robust:
+            // Robust uses extended likelihood as well
             fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
             break;
     }

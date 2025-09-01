@@ -349,7 +349,10 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
                 strategyType = FitStrategyFactory::StrategyType::Binned;
                 break;
             case FitMethod::Extended:
-                strategyType = FitStrategyFactory::StrategyType::Robust;
+                strategyType = FitStrategyFactory::StrategyType::Basic;   // Extended-only (no robust expansion)
+                break;
+            case FitMethod::Robust:
+                strategyType = FitStrategyFactory::StrategyType::Robust;  // Robust iterative expansion
                 break;
         }
         
@@ -358,10 +361,12 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         
         LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + " for " + 
                     (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                     config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") + " method");
         std::cout << "[MassFitterV2] Using fit strategy: " << fitStrategy_->GetName() 
                   << " (from " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << " method)" << std::endl;
+                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                                  config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") << " method)" << std::endl;
         
         auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, config, activeMassVar_);
         
@@ -444,7 +449,10 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
                 mcStrategyType = FitStrategyFactory::StrategyType::Binned;
                 break;
             case FitMethod::Extended:
-                mcStrategyType = FitStrategyFactory::StrategyType::MC; // MC strategy for extended
+                mcStrategyType = FitStrategyFactory::StrategyType::MC;     // MC strategy for extended
+                break;
+            case FitMethod::Robust:
+                mcStrategyType = FitStrategyFactory::StrategyType::MC;     // Keep MC path same for robust
                 break;
         }
         
@@ -452,10 +460,12 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
         
         LogOperation("FitStrategy", "Auto-selected " + mcStrategy->GetName() + " for MC " + 
                     (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                     config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") + " method");
         std::cout << "[MassFitterV2] Using MC fit strategy: " << mcStrategy->GetName() 
                   << " (from " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << " method)" << std::endl;
+                                  config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                                  config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") << " method)" << std::endl;
         
         // Perform MC fit
         auto fitResult = mcStrategy->Execute(signalPdf_.get(), activeDataset_, config, activeMassVar_);
@@ -534,10 +544,12 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         
         LogOperation("FitStrategy", "Using " + constraintStrategy->GetName() + " for constraint fitting with " + 
                     (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") + " method");
+                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                     config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") + " method");
         std::cout << "[MassFitterV2] Using constraint fit strategy: " << constraintStrategy->GetName() 
                   << " (method: " << (config.fitMethod == FitMethod::NLL ? "NLL" : 
-                                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : "Extended") << ")" << std::endl;
+                                     config.fitMethod == FitMethod::BinnedNLL ? "BinnedNLL" : 
+                                     config.fitMethod == FitMethod::Extended ? "Extended" : "Robust") << ")" << std::endl;
         
         // Perform constraint fit
         auto fitResult = constraintStrategy->Execute(totalPdf_.get(), activeDataset_, config, activeMassVar_);
