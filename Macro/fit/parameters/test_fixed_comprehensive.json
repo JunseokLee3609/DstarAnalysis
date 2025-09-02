@@ -1,0 +1,44 @@
+{
+  "dstar_parameters": {
+    "global_settings": {
+      "mass_variable": "massPion",
+      "mass_range": [0.14, 0.15],
+      "fit_range": "analysis",
+      "description": "Test comprehensive fixed parameter functionality"
+    },
+    "bins": {
+      "bin_1": {
+        "bin_info": {
+          "pt_min": 10.0,
+          "pt_max": 100.0,
+          "cos_min": -1.0,
+          "cos_max": 1.0,
+          "centrality_min": 0,
+          "centrality_max": 100,
+          "description": "Test bin for comprehensive fixed functionality"
+        },
+        "signal_pdf": {
+          "type": "DoubleGaussian",
+          "parameters": {
+            "mean": {"value": 0.1455, "min": 0.1452, "max": 0.1458, "fixed": true},
+            "sigma1": {"value": 0.0005, "min": 0.0001, "max": 0.01, "fixed": false},
+            "sigma2": {"value": 0.001, "min": 0.0001, "max": 0.01, "fixed": true},
+            "fraction": {"value": 0.7, "min": 0.0, "max": 1.0, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "Phenomenological",
+          "parameters": {
+            "p0": {"value": 0.01, "min": 0.001, "max": 0.1, "fixed": true},
+            "p1": {"value": 1.0, "min": -10.0, "max": 10.0, "fixed": false},
+            "p2": {"value": 1.0, "min": 0.1, "max": 10.0, "fixed": true}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.01, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.03, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      }
+    }
+  }
+}

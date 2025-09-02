@@ -6,6 +6,7 @@
 #include "../SimpleParameterLoader.h"  // External parameter loading
 #include "../JSONParameterUtils.h"     // JSON parameter utilities (includes JSONParameterLoader)
 #include "../../Tools/ConfigManager.h"
+#include "../ParameterDebugUtils.h"     // Centralized parameter printing utilities
 
 // ===== PARAMETER PRINTING UTILITY FUNCTIONS =====
 
@@ -104,6 +105,25 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
                       << " [" << params.crystalBallParams.alpha_min << ", " << params.crystalBallParams.alpha_max << "]" << std::endl;
             std::cout << "   n: " << params.crystalBallParams.n 
                       << " [" << params.crystalBallParams.n_min << ", " << params.crystalBallParams.n_max << "]" << std::endl;
+            break;
+
+        case PDFType::DBCrystalBall:
+            std::cout << "   mean: " << params.dbCrystalBallParams.mean
+                      << " [" << params.dbCrystalBallParams.mean_min << ", " << params.dbCrystalBallParams.mean_max << "]" << std::endl;
+            std::cout << "   sigmaL: " << params.dbCrystalBallParams.sigmaL
+                      << " [" << params.dbCrystalBallParams.sigmaL_min << ", " << params.dbCrystalBallParams.sigmaL_max << "]" << std::endl;
+            std::cout << "   sigmaR: " << params.dbCrystalBallParams.sigmaR
+                      << " [" << params.dbCrystalBallParams.sigmaR_min << ", " << params.dbCrystalBallParams.sigmaR_max << "]" << std::endl;
+            std::cout << "   sigma(sym): " << params.dbCrystalBallParams.sigma
+                      << " [" << params.dbCrystalBallParams.sigma_min << ", " << params.dbCrystalBallParams.sigma_max << "]" << std::endl;
+            std::cout << "   alphaL: " << params.dbCrystalBallParams.alphaL
+                      << " [" << params.dbCrystalBallParams.alphaL_min << ", " << params.dbCrystalBallParams.alphaL_max << "]" << std::endl;
+            std::cout << "   nL: " << params.dbCrystalBallParams.nL
+                      << " [" << params.dbCrystalBallParams.nL_min << ", " << params.dbCrystalBallParams.nL_max << "]" << std::endl;
+            std::cout << "   alphaR: " << params.dbCrystalBallParams.alphaR
+                      << " [" << params.dbCrystalBallParams.alphaR_min << ", " << params.dbCrystalBallParams.alphaR_max << "]" << std::endl;
+            std::cout << "   nR: " << params.dbCrystalBallParams.nR
+                      << " [" << params.dbCrystalBallParams.nR_min << ", " << params.dbCrystalBallParams.nR_max << "]" << std::endl;
             break;
             
         default:
@@ -404,7 +424,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     
     // ===== PARAMETER DEBUGGING: BEFORE LOADING =====
     std::cout << "\n🔍 DEBUGGING: Initial Parameters (Before Loading)" << std::endl;
-    PrintBinParameters(currentBin, config.GetParametersForBin(currentBin), "INITIAL PARAMETERS FOR TARGET BIN");
+    ParameterDebug::PrintBinParameters(currentBin, config.GetParametersForBin(currentBin), "INITIAL PARAMETERS FOR TARGET BIN");
     
     // Check if we need to set hardcoded parameters (only if no param file)
     bool useHardcodedParams = parameterFile.empty();
@@ -476,7 +496,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     
     // ===== PARAMETER DEBUGGING: AFTER LOADING =====
     std::cout << "\n🔍 DEBUGGING: Final Parameters (After Loading)" << std::endl;
-    PrintBinParameters(currentBin, config.GetParametersForBin(currentBin), "FINAL PARAMETERS FOR TARGET BIN");
+    ParameterDebug::PrintBinParameters(currentBin, config.GetParametersForBin(currentBin), "FINAL PARAMETERS FOR TARGET BIN");
     
     // ===== PARAMETER COMPARISON =====
     if (!parameterFile.empty()) {
@@ -699,4 +719,3 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     std::cout << "Results saved in: results/" << config.GetOutputSubDir() << std::endl;
     std::cout << std::string(60, '=') << std::endl;
 }
-

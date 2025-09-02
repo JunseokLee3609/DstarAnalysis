@@ -1,0 +1,61 @@
+{
+  "dstar_parameters": {
+    "global_settings": {
+      "fit_strategy": 2,
+      "use_minos": true,
+      "use_hesse": true,
+      "use_cuda": true
+    },
+    "bins": {
+      "bin_pp": {
+        "bin_info": {
+          "pt_min": 10.0,
+          "pt_max": 100.0,
+          "cos_min": -2.0,
+          "cos_max": 2.0,
+          "cent_min": 0,
+          "cent_max": 100,
+          "description": "pp analysis - High pT, full cos(θ*) range"
+        },
+        "signal_pdf": {
+          "type": "Gaussian",
+          "parameters": {
+            "mean": {"value": 0.1455, "min": 0.1452, "max": 0.1458, "fixed": false},
+            "sigma": {"value": 0.001, "min": 0.0001, "max": 0.01, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "Chebychev",
+          "parameters": {
+            "c0": {"value": 0.1, "min": -1.0, "max": 1.0, "fixed": false},
+            "c1": {"value": -0.1, "min": -1.0, "max": 1.0, "fixed": false}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.01, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.03, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      }
+    },
+    "default_parameters": {
+      "signal_pdf": {
+        "type": "Gaussian",
+        "parameters": {
+          "mean": {"value": 0.1455, "min": 0.1452, "max": 0.1458, "fixed": false},
+          "sigma": {"value": 0.001, "min": 0.0001, "max": 0.01, "fixed": false}
+        }
+      },
+      "background_pdf": {
+        "type": "Chebychev",
+        "parameters": {
+          "c0": {"value": 0.1, "min": -1.0, "max": 1.0, "fixed": false},
+          "c1": {"value": -0.1, "min": -1.0, "max": 1.0, "fixed": false}
+        }
+      },
+      "yields": {
+        "nsig_ratio": {"value": 0.005, "min": 0.0001, "max": 0.05, "fixed": false},
+        "nbkg_ratio": {"value": 0.02, "min": 0.001, "max": 0.5, "fixed": false}
+      }
+    }
+  }
+}
