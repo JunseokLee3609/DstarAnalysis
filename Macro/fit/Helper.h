@@ -447,17 +447,22 @@ TFile* createFileInDir(const std::string& dirPath, const std::string& filePath) 
     return file;
 }
 
-void createDir(const std::string& dirPath) {
-    // 디렉토리 확인
-    TSystemDirectory dir("dir", dirPath.c_str());
-    void* dirCheck = gSystem->OpenDirectory(dirPath.c_str());
+bool ensureDir(const std::string& dirPath) {
+    // kTRUE면 중간 경로까지 재귀적으로 생성
+    int rc = gSystem->mkdir(dirPath.c_str(), kTRUE);
+    if (rc == 0 || rc == -2) { // 0: 새로 생성, -2: 이미 존재
+        return true;
+    }
+    std::cerr << "Failed to create directory: " << dirPath
+              << " (rc=" << rc << ")\n";
+    return false;
+}
 
-    if (!dirCheck) { // 폴더가 없으면 생성
-        std::cout << "Directory does not exist. Creating: " << dirPath << std::endl;
-        gSystem->MakeDirectory(dirPath.c_str());
+void createDir(const std::string& dirPath) {
+    if (ensureDir(dirPath)) {
+        std::cout << "Directory ready: " << dirPath << std::endl;
     } else {
-        std::cout << "Directory exists: " << dirPath << std::endl;
-        gSystem->FreeDirectory(dirCheck);
+        std::cerr << "Directory not ready: " << dirPath << std::endl;
     }
 }
 

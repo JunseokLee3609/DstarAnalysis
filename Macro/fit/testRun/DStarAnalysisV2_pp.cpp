@@ -266,6 +266,49 @@ void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig&
                 const auto& before = paramsBefore.doubleGaussianParams;
                 const auto& after = paramsAfter.doubleGaussianParams;
                 
+                // Additionally perform MC fit and save results under MC subDir
+                try {
+                    std::cout << "\n[MC] Performing MC fit for comparison..." << std::endl;
+                    // Load MC dataset
+                    DataLoader mcLoader(config.GetMCFilePath());
+                    if (!mcLoader.loadRooDataSet(config.GetDatasetName())) {
+                        std::cerr << "[MC] Failed to load MC dataset: " << config.GetDatasetName() << std::endl;
+                    } else {
+                        auto mcDataset = mcLoader.getDataSet();
+                        if (mcDataset) {
+                            bool mcFitSuccess = false;
+                            auto signalParamsVariant = binParams.GetSignalParamsByType();
+                            std::visit([&](auto&& signalParams) {
+                                mcFitSuccess = fitter->PerformMCFit(fitOpt, mcDataset, signalParams, bin.GetBinName() + "_MC");
+                            }, signalParamsVariant);
+
+                            if (mcFitSuccess) {
+                                std::cout << "[MC] ✓ MC fit successful" << std::endl;
+                                std::string mcOutDir = fitOpt.outputDir + fitOpt.subDir + "/MC";
+                                createDir(Form("%s/", mcOutDir.c_str()));
+                                fitter->SaveResult(bin.GetBinName() + "_MC", mcOutDir, fitOpt.outputFile + ".root", true);
+                                fitter->ExportResults("json", mcOutDir + "/" + fitOpt.outputFile + "_results.json");
+                                // MC plots
+                                try {
+                                    std::string mcPlotDir = mcOutDir + "/plots";
+                                    EnhancedPlotManager mcPlotManager(fitOpt, mcOutDir, fitOpt.outputFile + ".root", mcPlotDir, false, true);
+                                    if (mcPlotManager.IsValid()) {
+                                        mcPlotManager.PrintSummary();
+                                        mcPlotManager.DrawRawDistribution("raw_MC_" + bin.GetBinName());
+                                        mcPlotManager.DrawFittedModel(true, "fitted_MC_" + bin.GetBinName());
+                                    }
+                                } catch (const std::exception& e) {
+                                    std::cerr << "[MC] Plotting error: " << e.what() << std::endl;
+                                }
+                            } else {
+                                std::cout << "[MC] ✗ MC fit failed" << std::endl;
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "[MC] Exception during MC fit: " << e.what() << std::endl;
+                }
+                
                 if (before.mean != after.mean) {
                     std::cout << "  🎯 mean: " << before.mean << " → " << after.mean << std::endl;
                     changed = true;
@@ -351,7 +394,7 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
 void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA = true,
                      float pTMin = 10, float pTMax = 100, float cosMin = -2, float cosMax = 2,
                      int centralityMin = 0, int centralityMax = 100, 
-                     const std::string& parameterFile = "") {
+                     const std::string& parameterFile = "", bool isMC = false) {
     
     std::cout << "=== D* Meson Analysis V2 ===" << std::endl;
     std::cout << "Using new modular framework with MassFitterV2" << std::endl;
@@ -378,6 +421,8 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     config.SetSlowPionCut(SelectionCuts::getSlowPionCuts());
     config.SetGrandDaughterCut(SelectionCuts::getGrandDaughterCuts());
     // config.SetMVACut(0.99);
+    // Use |cos(theta*)| for cuts if desired
+    config.SetUseAbsCosCuts(true);
     
     // Create single kinematic bin for analysis
     KinematicBin currentBin(pTMin, pTMax, cosMin, cosMax, centralityMin, centralityMax);
@@ -608,47 +653,68 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
                     }, backgroundParamsVariant);
                 }, signalParamsVariant);
             } else {
-                // Check if results already exist
-                std::cout << "Skipping fit (doReFit=false). Loading existing results..." << std::endl;
-                // In practice, you would load existing results here
-                fitSuccess = true;  // Assume success for demo
+                // Check if results already exist on disk
+                std::cout << "Skipping fit (doReFit=false). Looking for existing results..." << std::endl;
+                std::string inputDir = fitOpt.outputDir;
+                std::string inputFile = fitOpt.outputFile + ".root";
+                std::ifstream fin(inputDir + "/" + inputFile);
+                fitSuccess = fin.good();
+                if (!fitSuccess) {
+                    std::cout << "No existing result file found: " << inputDir + "/" + inputFile << std::endl;
+                }
             }
             
             if (fitSuccess) {
                 std::cout << "\n✓ Fit successful for bin: " << bin.GetBinName() << std::endl;
                 
-                // Print fit results
-                fitter->PrintSummary(bin.GetBinName());
-                
-                // Get fit quality metrics
-                double signalYield = fitter->GetSignalYield(bin.GetBinName());
-                double signalError = fitter->GetSignalYieldError(bin.GetBinName());
-                double backgroundYield = fitter->GetBackgroundYield(bin.GetBinName());
-                double chiSquare = fitter->GetReducedChiSquare(bin.GetBinName());
-                bool isGoodFit = fitter->IsGoodFit(bin.GetBinName());
-                
-                std::cout << "Fit Results Summary:" << std::endl;
-                std::cout << "  Signal yield: " << signalYield << " ± " << signalError << std::endl;
-                std::cout << "  Background yield: " << backgroundYield << std::endl;
-                std::cout << "  Reduced χ²: " << chiSquare << std::endl;
-                std::cout << "  Fit quality: " << (isGoodFit ? "GOOD" : "POOR") << std::endl;
-                
-                // Calculate significance
-                double significance = fitter->CalculateSignificance(bin.GetBinName());
-                double purity = fitter->CalculatePurity(bin.GetBinName());
-                
-                std::cout << "  Significance: " << significance << " σ" << std::endl;
-                std::cout << "  Purity: " << purity * 100 << "%" << std::endl;
-                
+                if (doReFit) {
+                    // Print fit results
+                    fitter->PrintSummary(bin.GetBinName());
+                    // Also print the detailed RooFitResult in verbose mode
+                    if (auto rf = fitter->GetRooFitResult(bin.GetBinName())) {
+                        std::cout << "\n[RooFitResult] Verbose print for " << bin.GetBinName() << std::endl;
+                        rf->Print("v");
+                    }
+                    
+                    // Get fit quality metrics
+                    double signalYield = fitter->GetSignalYield(bin.GetBinName());
+                    double signalError = fitter->GetSignalYieldError(bin.GetBinName());
+                    double backgroundYield = fitter->GetBackgroundYield(bin.GetBinName());
+                    double chiSquare = fitter->GetReducedChiSquare(bin.GetBinName());
+                    bool isGoodFit = fitter->IsGoodFit(bin.GetBinName());
+                    
+                    std::cout << "Fit Results Summary:" << std::endl;
+                    std::cout << "  Signal yield: " << signalYield << " ± " << signalError << std::endl;
+                    std::cout << "  Background yield: " << backgroundYield << std::endl;
+                    std::cout << "  Reduced χ²: " << chiSquare << std::endl;
+                    std::cout << "  Fit quality: " << (isGoodFit ? "GOOD" : "POOR") << std::endl;
+                    
+                    // Calculate significance
+                    double significance = fitter->CalculateSignificance(bin.GetBinName());
+                    double purity = fitter->CalculatePurity(bin.GetBinName());
+                    
+                    std::cout << "  Significance: " << significance << " σ" << std::endl;
+                    std::cout << "  Purity: " << purity * 100 << "%" << std::endl;
+                    
+                    // Save fit results before plotting so PlotManager can load them
+                    std::cout << "Saving fit results..." << std::endl;
+                    // Ensure output directory exists (include subDir + category)
+                    std::string fullOutDir = fitOpt.outputDir + fitOpt.subDir + (isMC ? "/MC" : "/Data");
+                    createDir(Form("%s/", fullOutDir.c_str()));
+                    fitter->SaveResult(bin.GetBinName(), fullOutDir, fitOpt.outputFile + ".root", true);
+                    // Export results to text/JSON for further analysis
+                    fitter->ExportResults("json", fullOutDir + "/" + fitOpt.outputFile + "_results.json");
+                }
+
                 // Create plots if requested - using EnhancedPlotManager
                 if (plotFit) {
                     std::cout << "Creating plots using EnhancedPlotManager..." << std::endl;
                     
                     try {
                         // Create EnhancedPlotManager with the saved fit results
-                        std::string inputDir = fitOpt.outputDir;
+                        std::string inputDir = fitOpt.outputDir + fitOpt.subDir + (isMC ? "/MC" : "/Data");
                         std::string inputFile = fitOpt.outputFile + ".root";
-                        std::string plotDir = fitOpt.outputDir + "/plots";
+                        std::string plotDir = inputDir + "/plots";
                         
                         EnhancedPlotManager plotManager(fitOpt, inputDir, inputFile, plotDir, false, true);
                         
@@ -682,8 +748,9 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
                             
                             auto canvas = fitter->CreateCanvas(bin.GetBinName(), plotOptions);
                             if (canvas) {
-                                std::string plotName = fitOpt.outputDir + "/plots/" + fitOpt.outputFile + "_plot.pdf";
-                                createDir(Form("%s/plots/", fitOpt.outputDir.c_str()));
+                                std::string baseOutDir = fitOpt.outputDir + fitOpt.subDir + (isMC ? "/MC" : "/Data");
+                                std::string plotName = baseOutDir + "/plots/" + fitOpt.outputFile + "_plot.pdf";
+                                createDir(Form("%s/plots/", baseOutDir.c_str()));
                                 canvas->SaveAs(plotName.c_str());
                                 std::cout << "Plot saved: " << plotName << std::endl;
                             }
@@ -694,20 +761,13 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
                         std::cout << "Continuing without plots..." << std::endl;
                     }
                 }
-                
-                // Save fit results
-                std::cout << "Saving fit results..." << std::endl;
-                fitter->SaveResult(bin.GetBinName(), fitOpt.outputDir, fitOpt.outputFile + ".root", true);
-                
-                // Export results to text/JSON for further analysis
-                fitter->ExportResults("json", fitOpt.outputDir + "/" + fitOpt.outputFile + "_results.json");
-                
+
             } else {
                 std::cerr << "✗ Fit failed for bin: " << bin.GetBinName() << std::endl;
                 
                 // Run diagnostics to understand why fit failed
                 std::cout << "Running fit diagnostics..." << std::endl;
-                fitter->RunDiagnostics(fitOpt.outputDir + "/" + fitOpt.outputFile + "_diagnostics.txt");
+                fitter->RunDiagnostics(fitOpt.outputDir + fitOpt.subDir + (isMC ? "/MC" : "/Data") + "/" + fitOpt.outputFile + "_diagnostics.txt");
             }
             
     } catch (const std::exception& e) {

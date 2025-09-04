@@ -11,6 +11,7 @@
 #include "RooDataSet.h"
 #include "RooPlot.h"
 #include "RooRealVar.h"
+#include "RooAbsReal.h"
 #include "TCanvas.h"
 #include "TFile.h"
 
@@ -49,6 +50,8 @@ public:
     void StoreResult(const std::string& name, std::unique_ptr<RooFitResult> fitResult, 
                      std::unique_ptr<RooWorkspace> workspace, const std::string& fitType = "");
     void StoreYields(const std::string& name, const std::map<std::string, RooRealVar*>& yieldVars);
+    // New: store yields from generic RooAbsReal expressions, with error propagation from fit result
+    void StoreYieldsFromAbsReal(const std::string& name, const std::map<std::string, RooAbsReal*>& yieldExprs);
     void CalculateChiSquare(const std::string& name, RooAbsPdf* pdf, RooDataSet* data, 
                            RooRealVar* massVar, int nbins = 100);
     
@@ -132,6 +135,25 @@ inline void ResultManager::StoreYields(const std::string& name, const std::map<s
     
     for (const auto& [yieldName, var] : yieldVars) {
         ExtractYieldFromVar(it->second.get(), yieldName, var);
+    }
+}
+
+inline void ResultManager::StoreYieldsFromAbsReal(const std::string& name, const std::map<std::string, RooAbsReal*>& yieldExprs) {
+    auto it = results_.find(name);
+    if (it == results_.end()) return;
+
+    RooFitResult* fr = it->second->fitResult.get();
+    for (const auto& kv : yieldExprs) {
+        const std::string& yname = kv.first;
+        RooAbsReal* expr = kv.second;
+        if (!expr) continue;
+        double val = expr->getVal();
+        double err = 0.0;
+        if (fr) {
+            err = expr->getPropagatedError(*fr);
+        }
+        it->second->yields[yname] = val;
+        it->second->yieldErrors[yname] = err;
     }
 }
 

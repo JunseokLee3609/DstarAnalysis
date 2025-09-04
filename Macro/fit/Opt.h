@@ -51,7 +51,7 @@ struct FitOpt {
     std::string ptVar = "pT";              
     std::string etaVar = "eta";             
     std::string yVar = "y";
-    std::string centVar = "cent";            
+    std::string centVar = "Centrality";            
     std::string mvaVar = "mva";            
     std::string cosVar = "cosThetaHX";            
     std::string dcaVar = "dca";

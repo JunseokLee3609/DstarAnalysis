@@ -38,6 +38,9 @@ public:
     std::unique_ptr<RooAbsPdf> CreateChebychev(const PDFParams::ChebychevBkgParams& params, const std::string& name = "cheb");
     std::unique_ptr<RooAbsPdf> CreatePolynomial(const PDFParams::PolynomialBkgParams& params, const std::string& name = "poly");
     std::unique_ptr<RooAbsPdf> CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name = "phenom");
+    // D* -> D0 specific combinatorial-like background (DstD0) used in older macros
+    // Built from the same functional form used in MassFitter_temp::MakeRooDstD0Bg
+    std::unique_ptr<RooAbsPdf> CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name = "dstd0");
     std::unique_ptr<RooAbsPdf> CreateExpErf(const PDFParams::ExpErfBkgParams& params, const std::string& name = "experf");
     std::unique_ptr<RooAbsPdf> CreateDstBg(const PDFParams::DstBkgParams& params, const std::string& name = "dstbg");
     std::unique_ptr<RooAbsPdf> CreateThresholdFunction(const PDFParams::ThresholdFuncParams& params, const std::string& name = "threshold");
@@ -180,6 +183,15 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDBCrystalBall(const PDFParam
     StoreParameter(std::move(alphaR));
     StoreParameter(std::move(nR));
     
+    // Debug echo of parameters used to build the PDF
+    std::cout << "[PDFFactory][DBCB] Building PDF '" << name << "' with: "
+              << "mean=" << params.mean
+              << ", sigma(sym)=" << params.sigma
+              << ", alphaL=" << params.alphaL
+              << ", nL=" << params.nL
+              << ", alphaR=" << params.alphaR
+              << ", nR=" << params.nR << std::endl;
+
     return std::make_unique<RooCrystalBall>(name.c_str(), ("DoubleSidedCrystalBall_" + name).c_str(),
                                             *massVar_, *meanPtr, *sigmaPtr, *alphaLPtr, *nLPtr, *alphaRPtr, *nRPtr);
 }
@@ -330,6 +342,47 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological(const PDFPa
                                           ("Phenomenological_" + name).c_str(),
                                           formula.c_str(),
                                           varList);
+}
+
+inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name) {
+    if (!massVar_) return nullptr;
+
+    // Parameters following the legacy MakeRooDstD0Bg implementation
+    // m0 is set to the charged pion mass and fixed
+    constexpr double PION_MASS_LOCAL = 0.13957039; // Avoid including MassFitterV2.h here
+
+    auto m0  = CreateParameter("m0_" + name,  "m0",  PION_MASS_LOCAL, PION_MASS_LOCAL, PION_MASS_LOCAL);
+    auto p0  = CreateParameter("p0_" + name,  "p0",  params.p0, params.p0_min, params.p0_max);
+    auto p1  = CreateParameter("p1_" + name,  "p1",  params.p1, params.p1_min, params.p1_max);
+    auto p2  = CreateParameter("p2_" + name,  "p2",  params.p2, params.p2_min, params.p2_max);
+
+    RooRealVar* m0Ptr = m0.get();
+    RooRealVar* p0Ptr = p0.get();
+    RooRealVar* p1Ptr = p1.get();
+    RooRealVar* p2Ptr = p2.get();
+
+    // Fix m0 strictly to the pion mass
+    m0Ptr->setConstant(true);
+
+    StoreParameter(std::move(m0));
+    StoreParameter(std::move(p0));
+    StoreParameter(std::move(p1));
+    StoreParameter(std::move(p2));
+
+    // Build the functional form directly with RooGenericPdf to avoid external dependencies
+    // f(x) = (1 - exp(-(x - m0)/p0)) * (x/m0)^{p1} + p2 * (x/m0 - 1)
+    // args: [0]=massVar, [1]=m0, [2]=p0, [3]=p1, [4]=p2
+    // RooArgList args;
+    // args.add(*massVar_);
+    // args.add(*m0Ptr);
+    // args.add(*p0Ptr);
+    // args.add(*p1Ptr);
+    // args.add(*p2Ptr);
+    // return std::make_unique<RooDstD0BG>(name.c_str(), ("DstD0Background_" + name).c_str(), args);
+    // Replaced with RooGenericPdf to avoid external header dependency
+    return std::make_unique<RooDstD0BG>(name.c_str(), ("RooDstD0Bg" + name).c_str(), *massVar_, *m0Ptr, *p0Ptr, *p1Ptr, *p2Ptr);
+    // return std::make_unique<RooGenericPdf>(name.c_str(), ("DstD0Background_" + name).c_str(), formula.c_str(), args);
+    
 }
 
 inline void PDFFactory::StoreParameter(std::unique_ptr<RooRealVar> param) {

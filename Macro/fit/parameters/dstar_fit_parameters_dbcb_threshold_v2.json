@@ -156,12 +156,12 @@
         "signal_pdf": {
           "type": "DBCrystalBall",
           "parameters": {
-            "mean": {"value": 0.1456, "min": 0.1453, "max": 0.1459, "fixed": false},
-            "sigma":  {"value": 0.00045, "min": 0.0001, "max": 0.01, "fixed": false},
-            "alphaL": {"value": 1.8, "min": 0.1, "max": 10.0, "fixed": false},
-            "alphaR": {"value": 1.6, "min": 0.1, "max": 10.0, "fixed": false},
-            "nL": {"value": 2.0, "min": 0.1, "max": 20.0, "fixed": false},
-            "nR": {"value": 2.0, "min": 0.1, "max": 20.0, "fixed": false}
+            "mean":   {"value": 0.1455, "min": 0.1452,  "max": 0.1458,  "fixed": false},
+            "sigma":  {"value": 0.0005, "min": 0.0001,  "max": 0.01,    "fixed": false},
+            "alphaL": {"value": 1.1,    "min": 0.5,     "max": 2.0,    "fixed": false},
+            "alphaR": {"value": 1.1,    "min": 0.5,     "max": 2.0,    "fixed": false},
+            "nL":     {"value": 2.0,    "min": 1,     "max": 20.0,    "fixed": false},
+            "nR":     {"value": 2.5,    "min": 1,     "max": 20.0,    "fixed": false}
           }
         },
         "background_pdf": {
@@ -173,8 +173,8 @@
           }
         },
         "yields": {
-          "nsig_ratio": {"value": 0.7, "min": 0.001, "max": 1, "fixed": false},
-          "nbkg_ratio": {"value": 0.003, "min": 0.00, "max": 1, "fixed": false}
+          "nsig_ratio": {"value": 0.05, "min": 0.001, "max": 0.1, "fixed": false},
+          "nbkg_ratio": {"value": 0.5, "min": 0.3,  "max": 1, "fixed": false}
         }
       },
       "bin_6": {
@@ -190,25 +190,25 @@
         "signal_pdf": {
           "type": "DBCrystalBall",
           "parameters": {
-            "mean": {"value": 0.1456, "min": 0.1453, "max": 0.1459, "fixed": false},
-            "sigma":  {"value": 0.00045, "min": 0.0001, "max": 0.01, "fixed": false},
-            "alphaL": {"value": 1.8, "min": 0.1, "max": 10.0, "fixed": false},
-            "alphaR": {"value": 1.6, "min": 0.1, "max": 10.0, "fixed": false},
-            "nL": {"value": 2.0, "min": 0.1, "max": 20.0, "fixed": false},
-            "nR": {"value": 2.0, "min": 0.1, "max": 20.0, "fixed": false}
+            "mean":   {"value": 0.1455, "min": 0.1452,  "max": 0.1458,  "fixed": false},
+            "sigma":  {"value": 0.0005, "min": 0.0001,  "max": 0.01,    "fixed": false},
+            "alphaL": {"value": 1.1,    "min": 0.5,     "max": 2.0,    "fixed": false},
+            "alphaR": {"value": 1.1,    "min": 0.5,     "max": 2.0,    "fixed": false},
+            "nL":     {"value": 2.0,    "min": 1,     "max": 20.0,    "fixed": false},
+            "nR":     {"value": 2.5,    "min": 1,     "max": 20.0,    "fixed": false}
           }
         },
         "background_pdf": {
           "type": "ThresholdFunction",
           "parameters": {
-            "p0": {"value": 0.0, "min": -10.0, "max": 10.0, "fixed": false},
+            "p0": {"value": 0.01, "min": 0.001, "max": 1.0, "fixed": false},
             "p1": {"value": -1.0, "min": -10.0, "max": 10.0, "fixed": false},
             "m_pi": {"value": 0.13957, "min": 0.13957, "max": 0.13957, "fixed": true}
           }
         },
         "yields": {
-          "nsig_ratio": {"value": 0.3, "min": 0.001, "max": 1, "fixed": false},
-          "nbkg_ratio": {"value": 0.5, "min": 0.00, "max": 1, "fixed": false}
+          "nsig_ratio": {"value": 0.3, "min": 0.1, "max": 0.4, "fixed": false},
+          "nbkg_ratio": {"value": 0.5, "min": 0.3,  "max": 0.8, "fixed": false}
         }
       }
     },

@@ -1,0 +1,30 @@
+universe               = vanilla
+executable             = runCondor_DStarV2.sh
+getenv                 = True
+
+# Arguments to DStarAnalysisV2:
+# 1: doReFit (true/false)
+# 2: plotFit (true/false)
+# 3: useCUDA (true/false)
+# 4: pTMin   5: pTMax
+# 6: cosMin  7: cosMax
+# 8: centMin 9: centMax
+# 10: parameterFile (JSON path or empty)
+# 11: isMC (true/false)
+arguments              = $(pTMin) $(pTMax) $(cosMin) $(cosMax) $(centMin) $(centMax)
+
+output                 = logs/$(Cluster)_$(Process).out
+error                  = logs/$(Cluster)_$(Process).err
+log                    = logs/$(Cluster)_$(Process).log
+
+should_transfer_files  = YES
+when_to_transfer_output= ON_EXIT
+
+# Transfer macro entry and ranges file
+transfer_input_files   = DStarAnalysisV2.cpp, kinematicRange_DStar.txt
+
+# Queue with a parameter grid described in kinematicRange_DStar.txt
+# Expected columns (space-separated):
+# doReFit plotFit useCUDA pTMin pTMax cosMin cosMax centMin centMax parameterFile isMC
+queue pTMin pTMax cosMin cosMax centMin centMax from kinematicRange.txt
+

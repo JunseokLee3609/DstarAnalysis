@@ -54,7 +54,7 @@
 #include "PDFFactory.h"     // For modular PDF creation
 #include "FitStrategy.h"    // For configurable fitting strategies
 #include "ResultManager.h"  // For enhanced result management
-#include "ConfigManager.h"  // For configuration management
+#include "../Tools/ConfigManager.h"  // For configuration management
 #include "ErrorHandler.h"   // For enhanced error handling
 #include "Params.h"
 #include "Helper.h"

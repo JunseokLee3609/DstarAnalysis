@@ -5,11 +5,14 @@
 #include <map>
 #include <string>
 #include <memory>
+#if __cplusplus >= 201703L
 #include <variant>
+#endif
 #include "MassFitterV2.h"
 #include "Params.h"
 #include "Opt.h"
 #include "FitStrategy.h"
+#include "Helper.h"  // use shared createDir/ensureOutputDir utilities
 
 /**
  * @brief PDF types available for signal and background
@@ -125,7 +128,37 @@ struct DStarBinParameters {
     template<typename T>
     const T& GetBackgroundParams() const;
     
-    // Helper methods to get parameters by PDFType
+    // Helper methods to apply a callable to the active parameter type (C++11/14 compatible)
+    template <typename F>
+    void ApplyToSignalParams(F&& f) const {
+        switch (signalPdfType) {
+            case PDFType::Gaussian:            f(gaussianParams); break;
+            case PDFType::DoubleGaussian:      f(doubleGaussianParams); break;
+            case PDFType::CrystalBall:         f(crystalBallParams); break;
+            case PDFType::DBCrystalBall:       f(dbCrystalBallParams); break;
+            case PDFType::DoubleDBCrystalBall: f(doubleDBCrystalBallParams); break;
+            case PDFType::Voigtian:            f(voigtianParams); break;
+            case PDFType::BreitWigner:         f(breitWignerParams); break;
+            default:                            f(dbCrystalBallParams); break; // fallback
+        }
+    }
+
+    template <typename F>
+    void ApplyToBackgroundParams(F&& f) const {
+        switch (backgroundPdfType) {
+            case PDFType::Exponential:         f(exponentialParams); break;
+            case PDFType::Chebychev:           f(chebychevParams); break;
+            case PDFType::Phenomenological:    f(phenomenologicalParams); break;
+            case PDFType::Polynomial:          f(polynomialParams); break;
+            case PDFType::ThresholdFunction:   f(thresholdFuncParams); break;
+            case PDFType::ExpErf:              f(expErfParams); break;
+            case PDFType::DstBkg:              f(dstBkgParams); break;
+            default:                            f(phenomenologicalParams); break; // fallback
+        }
+    }
+
+#if __cplusplus >= 201703L
+    // Optional C++17 helpers returning std::variant for newer compilers
     std::variant<
         PDFParams::GaussianParams,
         PDFParams::DoubleGaussianParams,
@@ -167,6 +200,7 @@ struct DStarBinParameters {
             default: return phenomenologicalParams; // fallback
         }
     }
+#endif
     
 private:
     void SetDefaultSignalParams() {
@@ -286,11 +320,13 @@ public:
     void SetUseCUDA(bool use) { useCUDA_ = use; }
     void SetVerbose(bool verbose) { verbose_ = verbose; }
     void SetDoRefit(bool refit) { doRefit_ = refit; }
+    void SetUseAbsCosCuts(bool use) { useAbsCosCuts_ = use; }
     
     FitMethod GetFitMethod() const { return fitMethod_; }
     bool GetUseCUDA() const { return useCUDA_; }
     bool GetVerbose() const { return verbose_; }
     bool GetDoRefit() const { return doRefit_; }
+    bool GetUseAbsCosCuts() const { return useAbsCosCuts_; }
     
     // Selection cuts
     void SetSlowPionCut(const std::string& cut) { slowPionCut_ = cut; }
@@ -323,10 +359,24 @@ public:
         opt.pTMax = bin.pTMax;
         opt.cosMin = bin.cosMin;
         opt.cosMax = bin.cosMax;
+        // Also propagate centrality range to FitOpt
+        opt.centMin = bin.centralityMin;
+        opt.centMax = bin.centralityMax;
         
-        // Set cuts
-        opt.cutExpr = GetFullCutString() + " && " + bin.GetCutString();
-        opt.cutMCExpr = opt.cutExpr+ "&& matchGEN==1";  // Same cuts for MC
+        // Set cuts (build kinematic + optional abs(cos) cut)
+        std::string kinCut = "pT > " + std::to_string(bin.pTMin) + " && pT < " + std::to_string(bin.pTMax);
+        if (bin.cosMin > -2.0 || bin.cosMax < 2.0) {
+            std::string cosExpr = useAbsCosCuts_ ? "abs(cosThetaHX)" : "cosThetaHX";
+            kinCut += " && " + cosExpr + " > " + std::to_string(bin.cosMin) +
+                      " && " + cosExpr + " < " + std::to_string(bin.cosMax);
+        }
+        // Add centrality cut when requested (anything different from full 0-100)
+        if (bin.centralityMin > 0 || bin.centralityMax < 100) {
+            kinCut += " && " + opt.centVar + " >= " + std::to_string(bin.centralityMin) +
+                      " && " + opt.centVar + " < " + std::to_string(bin.centralityMax);
+        }
+        opt.cutExpr = GetFullCutString() + " && " + kinCut;
+        opt.cutMCExpr = opt.cutExpr + " && matchGEN==1";  // Same cuts for MC
         
         // Override with configuration-specific settings
         opt.useCUDA = useCUDA_;
@@ -337,7 +387,7 @@ public:
         opt.fitMethod = fitMethod_;  // Use configured fit method
         
         // Set output configuration
-        opt.outputDir = "results";
+        opt.outputDir = "results/";
         opt.outputFile = "DStar_fit_" + bin.GetBinName();
         opt.subDir = outputSubDir_;
         
@@ -388,6 +438,7 @@ private:
     bool useCUDA_ = true;
     bool verbose_ = false;
     bool doRefit_ = false;
+    bool useAbsCosCuts_ = true;  // Whether to use abs(cosThetaHX) in cuts
     
     // Selection cuts
     std::string slowPionCut_;

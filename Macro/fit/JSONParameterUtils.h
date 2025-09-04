@@ -116,19 +116,43 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         binParams.dbCrystalBallParams.mean_min = param.min;
         binParams.dbCrystalBallParams.mean_max = param.max;
         fixedInfo.addFixedFlag("mean_dbcb", param.isFixed);
-        
-        param = jsonLoader.getParameter(binId, "signal_sigmaL");
-        binParams.dbCrystalBallParams.sigmaL = param.value;
-        binParams.dbCrystalBallParams.sigmaL_min = param.min;
-        binParams.dbCrystalBallParams.sigmaL_max = param.max;
-        fixedInfo.addFixedFlag("sigmaL_dbcb", param.isFixed);
-        
-        param = jsonLoader.getParameter(binId, "signal_sigmaR");
-        binParams.dbCrystalBallParams.sigmaR = param.value;
-        binParams.dbCrystalBallParams.sigmaR_min = param.min;
-        binParams.dbCrystalBallParams.sigmaR_max = param.max;
-        fixedInfo.addFixedFlag("sigmaR_dbcb", param.isFixed);
-        
+
+        // Unify to symmetric sigma if available, else derive from sigmaL/sigmaR
+        if (jsonLoader.hasParameter(binId, "signal_sigma")) {
+            param = jsonLoader.getParameter(binId, "signal_sigma");
+            binParams.dbCrystalBallParams.sigma = param.value;
+            binParams.dbCrystalBallParams.sigma_min = param.min;
+            binParams.dbCrystalBallParams.sigma_max = param.max;
+            fixedInfo.addFixedFlag("sigma_dbcb", param.isFixed);
+            std::cout << "[JSON Utils][DBCB] Using symmetric sigma from 'signal_sigma': "
+                      << binParams.dbCrystalBallParams.sigma << " ["
+                      << binParams.dbCrystalBallParams.sigma_min << ", "
+                      << binParams.dbCrystalBallParams.sigma_max << "]" << std::endl;
+        } else {
+            // Load L/R if provided and compute symmetric sigma
+            auto pL = jsonLoader.getParameter(binId, "signal_sigmaL");
+            auto pR = jsonLoader.getParameter(binId, "signal_sigmaR");
+            binParams.dbCrystalBallParams.sigmaL = pL.value;
+            binParams.dbCrystalBallParams.sigmaL_min = pL.min;
+            binParams.dbCrystalBallParams.sigmaL_max = pL.max;
+            fixedInfo.addFixedFlag("sigmaL_dbcb", pL.isFixed);
+
+            binParams.dbCrystalBallParams.sigmaR = pR.value;
+            binParams.dbCrystalBallParams.sigmaR_min = pR.min;
+            binParams.dbCrystalBallParams.sigmaR_max = pR.max;
+            fixedInfo.addFixedFlag("sigmaR_dbcb", pR.isFixed);
+
+            // Use average as unified sigma and average of bounds as range
+            binParams.dbCrystalBallParams.sigma = 0.5 * (pL.value + pR.value);
+            binParams.dbCrystalBallParams.sigma_min = 0.5 * (pL.min + pR.min);
+            binParams.dbCrystalBallParams.sigma_max = 0.5 * (pL.max + pR.max);
+            std::cout << "[JSON Utils][DBCB] Derived symmetric sigma from L/R: sigmaL="
+                      << pL.value << ", sigmaR=" << pR.value
+                      << " -> sigma(sym)=" << binParams.dbCrystalBallParams.sigma << " ["
+                      << binParams.dbCrystalBallParams.sigma_min << ", "
+                      << binParams.dbCrystalBallParams.sigma_max << "]" << std::endl;
+        }
+
         param = jsonLoader.getParameter(binId, "signal_alphaL");
         binParams.dbCrystalBallParams.alphaL = param.value;
         binParams.dbCrystalBallParams.alphaL_min = param.min;

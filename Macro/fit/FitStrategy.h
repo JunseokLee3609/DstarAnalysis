@@ -11,6 +11,9 @@
 #include "RooDataHist.h"
 #include "RooHistPdf.h"
 #include "RooLinkedList.h"
+#include "RooGaussian.h"
+#include "RooArgSet.h"
+#include "TFile.h"
 #include "RooFit.h"
 #include "RooRealVar.h"
 #include "TH1F.h"
@@ -122,12 +125,18 @@ public:
         Robust, 
         MC,
         Constraint,
-        Binned
+        Binned,
+        GaussianConstraint
     };
     
     static std::unique_ptr<FitStrategy> CreateStrategy(StrategyType type);
     static std::unique_ptr<FitStrategy> CreateConstraintStrategy(const std::string& mcFilePath, 
                                                                 const std::vector<std::string>& constraintParams);
+    static std::unique_ptr<FitStrategy> CreateGaussianConstraintStrategy(
+        RooDataSet* mcDataset,
+        RooAbsPdf* mcSignalPdf,
+        const std::vector<std::string>& paramNames,
+        double sigmaScale = 1.0);
     // Map FitMethod to StrategyType explicitly
     static StrategyType GetStrategyTypeFromFitMethod(FitMethod method) {
         switch (method) {
@@ -372,6 +381,142 @@ inline void ConstraintFitStrategy::ApplyConstraints(RooAbsPdf* pdf) {
     std::cout << "Applying constraints from " << mcFilePath_ << std::endl;
 }
 
+// GaussianConstraintStrategy implementation
+class GaussianConstraintStrategy : public FitStrategy {
+public:
+    GaussianConstraintStrategy(RooDataSet* mcDataset,
+                               RooAbsPdf* mcSignalPdf,
+                               const std::vector<std::string>& paramNames,
+                               double sigmaScale = 1.0)
+        : mcDataset_(mcDataset), mcSignalPdf_(mcSignalPdf), paramNames_(paramNames), sigmaScale_(sigmaScale) {}
+
+    // Alternate constructor: load constraints from saved MC fit result file
+    GaussianConstraintStrategy(const std::string& mcResultFile,
+                               const std::vector<std::string>& paramNames,
+                               double sigmaScale = 1.0,
+                               const std::string& fitResultObjName = "fitResult")
+        : mcResultFile_(mcResultFile), paramNames_(paramNames), sigmaScale_(sigmaScale), fitResultObjName_(fitResultObjName) {}
+
+    std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) override {
+        return Execute(pdf, data, config, nullptr);
+    }
+
+    std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config, RooRealVar* massVar) override {
+        if (!pdf || !data) return nullptr;
+
+        // 1) Build constraints: either from saved MC fit or on-the-fly MC fit
+        std::map<std::string, std::pair<double,double>> constraints;
+        if (!mcResultFile_.empty()) {
+            std::unique_ptr<TFile> fin(TFile::Open(mcResultFile_.c_str(), "READ"));
+            if (!fin || fin->IsZombie()) {
+                std::cerr << "GaussianConstraintStrategy: Cannot open file " << mcResultFile_ << std::endl;
+                return nullptr;
+            }
+            auto* rf = dynamic_cast<RooFitResult*>(fin->Get(fitResultObjName_.c_str()));
+            if (!rf) {
+                std::cerr << "GaussianConstraintStrategy: RooFitResult '" << fitResultObjName_ << "' not found" << std::endl;
+                return nullptr;
+            }
+            auto finals = rf->floatParsFinal();
+            for (const auto& name : paramNames_) {
+                RooAbsArg* arg = nullptr;
+                for (int i=0; i<finals.getSize(); ++i) {
+                    if (std::string(finals.at(i)->GetName()) == name) { arg = finals.at(i); break; }
+                }
+                if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
+                    double mu = v->getVal();
+                    double err = v->getError();
+                    if (err <= 0) {
+                        double eh = std::abs(v->getErrorHi());
+                        double el = std::abs(v->getErrorLo());
+                        err = 0.5 * (eh + el);
+                        if (err <= 0) err = 1e-6;
+                    }
+                    constraints[name] = {mu, std::max(err * sigmaScale_, 1e-6)};
+                }
+            }
+        } else {
+            if (!mcDataset_ || !mcSignalPdf_) return nullptr;
+            FitConfig mcCfg = config;
+            mcCfg.useMinos = false;
+            auto mcOpts = CreateFitOptions(mcCfg);
+            auto mcResult = std::unique_ptr<RooFitResult>(mcSignalPdf_->fitTo(*mcDataset_, mcOpts));
+            if (!mcResult) return nullptr;
+
+            std::unique_ptr<RooArgSet> mcVars(mcSignalPdf_->getVariables());
+            for (const auto& name : paramNames_) {
+                if (auto* v = dynamic_cast<RooRealVar*>(mcVars->find(name.c_str()))) {
+                    double mu = v->getVal();
+                    double err = v->getError();
+                    if (err <= 0) {
+                        double eh = std::abs(v->getErrorHi());
+                        double el = std::abs(v->getErrorLo());
+                        err = 0.5 * (eh + el);
+                        if (err <= 0) err = 1e-6;
+                    }
+                    constraints[name] = {mu, std::max(err * sigmaScale_, 1e-6)};
+                }
+            }
+        }
+
+        // 2) Build RooGaussian external constraints on data parameters
+        std::unique_ptr<RooArgSet> dataVars(pdf->getVariables());
+        RooArgSet ext;
+        std::vector<std::unique_ptr<RooRealVar>> keepMeans;
+        std::vector<std::unique_ptr<RooRealVar>> keepSigmas;
+        std::vector<std::unique_ptr<RooGaussian>> keepGauss;
+        for (const auto& [pname, ms] : constraints) {
+            if (auto* target = dynamic_cast<RooRealVar*>(dataVars->find(pname.c_str()))) {
+                auto mean = std::make_unique<RooRealVar>(("mc_mean_" + pname).c_str(), ("mc_mean_" + pname).c_str(), ms.first);
+                auto sigma = std::make_unique<RooRealVar>(("mc_sigma_" + pname).c_str(), ("mc_sigma_" + pname).c_str(), ms.second);
+                auto gauss = std::make_unique<RooGaussian>(("constr_" + pname).c_str(), ("constr_" + pname).c_str(), *target, *mean, *sigma);
+                ext.add(*gauss);
+                keepMeans.push_back(std::move(mean));
+                keepSigmas.push_back(std::move(sigma));
+                keepGauss.push_back(std::move(gauss));
+            }
+        }
+
+        // 3) Create fit options and add constraints
+        auto opts = CreateFitOptions(config);
+        if (ext.getSize() > 0) {
+            opts.Add(new RooCmdArg(RooFit::ExternalConstraints(ext)));
+        }
+
+        // 4) Handle binned fit if requested
+        if (config.fitMethod == FitMethod::BinnedNLL) {
+            RooRealVar* m = massVar;
+            if (!m) {
+                auto argSet = data->get();
+                for (auto it = argSet->fwdIterator(); auto* var = it.next();) {
+                    if (auto* rv = dynamic_cast<RooRealVar*>(var)) { m = rv; break; }
+                }
+            }
+            if (!m) return nullptr;
+            auto binnedVar = std::unique_ptr<RooRealVar>(dynamic_cast<RooRealVar*>(m->clone((std::string(m->GetName()) + "_binned").c_str())));
+            if (!binnedVar) return nullptr;
+            binnedVar->setBins(config.histogramBins);
+            auto binnedData = std::make_unique<RooDataHist>((std::string(data->GetName()) + "_binned").c_str(),
+                                                            (std::string(data->GetTitle()) + " (binned)").c_str(),
+                                                            RooArgSet(*binnedVar), *data);
+            return std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, opts));
+        }
+
+        // 5) Unbinned fit
+        return std::unique_ptr<RooFitResult>(pdf->fitTo(*data, opts));
+    }
+
+    std::string GetName() const override { return "GaussianConstraint"; }
+
+private:
+    RooDataSet* mcDataset_ = nullptr;
+    RooAbsPdf* mcSignalPdf_ = nullptr;
+    std::string mcResultFile_;
+    std::vector<std::string> paramNames_;
+    double sigmaScale_ = 1.0;
+    std::string fitResultObjName_ = "fitResult";
+};
+
 // BinnedFitStrategy implementation
 inline std::unique_ptr<RooFitResult> BinnedFitStrategy::Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) {
     if (!pdf || !data) return nullptr;
@@ -446,6 +591,9 @@ inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateStrategy(StrategyT
             return std::make_unique<MCFitStrategy>();
         case StrategyType::Binned:
             return std::make_unique<BinnedFitStrategy>();
+        case StrategyType::GaussianConstraint:
+            // This variant needs extra inputs; use the dedicated factory helper instead
+            return std::make_unique<BasicFitStrategy>();
         default:
             return std::make_unique<BasicFitStrategy>();
     }
@@ -455,5 +603,15 @@ inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateConstraintStrategy
                                                                                 const std::vector<std::string>& constraintParams) {
     return std::make_unique<ConstraintFitStrategy>(mcFilePath, constraintParams);
 }
+
+inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateGaussianConstraintStrategy(
+    RooDataSet* mcDataset,
+    RooAbsPdf* mcSignalPdf,
+    const std::vector<std::string>& paramNames,
+    double sigmaScale) {
+    return std::make_unique<GaussianConstraintStrategy>(mcDataset, mcSignalPdf, paramNames, sigmaScale);
+}
+
+// File-based Gaussian constraint creation is handled directly in MassFitterV2 now
 
 #endif // FIT_STRATEGY_H

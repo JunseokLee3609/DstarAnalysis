@@ -179,7 +179,9 @@ bool EnhancedPlotManager::LoadWorkspace() {
         opt_.wsName,        // Configured name (e.g., "workspace_DStar")
         "workspace_DStar_" + opt_.GetBinName(),  // Full name with bin info  
         "workspace_DStar_" + opt_.name,          // Try with full opt_.name
-        "workspace"         // Fallback generic name
+        "workspace",         // Fallback generic name
+        // MC workspaces saved by MassFitterV2::PerformMCFit
+        "mcWorkspace_" + opt_.name
     };
     
     for (const auto& wsName : wsNames) {
@@ -225,14 +227,17 @@ bool EnhancedPlotManager::ValidateObjects() {
         return false;
     }
     
-    // Load PDF (optional) - try multiple common names
+    // Load PDF (optional) - try multiple common names (include MC signal-only case)
     if (opt_.doFit) {
         std::vector<std::string> pdfNames = {
             "totalPdf",         // MassFitterV2 uses this name
             "total_pdf",        // Alternative common name
             "pdf",              // Generic name
             "pdf_" + opt_.name, // Name with prefix
-            opt_.name + "_pdf"  // Name with suffix
+            opt_.name + "_pdf", // Name with suffix
+            "mcSignal",         // MC-only signal PDF name used in PerformMCFit
+            "signal",           // Generic signal name
+            "model"             // Another common total name
         };
         
         for (const auto& pdfName : pdfNames) {
@@ -244,10 +249,22 @@ bool EnhancedPlotManager::ValidateObjects() {
         }
         
         if (!pdf_) {
-            std::cout << "[PlotManager] Warning: No PDF found. Raw plots only." << std::endl;
-            std::cout << "[PlotManager] Available PDFs in workspace:" << std::endl;
+            // Fallback: choose the first available PDF in workspace
             RooArgSet pdfs = ws_->allPdfs();
-            pdfs.Print();
+            if (pdfs.getSize() > 0) {
+                RooFIter it = pdfs.fwdIterator();
+                if (RooAbsArg* arg = it.next()) {
+                    pdf_ = dynamic_cast<RooAbsPdf*>(arg);
+                    if (pdf_) {
+                        std::cout << "[PlotManager] Fallback: Using first available PDF: " << pdf_->GetName() << std::endl;
+                    }
+                }
+            }
+            if (!pdf_) {
+                std::cout << "[PlotManager] Warning: No PDF found. Raw plots only." << std::endl;
+                std::cout << "[PlotManager] Available PDFs in workspace:" << std::endl;
+                pdfs.Print();
+            }
         }
     }
     
@@ -470,7 +487,15 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
     // 2. Identify and Plot Components with fill styles (matching backup style)
     RooAbsPdf* signalPdf = ExtractComponent("sig");
     RooAbsPdf* swappedPdf = ExtractComponent("Swap");
+    // Try multiple common background name patterns
     RooAbsPdf* combinatorialPdf = ExtractComponent("bkg");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("background");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("phenom");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("exp");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("threshold");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("poly");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("cheb");
+    if (!combinatorialPdf) combinatorialPdf = ExtractComponent("dst");
     
     // Plot Signal Component (filled area with dotted outline)
     if (signalPdf) {
@@ -513,7 +538,7 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
     // Set axis properties matching backup style
     frame->GetYaxis()->SetTitleOffset(1.2);
     frame->GetYaxis()->SetTitle(Form("Entries / (%.3f GeV/c^{2})", var_->getBinWidth(0)));
-    frame->GetYaxis()->SetLabelSize(0.0);
+    // frame->GetYaxis()->SetLabelSize(0.0);
     frame->SetTitle("");
     
     // --- Legend matching backup style ---
@@ -599,14 +624,14 @@ void EnhancedPlotManager::DrawPullFrame(RooPlot* frame, TPad* pullPad) {
     pullPad->cd();
     RooHist* pullHist = frame->pullHist("datapoints", "model");
     RooPlot* pullFrame = var_->frame(RooFit::Title(" "), RooFit::Range("analysis"));
-    pullFrame->addPlotable(pullHist, "P");
-    pullFrame->SetMinimum(-2);
-    pullFrame->SetMaximum(2);
+    pullFrame->addPlotable(static_cast<RooPlotable*>(pullHist), "P");
+    pullFrame->SetMinimum(-5);
+    pullFrame->SetMaximum(5);
     pullFrame->GetYaxis()->SetTitle("");
     pullFrame->GetYaxis()->SetTitleOffset(0.3);
     pullFrame->GetYaxis()->SetTitleSize(0.1);
     pullFrame->GetYaxis()->SetNdivisions(505);
-    pullFrame->GetYaxis()->SetLabelSize(0.0);
+    // pullFrame->GetYaxis()->SetLabelSize(0.0);
     pullFrame->GetXaxis()->SetTitleSize(0.1);
     pullFrame->GetXaxis()->SetLabelSize(0.1);
     pullFrame->Draw();

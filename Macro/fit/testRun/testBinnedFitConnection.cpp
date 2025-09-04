@@ -8,7 +8,7 @@
  * This tests that:
  * 1. FitMethod::BinnedNLL properly selects BinnedFitStrategy
  * 2. FitMethod::NLL properly selects BasicFitStrategy  
- * 3. FitMethod::Extended properly selects RobustFitStrategy
+ * 3. FitMethod::Extended properly selects BasicFitStrategy (extended-only)
  * 4. The strategy selection logging works correctly
  */
 void testBinnedFitConnection() {
@@ -47,7 +47,7 @@ void testBinnedFitConnection() {
         std::cout << "✅ Test 2 " << (strategy2->GetName() == "BasicFit" ? "PASSED" : "FAILED") << std::endl;
     }
     
-    // Test 3: Extended should select RobustFitStrategy
+    // Test 3: Extended should select BasicFitStrategy (no robust widening)
     std::cout << "\n--- Test 3: FitMethod::Extended ---" << std::endl;
     {
         auto strategyType3 = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::Extended);
@@ -55,8 +55,20 @@ void testBinnedFitConnection() {
         
         std::cout << "FitMethod: Extended" << std::endl;
         std::cout << "Selected Strategy: " << strategy3->GetName() << std::endl;
+        std::cout << "Expected: BasicFit" << std::endl;
+        std::cout << "✅ Test 3 " << (strategy3->GetName() == "BasicFit" ? "PASSED" : "FAILED") << std::endl;
+    }
+
+    // Test 3b: Robust should select RobustFitStrategy
+    std::cout << "\n--- Test 3b: FitMethod::Robust ---" << std::endl;
+    {
+        auto strategyType3b = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::Robust);
+        auto strategy3b = FitStrategyFactory::CreateStrategy(strategyType3b);
+        
+        std::cout << "FitMethod: Robust" << std::endl;
+        std::cout << "Selected Strategy: " << strategy3b->GetName() << std::endl;
         std::cout << "Expected: RobustFit" << std::endl;
-        std::cout << "✅ Test 3 " << (strategy3->GetName() == "RobustFit" ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "✅ Test 3b " << (strategy3b->GetName() == "RobustFit" ? "PASSED" : "FAILED") << std::endl;
     }
     
     // Test 4: Verify BinnedFitStrategy actually creates binned data
@@ -105,7 +117,8 @@ void testBinnedFitConnection() {
     std::cout << "The fix ensures that:" << std::endl;
     std::cout << "  • FitMethod::BinnedNLL → BinnedFitStrategy (proper binned fitting)" << std::endl;
     std::cout << "  • FitMethod::NLL → BasicFitStrategy (unbinned fitting)" << std::endl;
-    std::cout << "  • FitMethod::Extended → RobustFitStrategy (extended ML fitting)" << std::endl;
+    std::cout << "  • FitMethod::Extended → BasicFitStrategy (extended-only ML)" << std::endl;
+    std::cout << "  • FitMethod::Robust → RobustFitStrategy (iterative widening)" << std::endl;
     std::cout << "  • Strategy selection is logged for debugging" << std::endl;
     std::cout << std::string(60, '=') << std::endl;
 }

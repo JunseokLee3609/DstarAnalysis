@@ -18,6 +18,9 @@
 #include "RooFitResult.h"
 #include "RooWorkspace.h"
 #include "RooFormulaVar.h"
+#include "RooGaussian.h"
+#include "RooArgSet.h"
+#include "RooLinkedList.h"
 
 // New modular components
 #include "PDFFactory.h"
@@ -27,6 +30,7 @@
 #include "TestFramework.h"
 #include "Params.h"
 #include "Opt.h"
+#include "Helper.h"  // for createDir/ensureOutputDir
 
 // Constants
 constexpr double PION_MASS_V2 = 0.13957039;
@@ -112,6 +116,21 @@ public:
                              const SignalParams& signalParams, const BackgroundParams& backgroundParams,
                              const std::vector<std::string>& constraintParameters = {},
                              const std::string& resultName = "");
+
+    // MC-driven Gaussian-constraint fit on selected parameters
+    template<typename SignalParams, typename BackgroundParams>
+    bool PerformGaussianConstraintFitWithMC(const FitOpt& options, RooDataSet* dataset, RooDataSet* mcDataset,
+                                            const SignalParams& signalParams, const BackgroundParams& backgroundParams,
+                                            const std::vector<std::string>& paramsToConstrain,
+                                            const std::string& resultName = "");
+
+    // Constrained fit using saved MC fit result file (contains RooFitResult "fitResult")
+    template<typename SignalParams, typename BackgroundParams>
+    bool PerformGaussianConstraintFitWithMCFile(const FitOpt& options, RooDataSet* dataset,
+                                                const SignalParams& signalParams, const BackgroundParams& backgroundParams,
+                                                const std::string& mcResultFile,
+                                                const std::vector<std::string>& paramsToConstrain,
+                                                const std::string& resultName = "");
     
     // Results access with error checking
     double GetSignalYield(const std::string& resultName = "default") const;
@@ -205,9 +224,11 @@ private:
     std::unique_ptr<RooAbsPdf> backgroundPdf_;
     std::unique_ptr<RooAddPdf> totalPdf_;
     
-    // Yield variables (smart pointers for automatic cleanup)
-    std::unique_ptr<RooRealVar> nsig_;
-    std::unique_ptr<RooRealVar> nbkg_;
+    // Yield parameterization (Ntot and fraction fsig) with derived yields nsig, nbkg
+    std::unique_ptr<RooRealVar> fsig_;     // signal fraction in [0,1]
+    std::unique_ptr<RooRealVar> ntot_;     // total expected yield
+    std::unique_ptr<RooAbsReal> nsig_;     // nsig = fsig * ntot
+    std::unique_ptr<RooAbsReal> nbkg_;     // nbkg = (1-fsig) * ntot
     std::vector<std::unique_ptr<RooRealVar>> additionalYields_;
     
     // Configuration
@@ -337,6 +358,14 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         
         // Create fit configuration
         FitConfig config = options.ToFitConfig();
+        // Ensure mass variable uses the same named range and bounds as the config
+        if (activeMassVar_) {
+            if (!config.rangeName.empty()) {
+                activeMassVar_->setRange(config.rangeName.c_str(), config.rangeMin, config.rangeMax);
+            }
+            activeMassVar_->setMin(config.rangeMin);
+            activeMassVar_->setMax(config.rangeMax);
+        }
         
         // Select appropriate strategy based on FitMethod
         FitStrategyFactory::StrategyType strategyType = FitStrategyFactory::StrategyType::Basic; // default
@@ -374,6 +403,7 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
             ErrorHandlerManager::Instance().LogError("Fit execution returned null result", "PerformFit");
             throw FitException("PerformFit", -1, "Fit execution returned null result");
         }
+        fitResult->Print("v");
         
         // Create and populate workspace
         auto workspace = std::make_unique<RooWorkspace>(("workspace_" + name_).c_str());
@@ -387,11 +417,11 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         resultManager_->StoreResult(finalResultName, std::move(fitResult), 
                                    std::move(workspace), "StandardFit");
         
-        // Store yields with validation
-        std::map<std::string, RooRealVar*> yieldVars;
-        if (nsig_) yieldVars["nsig"] = nsig_.get();
-        if (nbkg_) yieldVars["nbkg"] = nbkg_.get();
-        resultManager_->StoreYields(finalResultName, yieldVars);
+        // Store yields (supports RooFormulaVar via propagated errors)
+        std::map<std::string, RooAbsReal*> yieldExprs;
+        if (nsig_) yieldExprs["nsig"] = nsig_.get();
+        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
+        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
         
         // Calculate quality metrics
         resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
@@ -434,9 +464,18 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
             LOG_AND_THROW(PDFCreationException, "MC signal PDF creation failed", "PerformMCFit");
         }
         
-        // Create MC fit configuration (simplified for MC)
+        // Create MC fit configuration (force unbinned NLL for MC)
         FitConfig config = options.ToFitConfig();
-        config.useMinos = false; // MC fits typically don't need Minos
+        config.fitMethod = FitMethod::NLL;   // Always use NLL for MC fits
+        config.useMinos = false;             // MC fits typically don't need Minos
+        // Align mass variable range with configuration
+        if (activeMassVar_) {
+            if (!config.rangeName.empty()) {
+                activeMassVar_->setRange(config.rangeName.c_str(), config.rangeMin, config.rangeMax);
+            }
+            activeMassVar_->setMin(config.rangeMin);
+            activeMassVar_->setMax(config.rangeMax);
+        }
         
         // Select appropriate strategy based on FitMethod for MC
         FitStrategyFactory::StrategyType mcStrategyType = FitStrategyFactory::StrategyType::MC; // default for MC
@@ -474,6 +513,7 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
             ErrorHandlerManager::Instance().LogError("MC fit execution returned null result", "PerformMCFit");
             throw FitException("PerformMCFit", -1, "MC fit execution returned null result");
         }
+        fitResult->Print("v");
         
         // Create MC workspace
         auto workspace = std::make_unique<RooWorkspace>(("mcWorkspace_" + name_).c_str());
@@ -485,10 +525,10 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
         resultManager_->StoreResult(finalResultName, std::move(fitResult),
                                    std::move(workspace), "MCFit");
         
-        // Store signal parameters (no background for MC fit)
-        std::map<std::string, RooRealVar*> yieldVars;
-        if (nsig_) yieldVars["nsig"] = nsig_.get();
-        resultManager_->StoreYields(finalResultName, yieldVars);
+        // Store signal yield for MC (supports formula-based yield)
+        std::map<std::string, RooAbsReal*> yieldExprs;
+        if (nsig_) yieldExprs["nsig"] = nsig_.get();
+        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
         
         LogOperation("PerformMCFit", "MC fit completed successfully: " + finalResultName);
         ErrorHandlerManager::Instance().LogInfo("MC fit completed successfully: " + finalResultName, "MassFitterV2");
@@ -514,6 +554,18 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         Validator::ValidateNotNull(dataset, "dataset");
         Validator::ValidateNotNull(mcDataset, "mcDataset");
         
+        // Align mass variable range with configuration
+        {
+            FitConfig baseCfg = options.ToFitConfig();
+            if (activeMassVar_) {
+                if (!baseCfg.rangeName.empty()) {
+                    activeMassVar_->setRange(baseCfg.rangeName.c_str(), baseCfg.rangeMin, baseCfg.rangeMax);
+                }
+                activeMassVar_->setMin(baseCfg.rangeMin);
+                activeMassVar_->setMax(baseCfg.rangeMax);
+            }
+        }
+
         // First perform MC fit to establish constraints
         std::string mcResultName = resultName + "_constraint_mc";
         bool mcSuccess = PerformMCFit(options, mcDataset, signalParams, mcResultName);
@@ -558,6 +610,7 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
             ErrorHandlerManager::Instance().LogError("Constraint fit execution returned null result", "PerformConstraintFit");
             throw FitException("PerformConstraintFit", -1, "Constraint fit execution returned null result");
         }
+        fitResult->Print("v");
         
         // Create constraint workspace
         auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
@@ -571,11 +624,11 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         resultManager_->StoreResult(finalResultName, std::move(fitResult),
                                    std::move(workspace), "ConstraintFit");
         
-        // Store yields
-        std::map<std::string, RooRealVar*> yieldVars;
-        if (nsig_) yieldVars["nsig"] = nsig_.get();
-        if (nbkg_) yieldVars["nbkg"] = nbkg_.get();
-        resultManager_->StoreYields(finalResultName, yieldVars);
+        // Store yields with error propagation
+        std::map<std::string, RooAbsReal*> yieldExprs;
+        if (nsig_) yieldExprs["nsig"] = nsig_.get();
+        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
+        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
         
         // Calculate quality metrics
         resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
@@ -676,7 +729,8 @@ inline std::unique_ptr<RooAbsPdf> MassFitterV2::CreatePDFFromParams<PDFParams::T
 template<>
 inline std::unique_ptr<RooAbsPdf> MassFitterV2::CreatePDFFromParams<PDFParams::PhenomenologicalParams>(
     const PDFParams::PhenomenologicalParams& params, const std::string& name, bool isSignal) {
-    return pdfFactory_->CreatePhenomenological(params, name);
+    // Switch to DstD0-style background implementation
+    return pdfFactory_->CreateDstD0Background(params, name);
 }
 
 template<>
@@ -721,9 +775,19 @@ inline void MassFitterV2::InitializeMassVariables(double massMin, double massMax
 
 inline void MassFitterV2::InitializeYieldVariables(double nsigRatio, double nsigMinRatio, double nsigMaxRatio,
                                                    double nbkgRatio, double nbkgMinRatio, double nbkgMaxRatio) {
-    // Store ratios directly - will be updated with actual data size later
-    nsig_ = std::make_unique<RooRealVar>("nsig", "Signal Yield", nsigRatio, nsigMinRatio, nsigMaxRatio);
-    nbkg_ = std::make_unique<RooRealVar>("nbkg", "Background Yield", nbkgRatio, nbkgMinRatio, nbkgMaxRatio);
+    // Fraction-based parameterization: nsig = fsig * Ntot, nbkg = (1-fsig) * Ntot
+    // Initialize fsig from provided ratio bounds
+    double fInit = nsigRatio;
+    double fMin  = std::max(0.0, nsigMinRatio);
+    double fMax  = std::min(1.0, nsigMaxRatio);
+    fsig_ = std::make_unique<RooRealVar>("fsig", "Signal Fraction", fInit, fMin, fMax);
+    
+    // Initialize Ntot with a reasonable placeholder; will be updated once data is set
+    ntot_ = std::make_unique<RooRealVar>("Ntot", "Total Expected Yield", 1000.0, 0.0, 1e9);
+
+    // Derived yields as formulas for extended fits
+    nsig_.reset(new RooFormulaVar("nsig", "@0*@1", RooArgList(*fsig_, *ntot_)));
+    nbkg_.reset(new RooFormulaVar("nbkg", "(1-@0)*@1", RooArgList(*fsig_, *ntot_)));
 }
 
 inline void MassFitterV2::SetupDefaultDependencies() {
@@ -742,37 +806,13 @@ inline void MassFitterV2::SetData(RooDataSet* dataset) {
     fullDataset_ = dataset;
     activeDataset_ = dataset;
     
-    // Update yield variables based on actual dataset size
-    if (dataset && nsig_ && nbkg_) {
+    // Update total yield based on dataset size
+    if (dataset && ntot_) {
         int dataSize = dataset->sumEntries();
         std::cout << "total Entries : " << dataSize << std::endl;
-        
-        // // Use ratios directly - these are now stored as ratios, not absolute values
-        // double nsigRatio = nsig_->getVal();  // Direct ratio from JSON
-        // double nbkgRatio = nbkg_->getVal();  // Direct ratio from JSON
-        
-        // double nsigMinRatio = nsig_->getMin();
-        // double nsigMaxRatio = nsig_->getMax();
-        // double nbkgMinRatio = nbkg_->getMin();
-        // double nbkgMaxRatio = nbkg_->getMax();
-        
-        // // Calculate yields as ratio * max_possible_entries (dataSize)
-        // double nsig_init = dataSize * nsigRatio;
-        // double nsig_min = dataSize * nsigMinRatio;
-        // double nsig_max = dataSize * nsigMaxRatio;
-        
-        // double nbkg_init = dataSize * nbkgRatio;
-        // double nbkg_min = dataSize * nbkgMinRatio;
-        // double nbkg_max = dataSize * nbkgMaxRatio;
-        
-        // nsig_->setRange(nsig_min, nsig_max);
-        // nsig_->setVal(nsig_init);
-        // nbkg_->setRange(nbkg_min, nbkg_max);
-        // nbkg_->setVal(nbkg_init);
-        
-        // std::cout << "Updated yield parameters based on data size:" << std::endl;
-        // std::cout << "  Signal: " << nsig_init << " [" << nsig_min << ", " << nsig_max << "]" << std::endl;
-        // std::cout << "  Background: " << nbkg_init << " [" << nbkg_min << ", " << nbkg_max << "]" << std::endl;
+        ntot_->setVal(dataSize);
+        ntot_->setRange(std::max(0.0, dataSize * 0.2), dataSize * 5.0);
+        ntot_->setConstant(true);
     }
 }
 
@@ -780,39 +820,209 @@ inline void MassFitterV2::ApplyCut(const std::string& cutExpr) {
     if (fullDataset_ && !cutExpr.empty()) {
         activeDataset_ = (RooDataSet*)fullDataset_->reduce(cutExpr.c_str());
         
-        // Update yield variables based on cut dataset size
-        if (activeDataset_ && nsig_ && nbkg_) {
+        // Update Ntot based on cut dataset size
+        if (activeDataset_ && ntot_) {
             int cutDataSize = activeDataset_->sumEntries();
             std::cout << "Cut applied. New data size: " << cutDataSize << std::endl;
-            
-            // Extract stored ratios - these are already ratios from previous calculation
-            double nsigRatio = nsig_->getVal(); 
-            double nbkgRatio = nbkg_->getVal();
-            
-            // Calculate for min/max ratios
-            double nsigMinRatio = nsig_->getMin();
-            double nsigMaxRatio = nsig_->getMax(); 
-            double nbkgMinRatio = nbkg_->getMin(); 
-            double nbkgMaxRatio = nbkg_->getMax(); 
-            
-            // Update with cut data size-based calculations
-            double nsig_init = cutDataSize * nsigRatio;
-            double nsig_min = cutDataSize * nsigMinRatio;
-            double nsig_max = cutDataSize * nsigMaxRatio;
-            
-            double nbkg_init = cutDataSize * nbkgRatio;
-            double nbkg_min = cutDataSize * nbkgMinRatio;
-            double nbkg_max = cutDataSize * nbkgMaxRatio;
-            
-            nsig_->setRange(nsig_min, nsig_max);
-            nsig_->setVal(nsig_init);
-            nbkg_->setRange(nbkg_min, nbkg_max);
-            nbkg_->setVal(nbkg_init);
-            
-            std::cout << "Updated yield parameters after cut:" << std::endl;
-            std::cout << "  Signal: " << nsig_init << " [" << nsig_min << ", " << nsig_max << "]" << std::endl;
-            std::cout << "  Background: " << nbkg_init << " [" << nbkg_min << ", " << nbkg_max << "]" << std::endl;
+            ntot_->setVal(cutDataSize);
+            ntot_->setRange(std::max(0.0, cutDataSize * 0.2), cutDataSize * 5.0);
+            ntot_->setConstant(true);
         }
+    }
+}
+
+// Perform data fit with Gaussian constraints derived from MC on selected parameters
+template<typename SignalParams, typename BackgroundParams>
+bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, RooDataSet* dataset, RooDataSet* mcDataset,
+                                                      const SignalParams& signalParams, const BackgroundParams& backgroundParams,
+                                                      const std::vector<std::string>& paramsToConstrain,
+                                                      const std::string& resultName) {
+    try {
+        LogOperation("PerformGaussianConstraintFitWithMC", "Delegating to GaussianConstraintStrategy");
+
+        // Validate inputs
+        Validator::ValidateNotNull(dataset, "dataset");
+        Validator::ValidateNotNull(mcDataset, "mcDataset");
+
+        // Prepare reduced MC dataset if cut is requested
+        std::unique_ptr<RooDataSet> mcReduced;
+        RooDataSet* mcForConstraints = mcDataset;
+        if (!options.cutMCExpr.empty()) {
+            mcReduced.reset(dynamic_cast<RooDataSet*>(mcDataset->reduce(options.cutMCExpr.c_str())));
+            if (mcReduced) mcForConstraints = mcReduced.get();
+        }
+
+        // Set data and cuts
+        SetData(dataset);
+        if (!options.cutExpr.empty()) {
+            ApplyCut(options.cutExpr);
+        }
+
+        // Build PDFs and model
+        SetSignalPDF(signalParams, "signal");
+        SetBackgroundPDF(backgroundParams, "background");
+        CreateTotalPDF();
+        if (!ValidatePDFSetup()) {
+            LOG_AND_THROW(PDFCreationException, "Total PDF is not configured", "PerformGaussianConstraintFitWithMC");
+        }
+
+        // Create strategy and execute constrained fit
+        auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 1.0);
+        FitConfig cfg = options.ToFitConfig();
+        if (activeMassVar_) {
+            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
+            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
+        }
+        auto fitResult = strategy->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
+        if (!fitResult) {
+            LOG_AND_THROW(MassFitterException, "Gaussian constrained fit returned null result", "PerformGaussianConstraintFitWithMC");
+        }
+
+        // Store results
+        auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
+        workspace->import(*totalPdf_);
+        workspace->import(*activeDataset_);
+        if (signalPdf_) workspace->import(*signalPdf_);
+        if (backgroundPdf_) workspace->import(*backgroundPdf_);
+
+        std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_gauss_constr")) : resultName;
+        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "GaussianConstraintFit");
+        std::map<std::string, RooAbsReal*> yieldExprs;
+        if (nsig_) yieldExprs["nsig"] = nsig_.get();
+        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
+        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
+        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+
+        LogOperation("PerformGaussianConstraintFitWithMC", "Completed successfully: " + finalResultName);
+        return true;
+
+    } catch (const std::exception& e) {
+        HandleFitException(e, "PerformGaussianConstraintFitWithMC");
+        return false;
+    }
+}
+
+// File-based Gaussian constraint: use RooFitResult from an MC result file
+template<typename SignalParams, typename BackgroundParams>
+bool MassFitterV2::PerformGaussianConstraintFitWithMCFile(const FitOpt& options, RooDataSet* dataset,
+                                                          const SignalParams& signalParams, const BackgroundParams& backgroundParams,
+                                                          const std::string& mcResultFile,
+                                                          const std::vector<std::string>& paramsToConstrain,
+                                                          const std::string& resultName) {
+    try {
+        LogOperation("PerformGaussianConstraintFitWithMCFile", "Using MC result file: " + mcResultFile);
+        Validator::ValidateNotNull(dataset, "dataset");
+
+        // Set data and apply cuts
+        SetData(dataset);
+        if (!options.cutExpr.empty()) {
+            ApplyCut(options.cutExpr);
+        }
+
+        // Build PDFs and model
+        SetSignalPDF(signalParams, "signal");
+        SetBackgroundPDF(backgroundParams, "background");
+        CreateTotalPDF();
+        if (!ValidatePDFSetup()) {
+            LOG_AND_THROW(PDFCreationException, "Total PDF is not configured", "PerformGaussianConstraintFitWithMCFile");
+        }
+
+        // Build Gaussian constraints from saved RooFitResult
+        std::unique_ptr<TFile> fin(TFile::Open(mcResultFile.c_str(), "READ"));
+        if (!fin || fin->IsZombie()) {
+            LOG_AND_THROW(MassFitterException, "Cannot open MC result file: " + mcResultFile, "PerformGaussianConstraintFitWithMCFile");
+        }
+        RooFitResult* rf = dynamic_cast<RooFitResult*>(fin->Get("fitResult"));
+        if (!rf) {
+            LOG_AND_THROW(MassFitterException, "fitResult object not found in MC file", "PerformGaussianConstraintFitWithMCFile");
+        }
+
+        std::map<std::string, std::pair<double,double>> constr; // name -> {mean, sigma}
+        auto finals = rf->floatParsFinal();
+        for (const auto& pname : paramsToConstrain) {
+            RooAbsArg* arg = nullptr;
+            for (int i=0; i<finals.getSize(); ++i) {
+                if (std::string(finals.at(i)->GetName()) == pname) { arg = finals.at(i); break; }
+            }
+            if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
+                double mu = v->getVal();
+                double err = v->getError();
+                if (err <= 0) {
+                    double eh = std::abs(v->getErrorHi());
+                    double el = std::abs(v->getErrorLo());
+                    err = 0.5 * (eh + el);
+                    if (err <= 0) err = 1e-6;
+                }
+                constr[pname] = {mu, std::max(err, 1e-6)};
+            }
+        }
+
+        std::unique_ptr<RooArgSet> dataVars(totalPdf_->getVariables());
+        RooArgSet constraintPdfs;
+        std::vector<std::unique_ptr<RooRealVar>> meansKeeper;
+        std::vector<std::unique_ptr<RooRealVar>> sigmasKeeper;
+        std::vector<std::unique_ptr<RooGaussian>> gaussKeeper;
+        for (const auto& [name, muSig] : constr) {
+            if (auto* target = dynamic_cast<RooRealVar*>(dataVars->find(name.c_str()))) {
+                auto mean = std::make_unique<RooRealVar>(("mc_mean_" + name).c_str(), ("mc_mean_" + name).c_str(), muSig.first);
+                auto sigma = std::make_unique<RooRealVar>(("mc_sigma_" + name).c_str(), ("mc_sigma_" + name).c_str(), muSig.second);
+                auto gauss = std::make_unique<RooGaussian>(("constr_" + name).c_str(), ("constr_" + name).c_str(), *target, *mean, *sigma);
+                constraintPdfs.add(*gauss);
+                meansKeeper.push_back(std::move(mean));
+                sigmasKeeper.push_back(std::move(sigma));
+                gaussKeeper.push_back(std::move(gauss));
+            }
+        }
+
+        // Fit with external constraints
+        FitConfig cfg = options.ToFitConfig();
+        if (activeMassVar_) {
+            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
+            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
+        }
+        RooLinkedList fitOpts;
+        fitOpts.Add(new RooCmdArg(RooFit::NumCPU(cfg.numCPU)));
+        fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(cfg.verbose ? 1 : -1)));
+        fitOpts.Add(new RooCmdArg(RooFit::Save(true)));
+        fitOpts.Add(new RooCmdArg(RooFit::Minimizer(cfg.strategy.c_str(), cfg.minimizer.c_str())));
+        fitOpts.Add(new RooCmdArg(RooFit::SumW2Error(true)));
+        fitOpts.Add(new RooCmdArg((cfg.fitMethod == FitMethod::Extended || cfg.fitMethod == FitMethod::Robust) ? RooFit::Extended(true) : RooFit::Extended(false)));
+        if (cfg.useHesse) fitOpts.Add(new RooCmdArg(RooFit::Hesse(true)));
+        if (cfg.useMinos) fitOpts.Add(new RooCmdArg(RooFit::Minos(true)));
+        if (!cfg.rangeName.empty()) fitOpts.Add(new RooCmdArg(RooFit::Range(cfg.rangeName.c_str())));
+#if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
+        if (cfg.useCUDA) fitOpts.Add(new RooCmdArg(RooFit::EvalBackend("cuda")));
+#endif
+        if (constraintPdfs.getSize() > 0) {
+            fitOpts.Add(new RooCmdArg(RooFit::ExternalConstraints(constraintPdfs)));
+        }
+
+        auto fitResult = std::unique_ptr<RooFitResult>(totalPdf_->fitTo(*activeDataset_, fitOpts));
+        if (!fitResult) {
+            LOG_AND_THROW(MassFitterException, "Gaussian constrained (file) fit returned null result", "PerformGaussianConstraintFitWithMCFile");
+        }
+
+        // Store results as usual
+        auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
+        workspace->import(*totalPdf_);
+        workspace->import(*activeDataset_);
+        if (signalPdf_) workspace->import(*signalPdf_);
+        if (backgroundPdf_) workspace->import(*backgroundPdf_);
+
+        std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_gauss_constr")) : resultName;
+        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "GaussianConstraintFit");
+        std::map<std::string, RooRealVar*> yieldVars;
+        if (nsig_) yieldVars["nsig"] = nsig_.get();
+        if (nbkg_) yieldVars["nbkg"] = nbkg_.get();
+        resultManager_->StoreYields(finalResultName, yieldVars);
+        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+
+        LogOperation("PerformGaussianConstraintFitWithMCFile", "Completed successfully: " + finalResultName);
+        return true;
+
+    } catch (const std::exception& e) {
+        HandleFitException(e, "PerformGaussianConstraintFitWithMCFile");
+        return false;
     }
 }
 
@@ -823,7 +1033,6 @@ inline void MassFitterV2::CreateTotalPDF() {
                                                 RooArgList(*nsig_, *nbkg_));
     }
 }
-
 inline bool MassFitterV2::ValidateInputs(RooDataSet* dataset) const {
     return dataset && dataset->numEntries() > 0;
 }
@@ -855,12 +1064,30 @@ inline double MassFitterV2::GetSignalYield(const std::string& resultName) const 
 }
 
 inline double MassFitterV2::GetSignalYieldError(const std::string& resultName) const {
-    if (nsig_) return nsig_->getError();
+    if (!nsig_) return 0.0;
+    // Propagate error from fit result if available
+    if (resultManager_) {
+        const FitResults* res = resultManager_->GetResult(resultName);
+        if (res && res->fitResult) {
+            return nsig_->getPropagatedError(*res->fitResult);
+        }
+    }
     return 0.0;
 }
 
 inline double MassFitterV2::GetBackgroundYield(const std::string& resultName) const {
     if (nbkg_) return nbkg_->getVal();
+    return 0.0;
+}
+
+inline double MassFitterV2::GetBackgroundYieldError(const std::string& resultName) const {
+    if (!nbkg_) return 0.0;
+    if (resultManager_) {
+        const FitResults* res = resultManager_->GetResult(resultName);
+        if (res && res->fitResult) {
+            return nbkg_->getPropagatedError(*res->fitResult);
+        }
+    }
     return 0.0;
 }
 
@@ -908,6 +1135,8 @@ inline void MassFitterV2::SaveResult(const std::string& resultName, const std::s
     }
     
     try {
+        // Ensure the output directory exists (create recursively if needed)
+        createDir(filePath);
         // Use ResultManager to save the result
         std::string fullPath = filePath + "/" + fileName;
         resultManager_->SaveResult(resultName, fullPath, saveWorkspace);
@@ -926,6 +1155,8 @@ inline void MassFitterV2::SaveResults(const std::string& filePath, const std::st
     }
     
     try {
+        // Ensure the output directory exists (create recursively if needed)
+        createDir(filePath);
         // Save all stored results
         auto resultNames = GetResultNames();
         if (resultNames.empty()) {

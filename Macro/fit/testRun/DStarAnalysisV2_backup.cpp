@@ -199,15 +199,13 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
         std::cout << "[JSON Loader] Loading parameters for bin: " << bin.GetBinName() << std::endl;
         
         try {
-            // Use utility function for automatic parameter and fixed flags loading (C++14-compatible)
-            auto loaded = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
-            DStarBinParameters binParams = loaded.first;
-            ParameterFixedInfo fixedInfo = loaded.second;
-
+            // Use utility function for automatic parameter and fixed flags loading
+            auto [binParams, fixedInfo] = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
+            
             // Apply parameters and fixed flags to config
             config.SetParametersForBin(bin, binParams);
             config.SetFixedFlagsForBin(bin, fixedInfo.fixedFlags);
-
+            
             std::cout << "[JSON Loader] ✅ Successfully loaded parameters and fixed flags for bin: " << bin.GetBinName() << std::endl;
         } catch (const std::exception& e) {
             std::cout << "[JSON Loader] ❌ Failed to load parameters for bin " << bin.GetBinName() 
@@ -231,8 +229,7 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p99_np_PbPb_Aug25_v1.root");
     config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetDatasetName("datasetHX");
-    config.SetOutputSubDir(SelectionCuts::SUB_DIR);
-    // std::cout << "SelectionCuts::SUB_DIR"  << " " << SelectionCuts::SUB_DIR << std::endl;
+    config.SetOutputSubDir("/DStar_PbPb_Analysis_V2/");
     
     // Configure fit options
     config.SetFitMethod(FitMethod::Extended);  // NLL, BinnedNLL, Extended 
@@ -433,27 +430,36 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
             
             bool fitSuccess = false;
             if (doReFit) {
-                // Show active parameter types (C++14-compatible)
+                // Get parameters automatically based on PDF type using std::visit
+                auto signalParamsVariant = binParams.GetSignalParamsByType();
+                auto backgroundParamsVariant = binParams.GetBackgroundParamsByType();
+                
                 std::cout << "\n=== PARAMETER CONFIGURATION ===" << std::endl;
-                binParams.ApplyToSignalParams([&](const auto& signalParams){
-                    typedef typename std::decay<decltype(signalParams)>::type ParamType;
+                
+                // Print signal parameters
+                std::visit([&](auto&& signalParams) {
+                    using ParamType = std::decay_t<decltype(signalParams)>;
                     std::cout << "SIGNAL PDF PARAMETERS (" << GetPDFTypeName<ParamType>() << "):" << std::endl;
-                });
-                binParams.ApplyToBackgroundParams([&](const auto& backgroundParams){
-                    typedef typename std::decay<decltype(backgroundParams)>::type ParamType;
+                    // PrintParameters(signalParams);
+                }, signalParamsVariant);
+                
+                // Print background parameters  
+                std::visit([&](auto&& backgroundParams) {
+                    using ParamType = std::decay_t<decltype(backgroundParams)>;
                     std::cout << "\nBACKGROUND PDF PARAMETERS (" << GetPDFTypeName<ParamType>() << "):" << std::endl;
-                });
+                    // PrintParameters(backgroundParams);
+                }, backgroundParamsVariant);
+                
                 std::cout << "===============================\n" << std::endl;
-
-                // Perform fit by dispatching on active parameter types (no std::visit)
-                binParams.ApplyToSignalParams([&](const auto& signalParams){
-                    binParams.ApplyToBackgroundParams([&](const auto& backgroundParams){
-                        fitSuccess = fitter->PerformFit(fitOpt, dataset,
-                                                       signalParams,
+                
+                std::visit([&](auto&& signalParams) {
+                    std::visit([&](auto&& backgroundParams) {
+                        fitSuccess = fitter->PerformFit(fitOpt, dataset, 
+                                                       signalParams, 
                                                        backgroundParams,
                                                        bin.GetBinName());
-                    });
-                });
+                    }, backgroundParamsVariant);
+                }, signalParamsVariant);
             } else {
                 // Check if results already exist
                 std::cout << "Skipping fit (doReFit=false). Loading existing results..." << std::endl;
@@ -509,10 +515,10 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
                         auto mcDataset = mcLoader.getDataSet();
                         if (mcDataset) {
                             bool mcFitSuccess = false;
-                            auto mcBinParams = config.GetParametersForBin(bin);
-                            mcBinParams.ApplyToSignalParams([&](const auto& signalParams){
-                                mcFitSuccess = fitter->PerformMCFit(fitOpt, mcDataset, signalParams, bin.GetBinName() + std::string("_MC"));
-                            });
+                            auto signalParamsVariant = binParams.GetSignalParamsByType();
+                            std::visit([&](auto&& signalParams) {
+                                mcFitSuccess = fitter->PerformMCFit(fitOpt, mcDataset, signalParams, bin.GetBinName() + "_MC");
+                            }, signalParamsVariant);
 
                             if (mcFitSuccess) {
                                 std::cout << "[MC] ✓ MC fit successful" << std::endl;
@@ -596,6 +602,63 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
                         std::cout << "Continuing without plots..." << std::endl;
                     }
                 }
+                
+                // --- Gaussian-constraint fit using MC-derived parameter constraints ---
+                try {
+                    std::cout << "\n[GC] Performing Gaussian-constrained fit using saved MC fit..." << std::endl;
+                    // Prepare parameter variants again
+                    auto gcSignalParamsVariant = binParams.GetSignalParamsByType();
+                    auto gcBackgroundParamsVariant = binParams.GetBackgroundParamsByType();
+
+                    // Choose a conservative constraint set by signal PDF type
+                    std::vector<std::string> constrainParams;
+                    switch (binParams.signalPdfType) {
+                        case PDFType::Gaussian:            constrainParams = {"mean", "sigma"}; break;
+                        case PDFType::DoubleGaussian:      constrainParams = {"mean", "sigma1"}; break;
+                        case PDFType::CrystalBall:         constrainParams = {"mean", "sigma"}; break;
+                        case PDFType::DBCrystalBall:       constrainParams = {"mean", "sigma"}; break;
+                        case PDFType::DoubleDBCrystalBall: constrainParams = {"mean", "sigma"}; break;
+                        case PDFType::Voigtian:            constrainParams = {"mean"}; break;
+                        case PDFType::BreitWigner:         constrainParams = {"mean"}; break;
+                        default:                           constrainParams = {"mean"}; break;
+                    }
+
+                    std::cout << "[GC] Constraining parameters: ";
+                    for (size_t i = 0; i < constrainParams.size(); ++i) {
+                        std::cout << constrainParams[i] << (i + 1 < constrainParams.size() ? ", " : "\n");
+                    }
+
+                    // Point to the saved MC fit file created earlier
+                    std::string mcResultFile = fitOpt.outputDir + fitOpt.subDir + "/MC/" + fitOpt.outputFile + ".root";
+                    bool gcSuccess = false;
+                    std::string gcResultName = bin.GetBinName() + std::string("_GC");
+                    std::visit([&](auto&& signalParams) {
+                        std::visit([&](auto&& backgroundParams) {
+                            gcSuccess = fitter->PerformGaussianConstraintFitWithMCFile(
+                                fitOpt, dataset,
+                                signalParams, backgroundParams,
+                                mcResultFile,
+                                constrainParams,
+                                gcResultName
+                            );
+                        }, gcBackgroundParamsVariant);
+                    }, gcSignalParamsVariant);
+
+                    if (gcSuccess) {
+                        std::cout << "[GC] ✓ Gaussian-constrained fit successful" << std::endl;
+                        // Save under a separate file to avoid overwriting the main result
+                        std::string fullOutDir = fitOpt.outputDir + fitOpt.subDir + "/Data";
+                        createDir(Form("%s/", fullOutDir.c_str()));
+                        fitter->SaveResult(gcResultName, fullOutDir, fitOpt.outputFile + "_gauss.root", true);
+                        // Optional: export JSON
+                        fitter->ExportResults("json", fullOutDir + "/" + fitOpt.outputFile + "_gauss_results.json");
+                    } else {
+                        std::cout << "[GC] ✗ Gaussian-constrained fit failed" << std::endl;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "[GC] Exception during Gaussian-constrained fit: " << e.what() << std::endl;
+                }
+
                 
                 // // --- DCA Analysis (template fit) ---
                 // try {
