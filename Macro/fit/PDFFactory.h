@@ -40,7 +40,9 @@ public:
     std::unique_ptr<RooAbsPdf> CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name = "phenom");
     // D* -> D0 specific combinatorial-like background (DstD0) used in older macros
     // Built from the same functional form used in MassFitter_temp::MakeRooDstD0Bg
-    std::unique_ptr<RooAbsPdf> CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name = "dstd0");
+    // std::unique_ptr<RooAbsPdf> CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name = "dstd0");
+    // Overload using independent DstD0Params structure
+    std::unique_ptr<RooAbsPdf> CreateDstD0Background(const PDFParams::DstD0Params& params, const std::string& name = "dstd0");
     std::unique_ptr<RooAbsPdf> CreateExpErf(const PDFParams::ExpErfBkgParams& params, const std::string& name = "experf");
     std::unique_ptr<RooAbsPdf> CreateDstBg(const PDFParams::DstBkgParams& params, const std::string& name = "dstbg");
     std::unique_ptr<RooAbsPdf> CreateThresholdFunction(const PDFParams::ThresholdFuncParams& params, const std::string& name = "threshold");
@@ -311,45 +313,92 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateThresholdFunction(const PDFP
                                           varList);
 }
 
-inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name) {
-    if (!massVar_) return nullptr;
+// inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name) {
+//     if (!massVar_) return nullptr;
     
-    auto p0 = CreateParameter("phenom_p0_" + name, "Phenomenological p0", 
-                             params.p0, params.p0_min, params.p0_max);
-    auto p1 = CreateParameter("phenom_p1_" + name, "Phenomenological p1",
-                             params.p1, params.p1_min, params.p1_max);
-    auto p2 = CreateParameter("phenom_p2_" + name, "Phenomenological p2",
-                             params.p2, params.p2_min, params.p2_max);
+//     auto p0 = CreateParameter("phenom_p0_" + name, "Phenomenological p0", 
+//                              params.p0, params.p0_min, params.p0_max);
+//     auto p1 = CreateParameter("phenom_p1_" + name, "Phenomenological p1",
+//                              params.p1, params.p1_min, params.p1_max);
+//     auto p2 = CreateParameter("phenom_p2_" + name, "Phenomenological p2",
+//                              params.p2, params.p2_min, params.p2_max);
     
-    RooRealVar* p0Ptr = p0.get();
-    RooRealVar* p1Ptr = p1.get();
-    RooRealVar* p2Ptr = p2.get();
+//     RooRealVar* p0Ptr = p0.get();
+//     RooRealVar* p1Ptr = p1.get();
+//     RooRealVar* p2Ptr = p2.get();
     
-    StoreParameter(std::move(p0));
-    StoreParameter(std::move(p1));
-    StoreParameter(std::move(p2));
+//     StoreParameter(std::move(p0));
+//     StoreParameter(std::move(p1));
+//     StoreParameter(std::move(p2));
     
-    // Create phenomenological function: p0 * exp(p1 * x + p2 * x^2)
-    std::string formula = "@0 * TMath::Exp(@1 * @3 + @2 * @3 * @3)";
+//     // Create phenomenological function: p0 * exp(p1 * x + p2 * x^2)
+//     // std::string formula = "@0 * TMath::Exp(@1 * @3 + @2 * @3 * @3)";
+//     // Create phenomenological function: (x-m_pi)^m *exp(p0(x-m_pi)+p1(x-m_pi)^2+p2(x-m_pi)^3)
+//     std::string formula = "TMath::Power((@3 - @2), @0) * TMath::Exp(@1 * (@3 - @2) + @2 * TMath::Power((@3 - @2), 2) + @3 * TMath::Power((@3 - @2), 3))";
     
-    RooArgList varList;
-    varList.add(*p0Ptr);    // @0
-    varList.add(*p1Ptr);    // @1
-    varList.add(*p2Ptr);    // @2
-    varList.add(*massVar_); // @3
+//     RooArgList varList;
+//     varList.add(*p0Ptr);    // @0
+//     varList.add(*p1Ptr);    // @1
+//     varList.add(*p2Ptr);    // @2
+//     varList.add(*massVar_); // @3
     
-    return std::make_unique<RooGenericPdf>(name.c_str(), 
-                                          ("Phenomenological_" + name).c_str(),
-                                          formula.c_str(),
-                                          varList);
-}
+//     return std::make_unique<RooGenericPdf>(name.c_str(), 
+//                                           ("Phenomenological_" + name).c_str(),
+//                                           formula.c_str(),
+//                                           varList);
+// }
 
-inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name) {
+inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name) {
     if (!massVar_) return nullptr;
 
     // Parameters following the legacy MakeRooDstD0Bg implementation
     // m0 is set to the charged pion mass and fixed
     constexpr double PION_MASS_LOCAL = 0.13957039; // Avoid including MassFitterV2.h here
+
+    auto m0  = CreateParameter("m0_" + name,  "m0",  PION_MASS_LOCAL, PION_MASS_LOCAL, PION_MASS_LOCAL);
+    auto m  = CreateParameter("m_" + name,  "m",  params.m, params.m_min, params.m_max);
+    auto p0  = CreateParameter("p0_" + name,  "p0",  params.p0, params.p0_min, params.p0_max);
+    auto p1  = CreateParameter("p1_" + name,  "p1",  params.p1, params.p1_min, params.p1_max);
+    auto p2  = CreateParameter("p2_" + name,  "p2",  params.p2, params.p2_min, params.p2_max);
+
+    RooRealVar* m0Ptr = m0.get();
+    RooRealVar* mPtr = m.get();
+    RooRealVar* p0Ptr = p0.get();
+    RooRealVar* p1Ptr = p1.get();
+    RooRealVar* p2Ptr = p2.get();
+
+    // Fix m0 strictly to the pion mass
+    m0Ptr->setConstant(true);
+
+    StoreParameter(std::move(m0));
+    StoreParameter(std::move(m));
+    StoreParameter(std::move(p0));
+    StoreParameter(std::move(p1));
+    StoreParameter(std::move(p2));
+
+    // Build the functional form directly with RooGenericPdf to avoid external dependencies
+    // args: [0]=massVar, [1]=m0, [2]=m, [3]=p0, [4]=p1, [5]=p2
+    // Create phenomenological function: (x-m_0)^m *exp(p0(x-m_0)+p1(x-m_0)^2+p2(x-m_0)^3)
+    RooArgList args;
+    args.add(*massVar_);
+    args.add(*m0Ptr);
+    args.add(*mPtr);
+    args.add(*p0Ptr);
+    args.add(*p1Ptr);
+    args.add(*p2Ptr);
+
+    std::string formula = "TMath::Power((@0 - @1), @2) * TMath::Exp(@3 * (@0 - @1) + @4 * TMath::Power((@0 - @1), 2) + @5 * TMath::Power((@0 - @1), 3))";
+    // return std::make_unique<RooDstD0BG>(name.c_str(), ("DstD0Background_" + name).c_str(), args);
+    // Replaced with RooGenericPdf to avoid external header dependency
+    // return std::make_unique<RooDstD0BG>(name.c_str(), ("RooDstD0Bg" + name).c_str(), *massVar_, *m0Ptr, *p0Ptr, *p1Ptr, *p2Ptr);
+    return std::make_unique<RooGenericPdf>(name.c_str(), ("Phenomenological_" + name).c_str(), formula.c_str(), args);
+    
+}
+
+inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFParams::DstD0Params& params, const std::string& name) {
+    if (!massVar_) return nullptr;
+
+    constexpr double PION_MASS_LOCAL = 0.13957039;
 
     auto m0  = CreateParameter("m0_" + name,  "m0",  PION_MASS_LOCAL, PION_MASS_LOCAL, PION_MASS_LOCAL);
     auto p0  = CreateParameter("p0_" + name,  "p0",  params.p0, params.p0_min, params.p0_max);
@@ -361,7 +410,6 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFPar
     RooRealVar* p1Ptr = p1.get();
     RooRealVar* p2Ptr = p2.get();
 
-    // Fix m0 strictly to the pion mass
     m0Ptr->setConstant(true);
 
     StoreParameter(std::move(m0));
@@ -369,20 +417,7 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFPar
     StoreParameter(std::move(p1));
     StoreParameter(std::move(p2));
 
-    // Build the functional form directly with RooGenericPdf to avoid external dependencies
-    // f(x) = (1 - exp(-(x - m0)/p0)) * (x/m0)^{p1} + p2 * (x/m0 - 1)
-    // args: [0]=massVar, [1]=m0, [2]=p0, [3]=p1, [4]=p2
-    // RooArgList args;
-    // args.add(*massVar_);
-    // args.add(*m0Ptr);
-    // args.add(*p0Ptr);
-    // args.add(*p1Ptr);
-    // args.add(*p2Ptr);
-    // return std::make_unique<RooDstD0BG>(name.c_str(), ("DstD0Background_" + name).c_str(), args);
-    // Replaced with RooGenericPdf to avoid external header dependency
     return std::make_unique<RooDstD0BG>(name.c_str(), ("RooDstD0Bg" + name).c_str(), *massVar_, *m0Ptr, *p0Ptr, *p1Ptr, *p2Ptr);
-    // return std::make_unique<RooGenericPdf>(name.c_str(), ("DstD0Background_" + name).c_str(), formula.c_str(), args);
-    
 }
 
 inline void PDFFactory::StoreParameter(std::unique_ptr<RooRealVar> param) {

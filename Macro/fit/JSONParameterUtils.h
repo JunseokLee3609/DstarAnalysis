@@ -353,7 +353,13 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         binParams.phenomenologicalParams.p0_min = param.min;
         binParams.phenomenologicalParams.p0_max = param.max;
         fixedInfo.addFixedFlag("p0_phenom", param.isFixed);
-        
+
+        param = jsonLoader.getParameter(binId, "background_m");
+        binParams.phenomenologicalParams.m = param.value;
+        binParams.phenomenologicalParams.m_min = param.min;
+        binParams.phenomenologicalParams.m_max = param.max;
+        fixedInfo.addFixedFlag("m_phenom", param.isFixed);
+
         param = jsonLoader.getParameter(binId, "background_p1");
         binParams.phenomenologicalParams.p1 = param.value;
         binParams.phenomenologicalParams.p1_min = param.min;
@@ -429,6 +435,25 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         binParams.dstBkgParams.p2_min = param.min;
         binParams.dstBkgParams.p2_max = param.max;
         fixedInfo.addFixedFlag("p2_dstbkg", param.isFixed);
+    } else if (backgroundPdfType == "DstD0") {
+        binParams.backgroundPdfType = PDFType::DstD0;
+        auto param = jsonLoader.getParameter(binId, "background_p0");
+        binParams.dstD0Params.p0 = param.value;
+        binParams.dstD0Params.p0_min = param.min;
+        binParams.dstD0Params.p0_max = param.max;
+        fixedInfo.addFixedFlag("p0_dstd0", param.isFixed);
+
+        param = jsonLoader.getParameter(binId, "background_p1");
+        binParams.dstD0Params.p1 = param.value;
+        binParams.dstD0Params.p1_min = param.min;
+        binParams.dstD0Params.p1_max = param.max;
+        fixedInfo.addFixedFlag("p1_dstd0", param.isFixed);
+
+        param = jsonLoader.getParameter(binId, "background_p2");
+        binParams.dstD0Params.p2 = param.value;
+        binParams.dstD0Params.p2_min = param.min;
+        binParams.dstD0Params.p2_max = param.max;
+        fixedInfo.addFixedFlag("p2_dstd0", param.isFixed);
     }
     
     // Load yield parameters

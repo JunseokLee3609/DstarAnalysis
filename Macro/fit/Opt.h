@@ -210,7 +210,7 @@ struct FitOpt {
         name = "DStar";
         fitMethod = FitMethod::BinnedNLL;
         massVar = "massPion";
-        massMin = 0.140; massMax = 0.150;
+        massMin = 0.140; massMax = 0.155;
         pTMin = 10.0; pTMax = 100.0;
         cosMin = -2.0; cosMax = 2.0;
         mvaMin = 0.99;

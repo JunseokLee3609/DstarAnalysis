@@ -34,7 +34,8 @@ enum class PDFType {
     Polynomial = 13,
     ThresholdFunction = 14,
     ExpErf = 15,
-    DstBkg = 16
+    DstBkg = 16,
+    DstD0  = 17
 };
 
 /**
@@ -109,6 +110,7 @@ struct DStarBinParameters {
     PDFParams::ThresholdFuncParams thresholdFuncParams;
     PDFParams::ExpErfBkgParams expErfParams;
     PDFParams::DstBkgParams dstBkgParams;
+    PDFParams::DstD0Params dstD0Params;
     
     // Legacy parameters for backward compatibility
     PDFParams::DBCrystalBallParams signalParams;    // Points to dbCrystalBallParams
@@ -153,6 +155,7 @@ struct DStarBinParameters {
             case PDFType::ThresholdFunction:   f(thresholdFuncParams); break;
             case PDFType::ExpErf:              f(expErfParams); break;
             case PDFType::DstBkg:              f(dstBkgParams); break;
+            case PDFType::DstD0:               f(dstD0Params); break;
             default:                            f(phenomenologicalParams); break; // fallback
         }
     }
@@ -321,6 +324,9 @@ public:
     void SetVerbose(bool verbose) { verbose_ = verbose; }
     void SetDoRefit(bool refit) { doRefit_ = refit; }
     void SetUseAbsCosCuts(bool use) { useAbsCosCuts_ = use; }
+    // Auto-tune behavior when changing yield mode (e.g., switch to NLL and enable fsig coefficient model)
+    void SetYieldModeAutoTuning(bool v) { yieldModeAutoTuning_ = v; }
+    bool GetYieldModeAutoTuning() const { return yieldModeAutoTuning_; }
     
     FitMethod GetFitMethod() const { return fitMethod_; }
     bool GetUseCUDA() const { return useCUDA_; }
@@ -415,6 +421,24 @@ public:
         return tempOpt.ToFitConfig();
     }
     
+    // Yield-mode preference (default: Fraction)
+    void SetUseIndependentYields(bool v) {
+        useIndependentYields_ = v;
+        if (yieldModeAutoTuning_) {
+            if (!v) {
+                // Fraction mode: prefer non-extended fits and coefficient model
+                fitMethod_ = FitMethod::NLL;
+                preferCoeffModelForFraction_ = true;
+            } else {
+                // Independent yields: default back to Extended unless user overrides later
+                fitMethod_ = FitMethod::Extended;
+                preferCoeffModelForFraction_ = false;
+            }
+        }
+    }
+    bool GetUseIndependentYields() const { return useIndependentYields_; }
+    bool GetPreferCoeffModelForFraction() const { return preferCoeffModelForFraction_; }
+    
 private:
     // Kinematic bins
     std::vector<std::pair<double, double>> ptBins_;
@@ -439,6 +463,9 @@ private:
     bool verbose_ = false;
     bool doRefit_ = false;
     bool useAbsCosCuts_ = true;  // Whether to use abs(cosThetaHX) in cuts
+    bool useIndependentYields_ = true; // Whether to use independent nsig/nbkg yields
+    bool yieldModeAutoTuning_ = false;  // When true, auto-adjust fit method and model by yield mode
+    bool preferCoeffModelForFraction_ = false; // Enable fsig coefficient model in fraction mode
     
     // Selection cuts
     std::string slowPionCut_;
@@ -513,7 +540,8 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
         binParams.nsig_max_ratio,
         binParams.nbkg_ratio,
         binParams.nbkg_min_ratio,
-        binParams.nbkg_max_ratio
+        binParams.nbkg_max_ratio,
+        config.GetUseIndependentYields() ? MassFitterV2::YieldMode::Independent : MassFitterV2::YieldMode::Fraction
     );
     
     // Configure for delta mass
@@ -527,7 +555,13 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
     std::cout << "[Config] Signal PDF: " << static_cast<int>(binParams.signalPdfType) 
               << ", Background PDF: " << static_cast<int>(binParams.backgroundPdfType) << std::endl;
     
-    // The fitter will use the binParams.signalPdfType and backgroundPdfType 
+    // Auto-enable coefficient-based fraction model when requested by config
+    if (!config.GetUseIndependentYields() && config.GetPreferCoeffModelForFraction()) {
+        std::cout << "[Config] Enabling coefficient-based fraction model (fsig) automatically" << std::endl;
+        fitter->UseFractionCoefficientModel(true);
+    }
+
+    // The fitter will use the binParams.signalPdfType and backgroundPdfType
     // when SetSignalPDF() and SetBackgroundPDF() are called in PerformFit()
     
     return fitter;

@@ -7,7 +7,7 @@
 #include "../JSONParameterUtils.h"     // JSON parameter utilities (includes JSONParameterLoader)
 #include "../../Tools/ConfigManager.h"
 #include "../ParameterDebugUtils.h"     // Centralized parameter printing utilities
-// #include "../DCAFitter.h"               // DCA template fitter
+#include "../DCAFitter.h"               // DCA template fitter
 #include <fstream>
 #include <algorithm>
 #include <cctype>
@@ -33,6 +33,7 @@ template<> std::string GetPDFTypeName<PDFParams::PolynomialBkgParams>() { return
 template<> std::string GetPDFTypeName<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
 template<> std::string GetPDFTypeName<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
 template<> std::string GetPDFTypeName<PDFParams::DstBkgParams>() { return "DstBg"; }
+template<> std::string GetPDFTypeName<PDFParams::DstD0Params>() { return "DstD0Bg"; }
 
 
 /**
@@ -215,7 +216,7 @@ void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile)
         }
     }
 }
-void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = true,
+void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = true, bool useCUDA = true,
                      float pTMin = 10, float pTMax = 100, float cosMin = -2, float cosMax = 2,
                      int centralityMin = 0, int centralityMax = 100, 
                      const std::string& parameterFile = "", bool isMC = false) {
@@ -225,6 +226,8 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     
     // Create main configuration
     DStarFitConfig config;
+    // Enable auto-tuning: switching yield mode adjusts fit method and model
+    config.SetYieldModeAutoTuning(false);
     
     // Configure file paths
     // config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
@@ -232,10 +235,10 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetDatasetName("datasetHX");
     config.SetOutputSubDir(SelectionCuts::SUB_DIR);
-    // std::cout << "SelectionCuts::SUB_DIR"  << " " << SelectionCuts::SUB_DIR << std::endl;
+    config.SetFitMethod(FitMethod::Extended);  // Use NLL for better stability with low stats
     
     // Configure fit options
-    config.SetFitMethod(FitMethod::Extended);  // NLL, BinnedNLL, Extended 
+    // Enable auto-tuned Fraction yield mode (auto-switches to NLL and coeff model)
     config.SetUseCUDA(useCUDA);
     config.SetVerbose(false);
     config.SetDoRefit(doReFit);
@@ -243,9 +246,10 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     // Configure selection cuts
     config.SetSlowPionCut(SelectionCuts::getSlowPionCuts());
     config.SetGrandDaughterCut(SelectionCuts::getGrandDaughterCuts());
-    config.SetMVACut(0.99);
+    config.SetMVACut(0.999);
     // Use |cos(theta*)| for cuts if desired
     config.SetUseAbsCosCuts(true);
+    config.SetUseIndependentYields(true);
     
     // Create single kinematic bin for analysis
     KinematicBin currentBin(pTMin, pTMax, cosMin, cosMax, centralityMin, centralityMax);
@@ -402,6 +406,7 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
     try {
         // Create optimized fitter for this bin
         auto fitter = CreateDStarFitter(bin, config);
+        // Coefficient model is auto-enabled by config when Fraction mode is selected
         
         // Get bin-specific parameters
         auto binParams = config.GetParametersForBin(bin);
@@ -597,64 +602,81 @@ void DStarAnalysisV2(bool doReFit = false, bool plotFit = true, bool useCUDA = t
                     }
                 }
                 
-                // // --- DCA Analysis (template fit) ---
-                // try {
-                //     std::cout << "\n[ DCA ] Starting DCA template fit..." << std::endl;
+                // --- DCA Analysis (template fit) ---
+                if(doDCA){
+                try {
+                    std::cout << "\n[ DCA ] Starting DCA template fit..." << std::endl;
 
-                //     // Prepare DCA-specific fit options (use D0 mass for sideband-driven templates)
-                //     FitOpt dcaOpt = fitOpt;
-                //     dcaOpt.massVar = "massDaugther1";   // D0 mass variable in the dataset
-                //     dcaOpt.massMin = 1.75;
-                //     dcaOpt.massMax = 2.00;
+                    // Prepare DCA-specific fit options (use D0 mass for sideband-driven templates)
+                    FitOpt dcaOpt = fitOpt;
+                    dcaOpt.massVar = "massDaugther1";   // D0 mass variable in the dataset
+                    dcaOpt.massMin = 1.75;
+                    dcaOpt.massMax = 2.00;
+                    // Ensure DCA variable name matches dataset/workspace branch
+                    dcaOpt.dcaVar = "dca3D";
 
-                //     // Instantiate DCAFitter with kinematic/cut context from FitOpt
-                //     DCAFitter dcaFitter(dcaOpt, "DCAFitter", dcaOpt.massVar,
-                //                          dcaOpt.dcaMin, dcaOpt.dcaMax, 100);
+                    // Instantiate DCAFitter with kinematic/cut context from FitOpt
+                    DCAFitter dcaFitter(dcaOpt, "DCAFitter", dcaOpt.massVar,
+                                         dcaOpt.dcaMin, dcaOpt.dcaMax, 100);
 
-                //     // Use original input datasets to avoid workspace/dataset-name ambiguity
-                //     dcaFitter.setMCFile(config.GetMCFilePath(), config.GetDatasetName());
-                //     dcaFitter.setDataFile(config.GetDataFilePath(), config.GetDatasetName());
+                    // Prefer MC mass-fit result workspace (reduced by pt/cos/cent)
+                    {
+                        std::string mcOutDirDC = fitOpt.outputDir + fitOpt.subDir + "/MC";
+                        std::string mcResultFile = mcOutDirDC + "/" + fitOpt.outputFile + ".root";
+                        dcaFitter.setMCResultFile(mcResultFile, "workspace", "");
+                    }
+                    // Use mass-fit result (workspace) for sliced data input
+                    {
+                        std::string categoryDC = isMC ? "/MC" : "/Data";
+                        std::string fullOutDirDC = fitOpt.outputDir + fitOpt.subDir + categoryDC;
+                        std::string dcaDataResult = fullOutDirDC + "/" + fitOpt.outputFile + ".root";
+                        dcaFitter.setDataResultFile(dcaDataResult, "workspace", "");
+                    }
 
-                //     // Branch configuration
-                //     dcaFitter.setDCABranchName("dca3D");
-                //     dcaFitter.setMotherPdgIdBranchName("matchGen_D1ancestorFlavor_");
-                //     dcaFitter.setPromptPdgIds({4, 2});
-                //     dcaFitter.setNonPromptPdgIds({5});
+                    // Branch configuration
+                    dcaFitter.setDCABranchName("dca3D");
+                    dcaFitter.setMotherPdgIdBranchName("matchGen_D1ancestorFlavor_");
+                    dcaFitter.setPromptPdgIds({4, 2});
+                    dcaFitter.setNonPromptPdgIds({5});
 
-                //     // Apply same kinematic and selection cuts
-                //     dcaFitter.setMCCuts(dcaOpt.cutMCExpr);
-                //     dcaFitter.setDataCuts(dcaOpt.cutExpr);
+                    // Apply same kinematic and selection cuts
+                    dcaFitter.setMCCuts(dcaOpt.cutMCExpr);
+                    dcaFitter.setDataCuts(dcaOpt.cutExpr);
 
-                //     // Output setup
-                //     std::string dcaOutDir = fitOpt.outputDir + fitOpt.subDir + "/Data";
-                //     createDir(Form("%s/", dcaOutDir.c_str()));
-                //     std::string dcaOutFile = dcaOutDir + "/DStar_DCA_" + bin.GetBinName() + ".root";
-                //     dcaFitter.setOutputFile(dcaOutFile);
+                    // Output setup (save DCA ROOTs under dedicated folder)
+                    std::string dcaRootDir = fitOpt.outputDir + fitOpt.subDir + "/Data/dcaroot";
+                    createDir(dcaRootDir);
+                    std::string dcaOutFile = dcaRootDir + "/DStar_DCA_" + bin.GetBinName() + ".root";
+                    dcaFitter.setOutputFile(dcaOutFile);
 
-                //     // Run DCA workflow
-                //     if (dcaFitter.createTemplatesFromMC()) {
-                //         std::string plotPrefix = fitOpt.outputDir + fitOpt.subDir + "/Data/plots/DCA_" + bin.GetBinName();
-                //         dcaFitter.plotRawDataDistribution(plotPrefix + "_templates");
+                    // Run DCA workflow
+                    if (dcaFitter.createTemplatesFromMC()) {
+                        // Save DCA plots under a dedicated 'dcaplot' folder within the same subdir
+                        std::string dcaPlotDir = fitOpt.outputDir + fitOpt.subDir + "/Data/dcaplot";
+                        createDir(dcaPlotDir);
+                        std::string plotPrefix = dcaPlotDir + "/DCA_" + bin.GetBinName();
+                        dcaFitter.plotRawDataDistribution(plotPrefix + "_templates");
 
-                //         if (dcaFitter.loadData() && dcaFitter.buildModelwSideband()) {
-                //             RooFitResult* dcaFitResult = dcaFitter.performFit(true);
-                //             if (dcaFitResult) {
-                //                 dcaFitter.plotResults(dcaFitResult, plotPrefix + "_fit");
-                //                 dcaFitter.saveResults(dcaFitResult);
-                //                 delete dcaFitResult;
-                //                 std::cout << "[ DCA ] Completed successfully." << std::endl;
-                //             } else {
-                //                 std::cout << "[ DCA ] Fit returned null result." << std::endl;
-                //             }
-                //         } else {
-                //             std::cout << "[ DCA ] Failed to load data or build model." << std::endl;
-                //         }
-                //     } else {
-                //         std::cout << "[ DCA ] Template creation from MC failed." << std::endl;
-                //     }
-                // } catch (const std::exception& e) {
-                //     std::cerr << "[ DCA ] Exception: " << e.what() << std::endl;
-                // }
+                        if (dcaFitter.loadDataFromResult() && dcaFitter.buildModelwSideband()) {
+                            RooFitResult* dcaFitResult = dcaFitter.performFit(true);
+                            if (dcaFitResult) {
+                                dcaFitter.plotResults(dcaFitResult, plotPrefix + "_fit");
+                                dcaFitter.saveResults(dcaFitResult);
+                                delete dcaFitResult;
+                                std::cout << "[ DCA ] Completed successfully." << std::endl;
+                            } else {
+                                std::cout << "[ DCA ] Fit returned null result." << std::endl;
+                            }
+                        } else {
+                            std::cout << "[ DCA ] Failed to load data or build model." << std::endl;
+                        }
+                    } else {
+                        std::cout << "[ DCA ] Template creation from MC failed." << std::endl;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "[ DCA ] Exception: " << e.what() << std::endl;
+                }
+            }
 
                 
             } else {

@@ -74,6 +74,10 @@ private:
                     const auto* p = static_cast<const PDFParams::ExponentialBkgParams*>(params);
                     return factory_->CreateExponential(*p);
                 }
+                else if (type == "DstD0") {
+                    const auto* p = static_cast<const PDFParams::DstD0Params*>(params);
+                    return factory_->CreateDstD0Background(*p);
+                }
                 else if (type == "Chebychev") {
                     const auto* p = static_cast<const PDFParams::ChebychevBkgParams*>(params);
                     return factory_->CreateChebychev(*p);

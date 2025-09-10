@@ -27,6 +27,7 @@ template<> inline std::string GetPDFTypeNameDbg<PDFParams::PolynomialBkgParams>(
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::DstBkgParams>() { return "DstBg"; }
+template<> inline std::string GetPDFTypeNameDbg<PDFParams::DstD0Params>() { return "DstD0Bg"; }
 
 inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& params, const std::string& title = "") {
     if (!title.empty()) {
@@ -63,6 +64,7 @@ inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters
         case PDFType::Polynomial: std::cout << " (Polynomial)"; break;
         case PDFType::ExpErf: std::cout << " (ExpErf)"; break;
         case PDFType::DstBkg: std::cout << " (DstBkg)"; break;
+        case PDFType::DstD0: std::cout << " (DstD0)"; break;
         default: std::cout << " (Other)"; break;
     }
     std::cout << std::endl;
@@ -167,9 +169,15 @@ inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters
             std::cout << "]" << std::endl;
             break;
         case PDFType::Phenomenological:
-            std::cout << "   p0: " << params.phenomenologicalParams.p0
+            std::cout << "   m: " << params.phenomenologicalParams.m
+                      << ", p0: " << params.phenomenologicalParams.p0
                       << ", p1: " << params.phenomenologicalParams.p1
                       << ", p2: " << params.phenomenologicalParams.p2 << std::endl;
+            break;
+        case PDFType::DstD0:
+            std::cout << "   p0: " << params.dstD0Params.p0
+                      << ", p1: " << params.dstD0Params.p1
+                      << ", p2: " << params.dstD0Params.p2 << std::endl;
             break;
         case PDFType::Polynomial:
             std::cout << "   coefficients: [";

@@ -4,10 +4,10 @@
 set -euo pipefail
 
 # Source the ROOT environment if not already set
-#if [ -z "${ROOTSYS:-}" ]; then
+if [ -z "${ROOTSYS:-}" ]; then
   source /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh
  # source /software/ROOT/ROOT-v6.32/root-6.32-install/bin/thisroot.sh
-#fi
+fi
 
 # Move to project testRun directory for stable relative paths
 cd /home/jun502s/DstarAna/DStarAnalysis/Macro/fit/testRun/
@@ -28,7 +28,7 @@ echo "[Condor DStarV2] pT=[${pTMin}, ${pTMax}], cos=[${cosMin}, ${cosMax}], cent
 # echo "[Condor DStarV2] paramFile='${parameterFile}', isMC=${isMC}"
 
 # Ensure C++17 is used by Cling/ACLiC (needed for std::variant/visit)
-export ROOT_CXXFLAGS="${ROOT_CXXFLAGS:-} -std=c++17"
+# export ROOT_CXXFLAGS="${ROOT_CXXFLAGS:-} -std=c++17"
 
 # Execute ROOT macro with C++17 standard explicitly set
-root -l -b -q "DStarAnalysisV2.cpp(true,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified.json\",false)"
+root -l -b -q "DStarAnalysisV2.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified.json\",false)"

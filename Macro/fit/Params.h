@@ -242,6 +242,20 @@ namespace PDFParams {
         double p0=0.1;
         double p0_min= 0.0;
         double p0_max=-5.0;
+        double m=2.0;
+        double m_min=10.0;
+        double m_max=-10.0;
+        double p1=2.0;
+        double p1_min=10.0; 
+        double p1_max=-10.0; 
+        double p2=-2.0; 
+        double p2_min=-10.0; 
+        double p2_max=10.0;
+    };
+    struct DstD0Params {
+        double p0=0.1;
+        double p0_min= 0.0;
+        double p0_max=-5.0;
         double p1=2.0;
         double p1_min=10.0; 
         double p1_max=-10.0; 

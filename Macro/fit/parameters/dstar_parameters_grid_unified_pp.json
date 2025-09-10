@@ -12,9 +12,9 @@
           "pt_min": 5.0,
           "pt_max": 7.0,
           "cos_min": 0.0,
-          "cos_max": 0.2,
+          "cos_max": 1,
           "cent_min": 0,
-          "cent_max": 10,
+          "cent_max": 100,
           "description": "pT [5.0, 7.0), cos(θ*) [0.0, 0.2), cent [0, 10)"
         },
         "signal_pdf": {
@@ -24,7 +24,7 @@
               "value": 0.1455,
               "min": 0.1452,
               "max": 0.1458,
-              "fixed": false
+              "fixed": true
             },
             "sigma": {
               "value": 0.0005,
@@ -34,26 +34,26 @@
             },
             "alphaL": {
               "value": 1.1,
-              "min": 0.5,
+              "min": 0.1,
               "max": 2.0,
               "fixed": false
             },
             "alphaR": {
               "value": 1.1,
-              "min": 0.5,
+              "min": 0.1,
               "max": 2.0,
               "fixed": false
             },
             "nL": {
               "value": 2.0,
               "min": 1,
-              "max": 20.0,
+              "max": 10.0,
               "fixed": false
             },
             "nR": {
               "value": 2.5,
               "min": 1,
-              "max": 20.0,
+              "max": 10.0,
               "fixed": false
             }
           }
@@ -68,21 +68,21 @@
               "fixed": false
             },
             "p0": {
-              "value": 0.1,
-              "min": 0.001,
-              "max": 10,
+              "value": 0.01,
+              "min": 0,
+              "max": 1,
               "fixed": false
             },
             "p1": {
               "value": 1.0,
-              "min": -20.0,
-              "max": 20.0,
+              "min": -10.0,
+              "max": 10.0,
               "fixed": false
             },
             "p2": {
               "value": 1.0,
-              "min": -20.0,
-              "max": 20.0,
+              "min": -10.0,
+              "max": 10.0,
               "fixed": false
             }
           }
@@ -90,14 +90,14 @@
         "yields": {
           "nsig_ratio": {
             "value": 0.1,
-            "min": 0.05,
-            "max": 0.15,
+            "min": 0.4,
+            "max": 0.8,
             "fixed": false
           },
           "nbkg_ratio": {
-            "value": 0.9,
-            "min": 0.7,
-            "max": 1.0,
+            "value": 0.8,
+            "min": 0.2,
+            "max": 0.5,
             "fixed": false
           }
         }

@@ -21,10 +21,12 @@
 #include "RooPlot.h"
 
 enum class FitMethod {
-    NLL,        // Negative Log Likelihood (unbinned)
-    BinnedNLL,  // Binned Negative Log Likelihood  
-    Extended,   // Extended Maximum Likelihood (no robust range expansion)
-    Robust      // Robust Extended fit (iterative with range expansion)
+    NLL,                 // Negative Log Likelihood (unbinned)
+    BinnedNLL,           // Binned Negative Log Likelihood  
+    Extended,            // Extended Maximum Likelihood (no robust range expansion)
+    Robust,              // Robust Extended fit (iterative with range expansion)
+    GaussianConstraint,  // Apply Gaussian constraints from MC to selected params
+    FixedFromMC          // Fix selected parameters to MC-fit values
 };
 
 struct FitConfig {
@@ -144,6 +146,8 @@ public:
             case FitMethod::BinnedNLL: return StrategyType::Binned;
             case FitMethod::Extended:  return StrategyType::Basic;   // Extended-only (no robust widening)
             case FitMethod::Robust:    return StrategyType::Robust;  // Robust (iterative)
+            case FitMethod::GaussianConstraint: return StrategyType::Basic; // handled at MassFitterV2-level
+            case FitMethod::FixedFromMC:        return StrategyType::Basic; // handled at MassFitterV2-level
         }
         return StrategyType::Basic;
     }
@@ -179,6 +183,14 @@ inline RooLinkedList FitStrategy::CreateFitOptions(const FitConfig& config) {
             break;
         case FitMethod::Robust:
             // Robust uses extended likelihood as well
+            fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
+            break;
+        case FitMethod::GaussianConstraint:
+            // Handled by MassFitterV2; default to extended
+            fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
+            break;
+        case FitMethod::FixedFromMC:
+            // Handled by MassFitterV2; default to extended
             fitOpts.Add(new RooCmdArg(RooFit::Extended(true)));
             break;
     }
