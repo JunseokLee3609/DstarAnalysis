@@ -252,6 +252,17 @@ namespace PDFParams {
         double p2_min=-10.0; 
         double p2_max=10.0;
     };
+
+    // Simplified phenomenological background: (x - m_pi)^m * exp(lambda * (x - m_pi))
+    struct Phenomenological2Params {
+        double m = 2.0;          // power
+        double m_min = -10.0;
+        double m_max =  10.0;
+        double lambda = 0.1;     // exponential slope
+        double lambda_min = -100.0;
+        double lambda_max =  100.0;
+        double m_pi_value = 0.13957039; // fixed pion mass unless overridden
+    };
     struct DstD0Params {
         double p0=0.1;
         double p0_min= 0.0;

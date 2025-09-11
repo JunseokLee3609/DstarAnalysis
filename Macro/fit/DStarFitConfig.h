@@ -35,7 +35,8 @@ enum class PDFType {
     ThresholdFunction = 14,
     ExpErf = 15,
     DstBkg = 16,
-    DstD0  = 17
+    DstD0  = 17,
+    Phenomenological2 = 18
 };
 
 /**
@@ -106,6 +107,7 @@ struct DStarBinParameters {
     PDFParams::ExponentialBkgParams exponentialParams;
     PDFParams::ChebychevBkgParams chebychevParams;
     PDFParams::PhenomenologicalParams phenomenologicalParams;
+    PDFParams::Phenomenological2Params phenomenological2Params;
     PDFParams::PolynomialBkgParams polynomialParams;
     PDFParams::ThresholdFuncParams thresholdFuncParams;
     PDFParams::ExpErfBkgParams expErfParams;
@@ -151,6 +153,7 @@ struct DStarBinParameters {
             case PDFType::Exponential:         f(exponentialParams); break;
             case PDFType::Chebychev:           f(chebychevParams); break;
             case PDFType::Phenomenological:    f(phenomenologicalParams); break;
+            case PDFType::Phenomenological2:   f(phenomenological2Params); break;
             case PDFType::Polynomial:          f(polynomialParams); break;
             case PDFType::ThresholdFunction:   f(thresholdFuncParams); break;
             case PDFType::ExpErf:              f(expErfParams); break;
@@ -187,6 +190,7 @@ struct DStarBinParameters {
         PDFParams::ExponentialBkgParams,
         PDFParams::ChebychevBkgParams,
         PDFParams::PhenomenologicalParams,
+        PDFParams::Phenomenological2Params,
         PDFParams::PolynomialBkgParams,
         PDFParams::ThresholdFuncParams,
         PDFParams::ExpErfBkgParams,
@@ -196,6 +200,7 @@ struct DStarBinParameters {
             case PDFType::Exponential: return exponentialParams;
             case PDFType::Chebychev: return chebychevParams;
             case PDFType::Phenomenological: return phenomenologicalParams;
+            case PDFType::Phenomenological2: return phenomenological2Params;
             case PDFType::Polynomial: return polynomialParams;
             case PDFType::ThresholdFunction: return thresholdFuncParams;
             case PDFType::ExpErf: return expErfParams;

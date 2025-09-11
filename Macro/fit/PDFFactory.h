@@ -38,6 +38,7 @@ public:
     std::unique_ptr<RooAbsPdf> CreateChebychev(const PDFParams::ChebychevBkgParams& params, const std::string& name = "cheb");
     std::unique_ptr<RooAbsPdf> CreatePolynomial(const PDFParams::PolynomialBkgParams& params, const std::string& name = "poly");
     std::unique_ptr<RooAbsPdf> CreatePhenomenological(const PDFParams::PhenomenologicalParams& params, const std::string& name = "phenom");
+    std::unique_ptr<RooAbsPdf> CreatePhenomenological2(const PDFParams::Phenomenological2Params& params, const std::string& name = "phenom2");
     // D* -> D0 specific combinatorial-like background (DstD0) used in older macros
     // Built from the same functional form used in MassFitter_temp::MakeRooDstD0Bg
     // std::unique_ptr<RooAbsPdf> CreateDstD0Background(const PDFParams::PhenomenologicalParams& params, const std::string& name = "dstd0");
@@ -393,6 +394,37 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological(const PDFPa
     // return std::make_unique<RooDstD0BG>(name.c_str(), ("RooDstD0Bg" + name).c_str(), *massVar_, *m0Ptr, *p0Ptr, *p1Ptr, *p2Ptr);
     return std::make_unique<RooGenericPdf>(name.c_str(), ("Phenomenological_" + name).c_str(), formula.c_str(), args);
     
+}
+
+inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological2(const PDFParams::Phenomenological2Params& params, const std::string& name) {
+    if (!massVar_) return nullptr;
+
+    constexpr double PION_MASS_LOCAL = 0.13957039;
+
+    auto m0  = CreateParameter("m0_" + name,  "m0",  params.m_pi_value, params.m_pi_value, params.m_pi_value);
+    auto m   = CreateParameter("m_" + name,   "m",   params.m, params.m_min, params.m_max);
+    auto lam = CreateParameter("lambda_" + name, "lambda", params.lambda, params.lambda_min, params.lambda_max);
+
+    RooRealVar* m0Ptr = m0.get();
+    RooRealVar* mPtr  = m.get();
+    RooRealVar* lPtr  = lam.get();
+
+    m0Ptr->setConstant(true);
+
+    StoreParameter(std::move(m0));
+    StoreParameter(std::move(m));
+    StoreParameter(std::move(lam));
+
+    // args: [0]=massVar, [1]=m0, [2]=m, [3]=lambda
+    RooArgList args;
+    args.add(*massVar_);
+    args.add(*m0Ptr);
+    args.add(*mPtr);
+    args.add(*lPtr);
+
+    // (x - m0)^m * exp(lambda * (x - m0))
+    std::string formula = "TMath::Power((@0 - @1), @2) * TMath::Exp(@3 * (@0 - @1))";
+    return std::make_unique<RooGenericPdf>(name.c_str(), ("Phenomenological2_" + name).c_str(), formula.c_str(), args);
 }
 
 inline std::unique_ptr<RooAbsPdf> PDFFactory::CreateDstD0Background(const PDFParams::DstD0Params& params, const std::string& name) {

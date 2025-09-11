@@ -22,10 +22,10 @@ when_to_transfer_output= ON_EXIT
 
 # Transfer macro entry and ranges file
 #transfer_input_files   = DStarAnalysisV2.cpp, kinematicRange_DStar.txt
-transfer_input_files   = DStarAnalysisV2forpp.cpp, kinematicRange.txt
+transfer_input_files   = DStarAnalysisV2forpp.cpp, kinematicRange_pp.txt
 
 # Queue with a parameter grid described in kinematicRange_DStar.txt
 # Expected columns (space-separated):
 # doReFit plotFit useCUDA pTMin pTMax cosMin cosMax centMin centMax parameterFile isMC
-queue pTMin pTMax cosMin cosMax centMin centMax from kinematicRange.txt
+queue pTMin pTMax cosMin cosMax centMin centMax from kinematicRange_pp.txt
 

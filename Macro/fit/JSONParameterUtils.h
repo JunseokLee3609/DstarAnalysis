@@ -371,6 +371,34 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         binParams.phenomenologicalParams.p2_min = param.min;
         binParams.phenomenologicalParams.p2_max = param.max;
         fixedInfo.addFixedFlag("p2_phenom", param.isFixed);
+
+    } else if (backgroundPdfType == "Phenomenological2" || backgroundPdfType == "Phenomelogical2") {
+        // Support both correct and typo spellings
+        binParams.backgroundPdfType = PDFType::Phenomenological2;
+        auto param = jsonLoader.getParameter(binId, "background_m");
+        binParams.phenomenological2Params.m = param.value;
+        binParams.phenomenological2Params.m_min = param.min;
+        binParams.phenomenological2Params.m_max = param.max;
+        fixedInfo.addFixedFlag("m_phenom2", param.isFixed);
+
+        // lambda parameter (aliases: "p0" and "tau" also accepted for backward compatibility)
+        if (jsonLoader.hasParameter(binId, "background_lambda")) {
+            param = jsonLoader.getParameter(binId, "background_lambda");
+        } else if (jsonLoader.hasParameter(binId, "background_p0")) {
+            param = jsonLoader.getParameter(binId, "background_p0");
+        } else {
+            param = jsonLoader.getParameter(binId, "background_tau");
+        }
+        binParams.phenomenological2Params.lambda = param.value;
+        binParams.phenomenological2Params.lambda_min = param.min;
+        binParams.phenomenological2Params.lambda_max = param.max;
+        fixedInfo.addFixedFlag("lambda_phenom2", param.isFixed);
+
+        // Optional pion mass override
+        if (jsonLoader.hasParameter(binId, "background_m_pi")) {
+            param = jsonLoader.getParameter(binId, "background_m_pi");
+            binParams.phenomenological2Params.m_pi_value = param.value;
+        }
         
     } else if (backgroundPdfType == "Polynomial") {
         binParams.backgroundPdfType = PDFType::Polynomial;

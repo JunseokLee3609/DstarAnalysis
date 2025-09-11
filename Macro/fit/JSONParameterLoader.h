@@ -62,16 +62,16 @@ struct BinIdentifier {
     }
     
     // Find matching bin from JSON bins using range matching
-    std::string findMatchingBinKey(const SimpleJSON& json) const {
+    // If ignoreCentrality is true, first try exact match; if not found, fallback to matching only pt/cos
+    std::string findMatchingBinKey(const SimpleJSON& json, bool ignoreCentrality) const {
         auto keys = json.getKeys("dstar_parameters.bins");
+        // Exact match attempt
         for (const auto& key : keys) {
             if (key.find("dstar_parameters.bins.") == 0 && key.find(".bin_info.pt_min") != std::string::npos) {
                 size_t start = key.find("bins.") + 5;
                 size_t end = key.find(".bin_info");
                 if (end != std::string::npos) {
                     std::string binKey = key.substr(start, end - start);
-                    
-                    // Check if ranges match
                     std::string binPrefix = "dstar_parameters.bins." + binKey + ".bin_info";
                     double pt_min = json.getDouble(binPrefix + ".pt_min", -999.0);
                     double pt_max = json.getDouble(binPrefix + ".pt_max", -999.0);
@@ -79,7 +79,6 @@ struct BinIdentifier {
                     double cos_max = json.getDouble(binPrefix + ".cos_max", -999.0);
                     double cent_min = json.getDouble(binPrefix + ".cent_min", -999.0);
                     double cent_max = json.getDouble(binPrefix + ".cent_max", -999.0);
-                    
                     if (std::abs(pt_min - ptMin) < 0.001 && std::abs(pt_max - ptMax) < 0.001 &&
                         std::abs(cos_min - cosMin) < 0.001 && std::abs(cos_max - cosMax) < 0.001 &&
                         std::abs(cent_min - centralityMin) < 0.001 && std::abs(cent_max - centralityMax) < 0.001) {
@@ -88,7 +87,44 @@ struct BinIdentifier {
                 }
             }
         }
-        return ""; // No matching bin found
+        if (!ignoreCentrality) return "";
+        // Fallback: ignore centrality, choose best overlap in centrality among pt/cos matches
+        std::string bestKey = "";
+        double bestScore = -1.0;
+        for (const auto& key : keys) {
+            if (key.find("dstar_parameters.bins.") == 0 && key.find(".bin_info.pt_min") != std::string::npos) {
+                size_t start = key.find("bins.") + 5;
+                size_t end = key.find(".bin_info");
+                if (end != std::string::npos) {
+                    std::string binKey = key.substr(start, end - start);
+                    std::string binPrefix = "dstar_parameters.bins." + binKey + ".bin_info";
+                    double pt_min = json.getDouble(binPrefix + ".pt_min", -999.0);
+                    double pt_max = json.getDouble(binPrefix + ".pt_max", -999.0);
+                    double cos_min = json.getDouble(binPrefix + ".cos_min", -999.0);
+                    double cos_max = json.getDouble(binPrefix + ".cos_max", -999.0);
+                    double cent_min = json.getDouble(binPrefix + ".cent_min", -999.0);
+                    double cent_max = json.getDouble(binPrefix + ".cent_max", -999.0);
+                    if (std::abs(pt_min - ptMin) < 0.001 && std::abs(pt_max - ptMax) < 0.001 &&
+                        std::abs(cos_min - cosMin) < 0.001 && std::abs(cos_max - cosMax) < 0.001) {
+                        double reqMin = centralityMin;
+                        double reqMax = centralityMax;
+                        double overlap = std::max(0.0, std::min(reqMax, cent_max) - std::max(reqMin, cent_min));
+                        double width = std::max(0.0, cent_max - cent_min);
+                        double score = overlap + 1e-6 * width; // prefer overlap, break ties by width
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestKey = binKey;
+                        }
+                    }
+                }
+            }
+        }
+        return bestKey;
+    }
+    
+    // Backward-compatible wrapper
+    std::string findMatchingBinKey(const SimpleJSON& json) const {
+        return findMatchingBinKey(json, false);
     }
 };
 
@@ -97,12 +133,16 @@ class JSONParameterLoader {
 private:
     SimpleJSON json_;
     std::map<std::string, std::map<std::string, FitParameter>> binParameters_;
+    bool ignoreCentralityInMatching_ = false;
     
     FitParameter parseParameter(const std::string& basePath);
     std::string sanitizeKey(const std::string& key);
     
 public:
     JSONParameterLoader() = default;
+    
+    void setIgnoreCentralityInMatching(bool v) { ignoreCentralityInMatching_ = v; }
+    bool getIgnoreCentralityInMatching() const { return ignoreCentralityInMatching_; }
     
     // Load parameters from JSON file
     void loadFromFile(const std::string& filename);
@@ -379,7 +419,7 @@ inline void JSONParameterLoader::loadFromFile(const std::string& filename) {
 
 inline FitParameter JSONParameterLoader::getParameter(const BinIdentifier& bin, const std::string& paramName) const {
     // First try to find matching bin using new format
-    std::string matchingBin = bin.findMatchingBinKey(json_);
+    std::string matchingBin = bin.findMatchingBinKey(json_, ignoreCentralityInMatching_);
     if (!matchingBin.empty()) {
         return getParameter(matchingBin, paramName);
     }
@@ -403,7 +443,7 @@ inline FitParameter JSONParameterLoader::getParameter(const std::string& binKey,
 
 inline bool JSONParameterLoader::hasParameter(const BinIdentifier& bin, const std::string& paramName) const {
     // First try to find matching bin using new format
-    std::string matchingBin = bin.findMatchingBinKey(json_);
+    std::string matchingBin = bin.findMatchingBinKey(json_, ignoreCentralityInMatching_);
     if (!matchingBin.empty()) {
         return hasParameter(matchingBin, paramName);
     }
@@ -451,7 +491,7 @@ inline void JSONParameterLoader::printLoadedParameters() const {
 
 inline std::string JSONParameterLoader::getPDFType(const BinIdentifier& bin, const std::string& pdfCategory) const {
     // First try to find matching bin using new format
-    std::string matchingBin = bin.findMatchingBinKey(json_);
+    std::string matchingBin = bin.findMatchingBinKey(json_, ignoreCentralityInMatching_);
     if (!matchingBin.empty()) {
         return getPDFType(matchingBin, pdfCategory);
     }

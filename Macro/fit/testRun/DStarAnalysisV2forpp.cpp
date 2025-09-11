@@ -29,6 +29,7 @@ template<> std::string GetPDFTypeName<PDFParams::BreitWignerParams>() { return "
 template<> std::string GetPDFTypeName<PDFParams::ExponentialBkgParams>() { return "Exponential"; }
 template<> std::string GetPDFTypeName<PDFParams::ChebychevBkgParams>() { return "Chebychev"; }
 template<> std::string GetPDFTypeName<PDFParams::PhenomenologicalParams>() { return "Phenomenological"; }
+template<> std::string GetPDFTypeName<PDFParams::Phenomenological2Params>() { return "Phenomenological2"; }
 template<> std::string GetPDFTypeName<PDFParams::PolynomialBkgParams>() { return "Polynomial"; }
 template<> std::string GetPDFTypeName<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
 template<> std::string GetPDFTypeName<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
@@ -181,6 +182,8 @@ void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig&
 // Simplified function to load parameters from JSON file using improved utilities
 void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile) {
     JSONParameterLoader jsonLoader;
+    // pp analysis: ignore centrality when matching JSON bins
+    jsonLoader.setIgnoreCentralityInMatching(true);
     jsonLoader.loadFromFile(jsonFile);
     
     std::cout << "[JSON Loader] Loading parameters from: " << jsonFile << std::endl;
@@ -236,7 +239,8 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     // Use a pp-specific output subdirectory
     config.SetOutputSubDir("/DStar_ppRef_Analysis_V2/");
     // config.SetFitMethod(FitMethod::Extended);  // Use NLL for better stability with low stats
-    config.SetFitMethod(FitMethod::FixedFromMC);  // Use NLL for better stability with low stats
+    // config.SetFitMethod(FitMethod::FixedFromMC);  // Use NLL for better stability with low stats
+    config.SetFitMethod(FitMethod::GaussianConstraint);  // Use NLL for better stability with low stats
     
     // Configure fit options
     // Enable auto-tuned Fraction yield mode (auto-switches to NLL and coeff model)
@@ -274,6 +278,26 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
             if (extension == "json") {
                 std::cout << "Using JSON parameter loader..." << std::endl;
                 LoadParametersFromJSON(config, parameterFile);
+                // Ensure the exact key for currentBin is populated (pp uses arbitrary cent ranges)
+                try {
+                    JSONParameterLoader directLoader;
+                    directLoader.setIgnoreCentralityInMatching(true);
+                    directLoader.loadFromFile(parameterFile);
+                    BinIdentifier bid;
+                    bid.ptMin = currentBin.pTMin;
+                    bid.ptMax = currentBin.pTMax;
+                    bid.cosMin = currentBin.cosMin;
+                    bid.cosMax = currentBin.cosMax;
+                    bid.centralityMin = currentBin.centralityMin;
+                    bid.centralityMax = currentBin.centralityMax;
+                    auto loaded = LoadBinParametersFromJSONWithFixedInfo(directLoader, bid);
+                    config.SetParametersForBin(currentBin, loaded.first);
+                    config.SetFixedFlagsForBin(currentBin, loaded.second.fixedFlags);
+                    std::cout << "[JSON Loader] Populated parameters for EXACT current bin key: "
+                              << currentBin.GetBinName() << std::endl;
+                } catch (const std::exception& e2) {
+                    std::cout << "[JSON Loader] Could not set exact current bin key: " << e2.what() << std::endl;
+                }
             } else {
                 std::cout << "Using legacy parameter loader..." << std::endl;
                 ParameterLoaderUtils::LoadParametersToConfig(config, parameterFile);
@@ -412,6 +436,26 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
         // Get bin-specific parameters
         auto binParams = config.GetParametersForBin(bin);
         auto fitOpt = config.CreateFitOpt(bin);
+        
+        // In pp reference analysis, Centrality is not a dataset variable.
+        // Ensure the cut expression does NOT include a centrality cut even if the bin name carries cent ranges.
+        {
+            const std::string subdir = config.GetOutputSubDir();
+            const bool isPP = (subdir.find("ppRef") != std::string::npos) || (subdir.find("_pp") != std::string::npos) || (subdir.find("/pp") != std::string::npos);
+            if (isPP) {
+                std::string kinCut = std::string("pT > ") + std::to_string(bin.pTMin) + " && pT < " + std::to_string(bin.pTMax);
+                if (bin.cosMin > -2.0 || bin.cosMax < 2.0) {
+                    const bool useAbs = config.GetUseAbsCosCuts();
+                    const std::string cosExpr = useAbs ? "abs(cosThetaHX)" : "cosThetaHX";
+                    kinCut += std::string(" && ") + cosExpr + " > " + std::to_string(bin.cosMin)
+                           +  " && " + cosExpr + " < " + std::to_string(bin.cosMax);
+                }
+                // Rebuild cuts without any Centrality term
+                fitOpt.cutExpr   = config.GetFullCutString() + " && " + kinCut;
+                fitOpt.cutMCExpr = fitOpt.cutExpr + " && matchGEN==1";
+                std::cout << "[pp] Overriding cutExpr to drop centrality: " << fitOpt.cutExpr << std::endl;
+            }
+        }
         const std::string ppBinName = fitOpt.GetBinName();
         
         std::cout << "Cut expression: " << fitOpt.cutExpr << std::endl;
@@ -469,10 +513,22 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                         }
                     }
                 }
+                if (!prefixesToFix.empty()) {
+                    std::ostringstream oss;
+                    for (size_t i=0;i<prefixesToFix.size();++i) { if (i) oss << ", "; oss << prefixesToFix[i]; }
+                    std::cout << "[forpp] Prefixes to fix derived from JSON: [" << oss.str() << "]" << std::endl;
+                } else {
+                    std::cout << "[forpp] No prefixes to fix derived from JSON (list empty)" << std::endl;
+                }
                 // 2) Build data-side parameter names for Gaussian constraints (prefix_signal)
                 std::vector<std::string> dataParamNames;
                 dataParamNames.reserve(prefixesToFix.size());
                 for (const auto& p : prefixesToFix) dataParamNames.push_back(p + std::string("_signal"));
+                if (!dataParamNames.empty()) {
+                    std::ostringstream oss2;
+                    for (size_t i=0;i<dataParamNames.size();++i) { if (i) oss2 << ", "; oss2 << dataParamNames[i]; }
+                    std::cout << "[forpp] Constraint target names: [" << oss2.str() << "]" << std::endl;
+                }
 
                 binParams.ApplyToSignalParams([&](const auto& signalParams){
                     binParams.ApplyToBackgroundParams([&](const auto& backgroundParams){

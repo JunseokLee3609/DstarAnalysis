@@ -742,6 +742,7 @@ template<> inline std::string MassFitterV2::GetPDFType<PDFParams::ExponentialBkg
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::ChebychevBkgParams>() const { return "Chebychev"; }
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::PolynomialBkgParams>() const { return "Polynomial"; }
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::PhenomenologicalParams>() const { return "Phenomenological"; }
+template<> inline std::string MassFitterV2::GetPDFType<PDFParams::Phenomenological2Params>() const { return "Phenomenological2"; }
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::DstD0Params>() const { return "DstD0"; }
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::ExpErfBkgParams>() const { return "ExpErf"; }
 template<> inline std::string MassFitterV2::GetPDFType<PDFParams::DstBkgParams>() const { return "DstBg"; }
@@ -818,6 +819,12 @@ template<>
 inline std::unique_ptr<RooAbsPdf> MassFitterV2::CreatePDFFromParams<PDFParams::PhenomenologicalParams>(
     const PDFParams::PhenomenologicalParams& params, const std::string& name, bool isSignal) {
     return pdfFactory_->CreatePhenomenological(params, name);
+}
+
+template<>
+inline std::unique_ptr<RooAbsPdf> MassFitterV2::CreatePDFFromParams<PDFParams::Phenomenological2Params>(
+    const PDFParams::Phenomenological2Params& params, const std::string& name, bool isSignal) {
+    return pdfFactory_->CreatePhenomenological2(params, name);
 }
 
 template<>
@@ -1021,6 +1028,13 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, Roo
                                                       const std::string& resultName) {
     try {
         LogOperation("PerformGaussianConstraintFitWithMC", "Delegating to GaussianConstraintStrategy");
+        if (!paramsToConstrain.empty()) {
+            std::ostringstream oss;
+            for (size_t i=0;i<paramsToConstrain.size();++i) { if (i) oss << ", "; oss << paramsToConstrain[i]; }
+            std::cout << "[GaussConstr] Constraining parameters: [" << oss.str() << "]" << std::endl;
+        } else {
+            std::cout << "[GaussConstr] No explicit constraint parameters provided" << std::endl;
+        }
 
         // Validate inputs
         Validator::ValidateNotNull(dataset, "dataset");
@@ -1049,7 +1063,7 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, Roo
         }
 
         // Create strategy and execute constrained fit
-        auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 1.0);
+        auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 5.0);
         FitConfig cfg = options.ToFitConfig();
         if (activeMassVar_) {
             if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
@@ -1088,11 +1102,23 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, Roo
 inline void MassFitterV2::FixSignalParamsFromFitResult(const RooFitResult* rf, const std::vector<std::string>& prefixesToFix) {
     if (!rf || !totalPdf_) return;
 
-    // Build quick lookup of MC final parameter values
+    // Debug: print requested prefixes
+    if (!prefixesToFix.empty()) {
+        std::ostringstream oss;
+        for (size_t i=0;i<prefixesToFix.size();++i) { if (i) oss << ", "; oss << prefixesToFix[i]; }
+        std::cout << "[FixedFromMC] Prefixes requested to fix: [" << oss.str() << "]" << std::endl;
+    } else {
+        std::cout << "[FixedFromMC] No prefixes requested; nothing will be fixed." << std::endl;
+    }
+
+    // Build quick lookup of MC final parameter values (avoid copying RooArgList)
     std::map<std::string, double> mcVals;
-    auto finals = rf->floatParsFinal();
-    for (int i = 0; i < finals.getSize(); ++i) {
-        if (auto* v = dynamic_cast<RooRealVar*>(finals.at(i))) {
+    const RooArgList& finals = rf->floatParsFinal();
+    int nFinals = finals.getSize();
+    for (int i = 0; i < nFinals; ++i) {
+        RooAbsArg* arg = finals.at(i);
+        if (!arg) continue;
+        if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
             mcVals[v->GetName()] = v->getVal();
         }
     }
@@ -1107,6 +1133,7 @@ inline void MassFitterV2::FixSignalParamsFromFitResult(const RooFitResult* rf, c
     };
 
     std::unique_ptr<RooArgSet> vars(totalPdf_->getVariables());
+    int fixedCount = 0;
     for (const auto& prefix : prefixesToFix) {
         if (!isAllowed(prefix)) continue;
         const std::string dataName = prefix + "_signal";
@@ -1116,14 +1143,23 @@ inline void MassFitterV2::FixSignalParamsFromFitResult(const RooFitResult* rf, c
         double val = NAN;
         if (mcVals.count(mcName1)) val = mcVals[mcName1];
         else if (mcVals.count(mcName2)) val = mcVals[mcName2];
-        if (std::isnan(val)) continue;
+        if (std::isnan(val)) {
+            std::cout << "[FixedFromMC] No MC value for prefix '" << prefix
+                      << "' (tried '" << mcName1 << "', '" << mcName2 << "')" << std::endl;
+            continue;
+        }
 
         if (auto* target = dynamic_cast<RooRealVar*>(vars->find(dataName.c_str()))) {
             target->setVal(val);
             target->setConstant(true);
-            std::cout << "[FixedFromMC] Fixed parameter " << dataName << " = " << val << std::endl;
+            const char* src = mcVals.count(mcName1) ? mcName1.c_str() : mcName2.c_str();
+            std::cout << "[FixedFromMC] Fixed '" << dataName << "' from '" << src << "' = " << val << std::endl;
+            fixedCount++;
+        } else {
+            std::cout << "[FixedFromMC] Data parameter not found: '" << dataName << "'" << std::endl;
         }
     }
+    std::cout << "[FixedFromMC] Total fixed parameters: " << fixedCount << std::endl;
 }
 
 // Fixed-from-MC: fit MC, fix selected data signal params to MC values, then fit data
@@ -1134,6 +1170,13 @@ bool MassFitterV2::PerformFixedParameterFitWithMC(const FitOpt& options, RooData
                                                   const std::string& resultName) {
     try {
         LogOperation("PerformFixedParameterFitWithMC", "Start");
+        if (!paramPrefixesToFix.empty()) {
+            std::ostringstream oss;
+            for (size_t i=0;i<paramPrefixesToFix.size();++i) { if (i) oss << ", "; oss << paramPrefixesToFix[i]; }
+            std::cout << "[FixedFromMC] Prefix list: [" << oss.str() << "]" << std::endl;
+        } else {
+            std::cout << "[FixedFromMC] Prefix list is empty" << std::endl;
+        }
 
         Validator::ValidateNotNull(dataset, "dataset");
         Validator::ValidateNotNull(mcDataset, "mcDataset");
@@ -1141,6 +1184,7 @@ bool MassFitterV2::PerformFixedParameterFitWithMC(const FitOpt& options, RooData
         // 1) MC fit using dedicated label to avoid name clashes
         std::string mcResName = resultName.empty() ? (GenerateResultName() + std::string("_mcfix")) : (resultName + std::string("_mcfix"));
         bool mcOk = PerformMCFit(options, mcDataset, signalParams, mcResName);
+        std::cout << "[FixedFromMC] MC result name: " << mcResName << ", success=" << (mcOk?"true":"false") << std::endl;
         if (!mcOk) {
             LOG_AND_THROW(MassFitterException, "MC fit failed for FixedFromMC", "PerformFixedParameterFitWithMC");
         }
@@ -1514,6 +1558,23 @@ inline double MassFitterV2::GetReducedChiSquare(const std::string& resultName) c
 
 inline bool MassFitterV2::IsGoodFit(const std::string& resultName) const {
     return true; // Placeholder - always return true for now
+}
+
+// --- Accessors to fetch stored results from ResultManager ---
+inline FitResults* MassFitterV2::GetFitResults(const std::string& resultName) {
+    if (!resultManager_) return nullptr;
+    return resultManager_->GetResult(resultName);
+}
+
+inline RooFitResult* MassFitterV2::GetRooFitResult(const std::string& resultName) {
+    if (!resultManager_) return nullptr;
+    const FitResults* res = resultManager_->GetResult(resultName);
+    return res ? res->fitResult.get() : nullptr;
+}
+
+inline RooWorkspace* MassFitterV2::GetWorkspace(const std::string& resultName) {
+    if (!resultManager_) return nullptr;
+    return resultManager_->GetWorkspace(resultName);
 }
 
 inline double MassFitterV2::CalculateSignificance(const std::string& resultName) const {
