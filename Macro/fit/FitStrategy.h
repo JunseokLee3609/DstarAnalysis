@@ -477,22 +477,43 @@ public:
         std::vector<std::unique_ptr<RooRealVar>> keepMeans;
         std::vector<std::unique_ptr<RooRealVar>> keepSigmas;
         std::vector<std::unique_ptr<RooGaussian>> keepGauss;
+        // Debug: summarize prepared constraints
+        std::cout << "[GC][Debug] Prepared " << constraints.size() 
+                  << " constraints (sigmaScale=" << sigmaScale_ << ")" << std::endl;
+        if (constraints.empty()) {
+            std::cout << "[GC][Debug] No constraints were built. Check param names and MC inputs." << std::endl;
+        }
+        int applied = 0, missing = 0;
         for (const auto& [pname, ms] : constraints) {
             if (auto* target = dynamic_cast<RooRealVar*>(dataVars->find(pname.c_str()))) {
                 auto mean = std::make_unique<RooRealVar>(("mc_mean_" + pname).c_str(), ("mc_mean_" + pname).c_str(), ms.first);
                 auto sigma = std::make_unique<RooRealVar>(("mc_sigma_" + pname).c_str(), ("mc_sigma_" + pname).c_str(), ms.second);
+                // Ensure positive sigma range and fix both mean/sigma constants
+                sigma->setMin(1e-12);
+                sigma->setConstant(true);
+                mean->setConstant(true);
                 auto gauss = std::make_unique<RooGaussian>(("constr_" + pname).c_str(), ("constr_" + pname).c_str(), *target, *mean, *sigma);
                 ext.add(*gauss);
                 keepMeans.push_back(std::move(mean));
                 keepSigmas.push_back(std::move(sigma));
                 keepGauss.push_back(std::move(gauss));
+                std::cout << "[GC][Debug] Apply constraint to '" << pname << "': mu=" << ms.first
+                          << ", sigma=" << ms.second << ", data init=" << target->getVal() << std::endl;
+                applied++;
+            } else {
+                std::cout << "[GC][Debug][WARN] Data var not found for constraint '" << pname << "'" << std::endl;
+                missing++;
             }
         }
+        std::cout << "[GC][Debug] Constraints applied: " << applied << ", missing: " << missing << std::endl;
 
         // 3) Create fit options and add constraints
         auto opts = CreateFitOptions(config);
         if (ext.getSize() > 0) {
             opts.Add(new RooCmdArg(RooFit::ExternalConstraints(ext)));
+            std::cout << "[GC][Debug] ExternalConstraints attached: count=" << ext.getSize() << std::endl;
+        } else {
+            std::cout << "[GC][Debug] No ExternalConstraints attached" << std::endl;
         }
 
         // 4) Handle binned fit if requested
@@ -511,11 +532,47 @@ public:
             auto binnedData = std::make_unique<RooDataHist>((std::string(data->GetName()) + "_binned").c_str(),
                                                             (std::string(data->GetTitle()) + " (binned)").c_str(),
                                                             RooArgSet(*binnedVar), *data);
-            return std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, opts));
+            auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, opts));
+            // Post-fit debug: compare to MC means
+            if (result) {
+                auto finals = result->floatParsFinal();
+                for (const auto& [pname, ms] : constraints) {
+                    RooAbsArg* arg = nullptr;
+                    for (int i=0; i<finals.getSize(); ++i) {
+                        if (std::string(finals.at(i)->GetName()) == pname) { arg = finals.at(i); break; }
+                    }
+                    if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
+                        double val = v->getVal();
+                        double err = v->getError();
+                        std::cout << "[GC][Debug][PostFit] " << pname << " = " << val
+                                  << " ± " << err << " (MC mu=" << ms.first
+                                  << ", pull=" << ((err>0)?(val - ms.first)/err:0.0) << ")" << std::endl;
+                    }
+                }
+            }
+            return result;
         }
 
         // 5) Unbinned fit
-        return std::unique_ptr<RooFitResult>(pdf->fitTo(*data, opts));
+        auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, opts));
+        // Post-fit debug: compare to MC means
+        if (result) {
+            auto finals = result->floatParsFinal();
+            for (const auto& [pname, ms] : constraints) {
+                RooAbsArg* arg = nullptr;
+                for (int i=0; i<finals.getSize(); ++i) {
+                    if (std::string(finals.at(i)->GetName()) == pname) { arg = finals.at(i); break; }
+                }
+                if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
+                    double val = v->getVal();
+                    double err = v->getError();
+                    std::cout << "[GC][Debug][PostFit] " << pname << " = " << val
+                              << " ± " << err << " (MC mu=" << ms.first
+                              << ", pull=" << ((err>0)?(val - ms.first)/err:0.0) << ")" << std::endl;
+                }
+            }
+        }
+        return result;
     }
 
     std::string GetName() const override { return "GaussianConstraint"; }

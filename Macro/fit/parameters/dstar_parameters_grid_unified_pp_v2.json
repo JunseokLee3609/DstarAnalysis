@@ -48,13 +48,13 @@
               "value": 2.0,
               "min": 1,
               "max": 100.0,
-              "fixed": false
+              "fixed": true
             },
             "nR": {
               "value": 2.5,
               "min": 1,
               "max": 50.0,
-              "fixed": false
+              "fixed": true
             }
           }
         },
@@ -68,21 +68,21 @@
               "fixed": false
             },
             "p0": {
-              "value": -0.1,
+              "value": -1,
               "min": -100,
               "max": 0,
               "fixed": false
             },
             "p1": {
-              "value": 0.1,
-              "min": -10.0,
-              "max": 10.0,
+              "value":-10,
+              "min": -1000.0,
+              "max": 100.0,
               "fixed": false
             },
             "p2": {
-              "value": 0.1,
-              "min": -10.0,
-              "max": 10.0,
+              "value": -10,
+              "min": -1000.0,
+              "max": 100.0,
               "fixed": false
             },
             "m_pi": {

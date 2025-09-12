@@ -5,7 +5,7 @@
 #include "../EnhancedPlotManager.h"  // Use our enhanced plotter instead
 #include "../SimpleParameterLoader.h"  // External parameter loading
 #include "../JSONParameterUtils.h"     // JSON parameter utilities (includes JSONParameterLoader)
-#include "../../Tools/ConfigManager.h"
+#include "../../Tools/ConfigManagerPP.h"
 #include "../ParameterDebugUtils.h"     // Centralized parameter printing utilities
 #include "../DCAFitter.h"               // DCA template fitter
 #include <fstream>
@@ -233,11 +233,12 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     config.SetYieldModeAutoTuning(false);
     
     // Configure file paths for pp (no centrality)
-    config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_noPreselectionCut_ppRef_Aug01_v1.root");
+    //config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_noPreselectionCut_ppRef_Aug01_v1.root");
+    config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_pp_12Sep25_v1.root");
     config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_np_pp_08Sep25_v1.root");
     config.SetDatasetName("datasetHX");
     // Use a pp-specific output subdirectory
-    config.SetOutputSubDir("/DStar_ppRef_Analysis_V2/");
+    config.SetOutputSubDir(SelectionCuts::SUB_DIR);
     // config.SetFitMethod(FitMethod::Extended);  // Use NLL for better stability with low stats
     // config.SetFitMethod(FitMethod::FixedFromMC);  // Use NLL for better stability with low stats
     config.SetFitMethod(FitMethod::GaussianConstraint);  // Use NLL for better stability with low stats
@@ -544,11 +545,27 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                                 std::vector<std::string> toConstrain = dataParamNames.empty()
                                     ? std::vector<std::string>{"mean_signal","sigma_signal"}
                                     : dataParamNames;
-                                fitSuccess = fitter->PerformGaussianConstraintFitWithMC(
+
+                                // Combine: signal GC (MC) + background SB constraints
+                                const double sbLoMin = 0.140, sbLoMax = 0.143;
+                                const double sbHiMin = 0.149, sbHiMax = 0.155;
+                                const double sigScale = 5.0;  // keep default loose for signal
+                                const double bkgScale = 2.0;  // weak regularization for background
+                                fitSuccess = fitter->PerformGaussianConstraintFitWithMCAndBkgSB(
                                     fitOpt, dataset, mcDataset,
                                     signalParams, backgroundParams,
                                     toConstrain,
+                                    sbLoMin, sbLoMax, sbHiMin, sbHiMax,
+                                    sigScale, bkgScale,
                                     ppBinName);
+                                if (!fitSuccess) {
+                                    std::cout << "[forpp][GC+SB] Combined constraints failed; fallback to signal-only GC." << std::endl;
+                                    fitSuccess = fitter->PerformGaussianConstraintFitWithMC(
+                                        fitOpt, dataset, mcDataset,
+                                        signalParams, backgroundParams,
+                                        toConstrain,
+                                        ppBinName);
+                                }
                             }
                         } else if (fitOpt.fitMethod == FitMethod::FixedFromMC) {
                             // Load MC dataset, fit MC, fix selected params to MC values, fit data
@@ -565,11 +582,30 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                                     ppBinName);
                             }
                         } else {
-                            // Default path: free-parameter fit
-                            fitSuccess = fitter->PerformFit(fitOpt, dataset,
-                                                           signalParams,
-                                                           backgroundParams,
-                                                           ppBinName);
+                            // Try background sideband prefit → weak Gaussian constraints on background
+                            bool useSBPrefit = true;
+                            if (useSBPrefit) {
+                                const double sbLoMin = 0.140, sbLoMax = 0.143;
+                                const double sbHiMin = 0.149, sbHiMax = 0.155;
+                                const double sigmaScale = 2.0; // 1.5–3 recommended
+                                std::cout << "[forpp][SB] Attempting sideband prefit-constrained fit..." << std::endl;
+                                fitSuccess = fitter->PerformSidebandPrefitBackgroundConstraintFit(
+                                    fitOpt, dataset,
+                                    signalParams, backgroundParams,
+                                    sbLoMin, sbLoMax, sbHiMin, sbHiMax,
+                                    sigmaScale,
+                                    ppBinName);
+                                if (!fitSuccess) {
+                                    std::cout << "[forpp][SB] Sideband-constrained fit failed; falling back to free fit." << std::endl;
+                                }
+                            }
+                            if (!fitSuccess) {
+                                // Default path: free-parameter fit
+                                fitSuccess = fitter->PerformFit(fitOpt, dataset,
+                                                               signalParams,
+                                                               backgroundParams,
+                                                               ppBinName);
+                            }
                         }
                     });
                 });
