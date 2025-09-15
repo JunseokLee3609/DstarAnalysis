@@ -14,6 +14,7 @@
 #include "RooAbsReal.h"
 #include "TCanvas.h"
 #include "TFile.h"
+#include "TParameter.h"
 
 struct FitResults {
     std::unique_ptr<RooFitResult> fitResult;
@@ -321,6 +322,19 @@ inline void ResultManager::SaveResults(const std::string& fileName, bool saveWor
         if (saveWorkspaces && result->workspace) {
             result->workspace->Write((name + "_workspace").c_str());
         }
+
+        // Save numerical yields (and errors) as TParameter for convenience
+        for (const auto& y : result->yields) {
+            const std::string& yname = y.first;
+            double yval = y.second;
+            TParameter<double> yparam((name + std::string("_") + yname).c_str(), yval);
+            yparam.Write();
+            auto itErr = result->yieldErrors.find(yname);
+            if (itErr != result->yieldErrors.end()) {
+                TParameter<double> yerr((name + std::string("_") + yname + std::string("_err")).c_str(), itErr->second);
+                yerr.Write();
+            }
+        }
     }
     
     file->Close();
@@ -345,6 +359,19 @@ inline void ResultManager::SaveResult(const std::string& name, const std::string
     
     if (saveWorkspace && result->workspace) {
         result->workspace->Write("workspace");
+    }
+
+    // Save numerical yields (and errors) as TParameter for convenience
+    for (const auto& y : result->yields) {
+        const std::string& yname = y.first;
+        double yval = y.second;
+        TParameter<double> yparam(yname.c_str(), yval);
+        yparam.Write();
+        auto itErr = result->yieldErrors.find(yname);
+        if (itErr != result->yieldErrors.end()) {
+            TParameter<double> yerr((yname + std::string("_err")).c_str(), itErr->second);
+            yerr.Write();
+        }
     }
     
     file->Close();

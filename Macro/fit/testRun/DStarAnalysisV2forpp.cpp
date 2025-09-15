@@ -231,6 +231,8 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     DStarFitConfig config;
     // Enable auto-tuning: switching yield mode adjusts fit method and model
     config.SetYieldModeAutoTuning(false);
+    // Use fraction-based yields (nsig=fsig*Ntot, nbkg=(1-fsig)*Ntot) to stabilize total yield
+    config.SetUseIndependentYields(true);
     
     // Configure file paths for pp (no centrality)
     //config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_noPreselectionCut_ppRef_Aug01_v1.root");
@@ -255,7 +257,7 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     // config.SetMVACut(0.999);
     // Use |cos(theta*)| for cuts if desired
     config.SetUseAbsCosCuts(true);
-    config.SetUseIndependentYields(true);
+    // Keep fraction-based yields to stabilize total yield (nsig+nbkg=Ntot)
     
     // Create single kinematic bin for analysis
     KinematicBin currentBin(pTMin, pTMax, cosMin, cosMax, centralityMin, centralityMax);
@@ -549,7 +551,7 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                                 // Combine: signal GC (MC) + background SB constraints
                                 const double sbLoMin = 0.140, sbLoMax = 0.143;
                                 const double sbHiMin = 0.149, sbHiMax = 0.155;
-                                const double sigScale = 5.0;  // keep default loose for signal
+                                const double sigScale = 2.0;  // keep default loose for signal
                                 const double bkgScale = 2.0;  // weak regularization for background
                                 fitSuccess = fitter->PerformGaussianConstraintFitWithMCAndBkgSB(
                                     fitOpt, dataset, mcDataset,
@@ -768,6 +770,11 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                     // Instantiate DCAFitter with kinematic/cut context from FitOpt
                     DCAFitter dcaFitter(dcaOpt, "DCAFitter", dcaOpt.massVar,
                                          dcaOpt.dcaMin, dcaOpt.dcaMax, 100);
+                    // Enable test hist PDF component and use exponential shaping: y_new = y_old * exp(-lambda * x)
+                    dcaFitter.EnableTestComponent(true);
+                    dcaFitter.UseTestBaseNonPrompt();              // base = non-prompt
+                    dcaFitter.UseTestExponential(0.00);              // lambda = 2.0
+                    std::cout << "[DStarAnalysisV2forpp][DCA] EnableTestComponent=true, base=nonprompt, exp lambda=2.0" << std::endl;
 
                     // Prefer MC mass-fit result workspace (reduced by pt/cos/cent)
                     {

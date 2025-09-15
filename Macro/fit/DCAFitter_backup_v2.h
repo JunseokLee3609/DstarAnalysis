@@ -211,13 +211,6 @@ public:
     void setNonPromptPdgIds(const std::vector<int>& pdgIds) {
         nonpromptPdgIds_ = pdgIds;
     }
-    // Enable/disable third "test" component and configure transformation
-    void EnableTestComponent(bool enable = true) { enableTestComponent_ = enable; }
-    void SetTestComponentPower(double power) { testComponentPower_ = power; }
-    void UseTestExponential(double lambda) { testUseExponential_ = true; testExpLambda_ = lambda; enableTestComponent_ = true; }
-    void DisableTestExponential() { testUseExponential_ = false; }
-    void UseTestBasePrompt() { testBasePrompt_ = true; }
-    void UseTestBaseNonPrompt() { testBasePrompt_ = false; }
     void plotSignalAndSidebandDCAFromHist(const std::string& plotName = "dca_sig_vs_sb_hist_plot");
     void setWeightBranchName(const std::string& branchName = "") {
         weightBranchName_ = branchName;
@@ -1057,61 +1050,10 @@ public:
             }
 
             if (pdfList.getSize() > 0) {
-                // Optionally add a test component derived from selected base (prompt/non-prompt)
-                auto* baseTemplate = testBasePrompt_ ? promptTemplate_ : nonPromptTemplate_;
-                std::cout << "[DCAFitter][Test] enableTestComponent=" << (enableTestComponent_?"true":"false")
-                          << ", base=" << (testBasePrompt_?"prompt":"nonprompt")
-                          << ", basePresent=" << (baseTemplate?"yes":"no")
-                          << ", useExp=" << (testUseExponential_?"true":"false")
-                          << ", param=" << (testUseExponential_?testExpLambda_:testComponentPower_) << std::endl;
-                if (enableTestComponent_ && baseTemplate) {
-                    // Build TH1 from base template
-                    TH1* hNP = baseTemplate->createHistogram((std::string(testBasePrompt_?"hPromptForTest_":"hNonPromptForTest_") + name_).c_str(), *dca);
-                    if (hNP) {
-                        // Transform: y_new = y_old^power, then renormalize
-                        double sum = 0.0;
-                        for (int ib=1; ib<=hNP->GetNbinsX(); ++ib) {
-                            double y = hNP->GetBinContent(ib);
-                            if (y < 0) y = 0;
-                            double yn = std::pow(y, std::max(0.0, testComponentPower_));
-                            hNP->SetBinContent(ib, yn);
-                            hNP->SetBinError(ib, 0.0);
-                            sum += yn;
-                        }
-                        if (sum > 0) hNP->Scale(1.0/sum);
-                        // Create RooDataHist and RooHistPdf for test component
-                        if (testTemplate_) { delete testTemplate_; testTemplate_ = nullptr; }
-                        testTemplate_ = new RooDataHist("testTemplate", "Test (intermediate) Template", RooArgSet(*dca), hNP);
-                        if (testPdf_) { delete testPdf_; testPdf_ = nullptr; }
-                        testPdf_ = new RooHistPdf("testPdf", "Test PDF from transformed non-prompt", RooArgSet(*dca), *testTemplate_);
-                        // cout << "create testpdf" << endl;
-                        ws_->import(*testTemplate_, RooFit::RecycleConflictNodes());
-                        ws_->import(*testPdf_, RooFit::RecycleConflictNodes());
-                        // Create yield for test component (default 10% of nevt)
-                        if (!n_test_) {
-                            n_test_ = std::make_unique<RooRealVar>("n_test", "Number of test events", nevt * 0.1, 0.0, nevt);
-                            ws_->import(*n_test_);
-                        } else {
-                            n_test_->setVal(nevt * 0.1);
-                            n_test_->setMax(nevt);
-                        }
-                        pdfList.add(*testPdf_);
-                        yieldList.add(*n_test_);
-                        std::cout << "[DCAFitter][Test] Test PDF added (" << (testUseExponential_?"exp":"pow")
-                                  << ") base=" << (testBasePrompt_?"prompt":"nonprompt")
-                                  << ", param=" << (testUseExponential_?testExpLambda_:testComponentPower_)
-                                  << ", n_test init=" << n_test_->getVal() << "/" << nevt << std::endl;
-                        delete hNP;
-                    } else {
-                        std::cerr << "[DCAFitter][Test] Failed to create TH1 from base template for test component" << std::endl;
-                    }
-                } else if (enableTestComponent_ && !baseTemplate) {
-                    std::cout << "[DCAFitter][Test] Skipped: base template not available (cannot build test component)" << std::endl;
-                }
                 // delete model_;
-                model_ = new RooAddPdf("model", "Extended P+NP(+Test) Model from MC", pdfList, yieldList);
+                model_ = new RooAddPdf("model", "Extended P+NP Model from MC", pdfList, yieldList);
                 ws_->import(*model_);
-                std::cout << "Extended model built successfully with " << pdfList.getSize() << " MC component(s)." << std::endl;
+            std::cout << "Extended model built successfully with " << pdfList.getSize() << " MC component(s)." << std::endl;
             } else {
                 std::cerr << "Error: No MC PDFs were created to build the model." << std::endl;
                 return false;
@@ -1274,58 +1216,8 @@ public:
 	}
 
 	if (pdfList.getSize() > 0) {
-		// Optionally add a test component derived from non-prompt by power-slope (sideband build)
-			std::cout << "[DCAFitter][SB][Test] enableTestComponent=" << (enableTestComponent_?"true":"false")
-			          << ", promptTemplate=" << (promptTemplate_?"present":"absent")
-			          << ", power=" << testComponentPower_
-			          << ", useExp=" << (testUseExponential_?"true":"false")
-			          << ", lambda=" << testExpLambda_ << std::endl;
-			if (enableTestComponent_ && promptTemplate_) {
-				TH1* hNPsb = promptTemplate_->createHistogram((std::string("hPromptForTestSB_") + name_).c_str(), *dca);
-				if (hNPsb) {
-					double sum = 0.0;
-					for (int ib=1; ib<=hNPsb->GetNbinsX(); ++ib) {
-						double y = hNPsb->GetBinContent(ib);
-						if (y < 0) y = 0;
-						double yn = y;
-						if (testUseExponential_) {
-							double x = hNPsb->GetXaxis()->GetBinCenter(ib);
-							yn *= std::exp(-testExpLambda_ * x);
-						} else {
-							yn = std::pow(y, std::max(0.0, testComponentPower_));
-						}
-						hNPsb->SetBinContent(ib, yn);
-						hNPsb->SetBinError(ib, 0.0);
-						sum += yn;
-					}
-					if (sum > 0) hNPsb->Scale(1.0/sum);
-				if (testTemplate_) { delete testTemplate_; testTemplate_ = nullptr; }
-				testTemplate_ = new RooDataHist("testTemplate", "Test (intermediate) Template", RooArgSet(*dca), hNPsb);
-				if (testPdf_) { delete testPdf_; testPdf_ = nullptr; }
-				testPdf_ = new RooHistPdf("testPdf", "Test PDF from transformed non-prompt", RooArgSet(*dca), *testTemplate_);
-				ws_->import(*testTemplate_, RooFit::RecycleConflictNodes());
-				ws_->import(*testPdf_, RooFit::RecycleConflictNodes());
-				if (!n_test_) {
-					n_test_ = std::make_unique<RooRealVar>("n_test", "Number of test events", nevt * 0.1, 0.0, nevt);
-					ws_->import(*n_test_, RooFit::RecycleConflictNodes());
-				} else {
-					n_test_->setVal(nevt * 0.1);
-					n_test_->setMax(nevt);
-				}
-				pdfList.add(*testPdf_);
-				yieldList.add(*n_test_);
-					std::cout << "[DCAFitter][SB][Test] Test PDF added (" << (testUseExponential_?"exp":"pow")
-					          << ") param=" << (testUseExponential_?testExpLambda_:testComponentPower_)
-					          << ", n_test init=" << n_test_->getVal() << "/" << nevt << std::endl;
-					delete hNPsb;
-				} else {
-					std::cerr << "[DCAFitter][SB][Test] Failed to create TH1 from promptTemplate_" << std::endl;
-				}
-			} else if (enableTestComponent_ && !promptTemplate_) {
-				std::cout << "[DCAFitter][SB][Test] Skipped: promptTemplate not available" << std::endl;
-			}
 		// delete model_;
-		model_ = new RooAddPdf("model", "Extended P+NP(+Test) Model from MC", pdfList, yieldList);
+		model_ = new RooAddPdf("model", "Extended P+NP Model from MC", pdfList, yieldList);
 		ws_->import(*model_);
 		std::cout << "Extended model built successfully with " << pdfList.getSize() << " MC component(s)." << std::endl;
 	} else {
@@ -1460,13 +1352,6 @@ public:
     }
 
     TCanvas* c = new TCanvas(plotName.c_str(), "DCA Fit Results with Pull", 800, 800);
-    // Debug: print presence of testPdf and current n_test
-    {
-        RooAbsPdf* dbgTestPdf = ws_->pdf("testPdf");
-        RooRealVar* dbgNtest = ws_->var("n_test");
-        std::cout << "[DCAFitter][Plot] testPdf=" << (dbgTestPdf?"present":"absent")
-                  << ", n_test=" << (dbgNtest?std::to_string(dbgNtest->getVal()):std::string("NA")) << std::endl;
-    }
     
     TPad* mainPad = new TPad("mainPad", "Main Plot", 0.0, 0.25, 1.0, 1.0);
     mainPad->SetBottomMargin(0.02);
@@ -1514,7 +1399,6 @@ public:
 
         RooAbsPdf* mcPromptPdf = ws_->pdf("promptPdf"); // MC prompt PDF
         RooAbsPdf* mcNonPromptPdf = ws_->pdf("nonPromptPdf"); // MC non-prompt PDF
-        RooAbsPdf* mcTestPdf   = ws_->pdf("testPdf");   // MC-derived test PDF (optional)
         
         // dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
         // dataSet_->plotOn(frame, RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
@@ -1528,31 +1412,6 @@ public:
         if (mcPromptPdf) {
             model_->plotOn(frame, RooFit::Components(*mcPromptPdf), RooFit::Name("mc_prompt_comp"), 
                           RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
-        }
-        if (mcTestPdf) {
-            // Filled area for visibility
-            model_->plotOn(frame, RooFit::Components(*mcTestPdf), RooFit::Name("mc_test_comp"),
-                           RooFit::FillStyle(3351), RooFit::FillColor(kGreen - 9), RooFit::LineColor(kGreen + 2), RooFit::DrawOption("F"));
-            // Outline to ensure it's visible even with small yield
-            model_->plotOn(frame, RooFit::Components(*mcTestPdf), RooFit::Name("mc_test_line"),
-                           RooFit::LineColor(kGreen + 2), RooFit::LineStyle(kSolid), RooFit::LineWidth(2));
-        }
-
-        // Overlay the test template shape (RooDataHist) if available
-        if (testTemplate_) {
-            testTemplate_->plotOn(frame,
-                                  RooFit::Binning(customBinning),
-                                  RooFit::Name("test_template_hist"),
-                                  RooFit::MarkerStyle(kOpenTriangleUp),
-                                  RooFit::MarkerColor(kGreen + 2),
-                                  RooFit::LineColor(kGreen + 2));
-        } else if (auto* tt = dynamic_cast<RooDataHist*>(ws_->data("testTemplate"))) {
-            tt->plotOn(frame,
-                       RooFit::Binning(customBinning),
-                       RooFit::Name("test_template_hist"),
-                       RooFit::MarkerStyle(kOpenTriangleUp),
-                       RooFit::MarkerColor(kGreen + 2),
-                       RooFit::LineColor(kGreen + 2));
         }
         // sumFunc_->plotOn(frame, RooFit::Name("model_fit_to_mc"),Normalization(dataDrivenTemplate_->sum(false)), RooFit::LineColor(kRed + 1));
         // if (nonPromptFunc_) {
@@ -1582,7 +1441,6 @@ public:
 
         RooAbsPdf* promptPdf = ws_->pdf("promptPdf");
         RooAbsPdf* nonPromptPdf = ws_->pdf("nonPromptPdf");
-        RooAbsPdf* testPdf   = ws_->pdf("testPdf");
 
         if (nonPromptPdf) {
             model_->plotOn(frame, RooFit::Components(*nonPromptPdf), RooFit::Name("nonprompt_comp"), 
@@ -1591,29 +1449,6 @@ public:
         if (promptPdf) {
             model_->plotOn(frame, RooFit::Components(*promptPdf), RooFit::Name("prompt_comp"), 
                           RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9), RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
-        }
-        if (testPdf) {
-            model_->plotOn(frame, RooFit::Components(*testPdf), RooFit::Name("test_comp"),
-                           RooFit::FillStyle(3351), RooFit::FillColor(kGreen - 9), RooFit::LineColor(kGreen + 2), RooFit::DrawOption("F"));
-            model_->plotOn(frame, RooFit::Components(*testPdf), RooFit::Name("test_line"),
-                           RooFit::LineColor(kGreen + 2), RooFit::LineStyle(kSolid), RooFit::LineWidth(2));
-        }
-
-        // Overlay the test template shape (raw shape points)
-        if (testTemplate_) {
-            testTemplate_->plotOn(frame,
-                                  RooFit::Binning(customBinning),
-                                  RooFit::Name("test_template_hist"),
-                                  RooFit::MarkerStyle(kOpenTriangleUp),
-                                  RooFit::MarkerColor(kGreen + 2),
-                                  RooFit::LineColor(kGreen + 2));
-        } else if (auto* tt = dynamic_cast<RooDataHist*>(ws_->data("testTemplate"))) {
-            tt->plotOn(frame,
-                       RooFit::Binning(customBinning),
-                       RooFit::Name("test_template_hist"),
-                       RooFit::MarkerStyle(kOpenTriangleUp),
-                       RooFit::MarkerColor(kGreen + 2),
-                       RooFit::LineColor(kGreen + 2));
         }
         
         dataSet_->plotOn(frame, RooFit::Binning(customBinning), RooFit::Name("data_original"), RooFit::DataError(RooAbsData::SumW2));
@@ -1653,61 +1488,25 @@ public:
         TObject* modelFitObj = frame->findObject("model_fit_to_mc");
         TObject* mcPromptObj = frame->findObject("mc_prompt_comp");
         TObject* mcNonPromptObj = frame->findObject("mc_nonprompt_comp");
-        TObject* mcTestObj = frame->findObject("mc_test_comp");
-        TObject* mcTestLineObj = frame->findObject("mc_test_line");
         TObject* myObject = nullptr;
 
         if (dataYieldObj) leg->AddEntry(dataYieldObj, "Data Yield (from Mass Fit)", "pe");
         if (modelFitObj) leg->AddEntry(modelFitObj, "Total MC Fit", "l");
         if (mcPromptObj) leg->AddEntry(mcPromptObj, "Prompt D^{*} (MC)", "f");
         if (mcNonPromptObj) leg->AddEntry(mcNonPromptObj, "Non-Prompt D^{*} (MC)", "f");
-        if (mcTestObj) leg->AddEntry(mcTestObj, "Test Component (MC-derived)", "f");
-        if (!mcTestObj && mcTestLineObj) leg->AddEntry(mcTestLineObj, "Test Component (MC-derived)", "l");
-
-        // Add fractions summary
-        RooRealVar* nPromptVar = ws_->var("n_prompt");
-        RooRealVar* nNonPromptVar = ws_->var("n_nonprompt");
-        RooRealVar* nTestVar = ws_->var("n_test");
-        double nP = nPromptVar ? nPromptVar->getVal() : 0.0;
-        double nNP = nNonPromptVar ? nNonPromptVar->getVal() : 0.0;
-        double nT = nTestVar ? nTestVar->getVal() : 0.0;
-        double sumN = nP + nNP + nT;
-        double fP = (sumN > 0) ? (nP / sumN) : 0.0;
-        double fNP = (sumN > 0) ? (nNP / sumN) : 0.0;
-        double fT = (sumN > 0) ? (nT / sumN) : 0.0;
-        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fP));
-        leg->AddEntry(myObject, Form("NonPrompt Fraction = %.2f", fNP));
-        if (nTestVar) leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
+        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fracPrompt_->getVal()));
     } else {
         TObject* dataOrigObj = frame->findObject("data_original");
         TObject* modelFitToDataObj = frame->findObject("model_fit_to_data");
         TObject* promptCompObj = frame->findObject("prompt_comp");
         TObject* nonPromptCompObj = frame->findObject("nonprompt_comp");
-        TObject* testCompObj = frame->findObject("test_comp");
-        TObject* testLineObj = frame->findObject("test_line");
         TObject* myObject = nullptr;
 
         if (dataOrigObj) leg->AddEntry(dataOrigObj, "Data", "pe");
         if (modelFitToDataObj) leg->AddEntry(modelFitToDataObj, "Total Fit", "l");
         if (promptCompObj) leg->AddEntry(promptCompObj, "Prompt D^{*} (MC)", "f");
         if (nonPromptCompObj) leg->AddEntry(nonPromptCompObj, "Non-Prompt D^{*} (MC)", "f");
-        if (testCompObj) leg->AddEntry(testCompObj, "Test Component (MC-derived)", "f");
-        if (!testCompObj && testLineObj) leg->AddEntry(testLineObj, "Test Component (MC-derived)", "l");
-
-        // Add fractions summary
-        RooRealVar* nPromptVar = ws_->var("n_prompt");
-        RooRealVar* nNonPromptVar = ws_->var("n_nonprompt");
-        RooRealVar* nTestVar = ws_->var("n_test");
-        double nP = nPromptVar ? nPromptVar->getVal() : 0.0;
-        double nNP = nNonPromptVar ? nNonPromptVar->getVal() : 0.0;
-        double nT = nTestVar ? nTestVar->getVal() : 0.0;
-        double sumN = nP + nNP + nT;
-        double fP = (sumN > 0) ? (nP / sumN) : 0.0;
-        double fNP = (sumN > 0) ? (nNP / sumN) : 0.0;
-        double fT = (sumN > 0) ? (nT / sumN) : 0.0;
-        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fP));
-        leg->AddEntry(myObject, Form("NonPrompt Fraction = %.2f", fNP));
-        if (nTestVar) leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
+        leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fracPrompt_->getVal()));
     }
     leg->Draw();
 
@@ -2237,8 +2036,6 @@ private:
     TH1* promptHist_; // Histogram for prompt template (manually managed)
     TH1* nonPromptHist_; // Histogram for non-prompt template (manually managed)
     RooDataHist* nonPromptTemplate_; // Non-prompt MC template (workspace managed)
-    // Test (intermediate-slope) template derived from non-prompt
-    RooDataHist* testTemplate_ = nullptr; // Test template (workspace managed)
     std::string massVarName_;
     double massMin_;
     double massMax_;
@@ -2248,14 +2045,12 @@ private:
     // PDFs and Model (managed by smart pointers and workspace)
     RooHistPdf* promptPdf_;         // PDF from prompt template (workspace managed)
     RooHistPdf* nonPromptPdf_;      // PDF from non-prompt template (workspace managed)  
-    RooHistPdf* testPdf_ = nullptr; // PDF from test template (workspace managed)
     RooRealVar* coef_prompt_;
     RooRealVar* coef_nonprompt_;
     RooHistFunc* promptFunc_ = nullptr;         // PDF from prompt template (workspace managed)
     RooHistFunc* nonPromptFunc_= nullptr;      // PDF from non-prompt template (workspace managed)  
     RooRealSumFunc *sumFunc_;
     RooFormulaVar* fracPrompt_;        // Fraction of prompt component (workspace managed)
-    std::unique_ptr<RooRealVar> n_test_; // Number of test-component events
     RooAddPdf* model_;              // Combined model (workspace managed)
 
     // Parameters
@@ -2278,13 +2073,6 @@ private:
     // Configuration and dependency injection
     std::unique_ptr<ConfigManager> configManager_;
     std::unique_ptr<class DCAErrorHandler> errorHandler_;
-
-    // Optional third component control
-    bool enableTestComponent_ = false;
-    double testComponentPower_ = 0.7; // y_new = y_old^power (renormalized)
-    bool   testUseExponential_ = false; // if true, use y_new = y_old * exp(-lambda * x)
-    double testExpLambda_ = 0.0;        // exponential slope parameter (lambda)
-    bool   testBasePrompt_ = true;      // true: base from prompt, false: base from non-prompt
     
     // Result storage
     std::map<std::string, FitResults*> sliceFitResults_;
@@ -2573,7 +2361,6 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
 
     TH1* hPrompt = nullptr;
     TH1* hNonPrompt = nullptr;
-    TH1* hTestTemplate = nullptr;
 
     if (promptDataSet) {
         hPrompt = new TH1F("hPromptRaw", "MC Prompt D^{0}", nCustomBins, binArray);
@@ -2647,46 +2434,6 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
         return;
     }
 
-    // Try to build test template histogram from RooDataHist if available
-    if (testTemplate_) {
-        hTestTemplate = testTemplate_->createHistogram("hTestTemplateRaw", *dcaVar_);
-    } else if (auto* tt = dynamic_cast<RooDataHist*>(ws_->data("testTemplate"))) {
-        hTestTemplate = tt->createHistogram("hTestTemplateRaw", *dcaVar_);
-    } else if (enableTestComponent_ && promptTemplate_) {
-        // On-the-fly construction from prompt template to visualize test shape in templates plot
-        TH1* hTmp = promptTemplate_->createHistogram("hPromptForTest_templates", *dcaVar_);
-        if (hTmp) {
-            double sum = 0.0;
-            for (int ib = 1; ib <= hTmp->GetNbinsX(); ++ib) {
-                double y = std::max(0.0, hTmp->GetBinContent(ib));
-                double x = hTmp->GetXaxis()->GetBinCenter(ib);
-                double yn = y;
-                if (testUseExponential_) {
-                    yn *= std::exp(-testExpLambda_ * x);
-                } else {
-                    yn = std::pow(y, std::max(0.0, testComponentPower_));
-                }
-                hTmp->SetBinContent(ib, yn);
-                hTmp->SetBinError(ib, 0.0);
-                sum += yn;
-            }
-            if (sum > 0) hTmp->Scale(1.0 / sum);
-            hTmp->Scale(1.0, "width"); // per-cm view, consistent with others
-            hTestTemplate = hTmp; // adopt for drawing + deletion below
-        }
-    }
-    if (hTestTemplate) {
-        // Normalize to unit area and convert to per-cm like others
-        if (hTestTemplate->Integral() > 0) {
-            hTestTemplate->Scale(1.0 / hTestTemplate->Integral());
-            hTestTemplate->Scale(1.0, "width");
-        }
-        hTestTemplate->SetLineColor(kGreen + 2);
-        hTestTemplate->SetMarkerColor(kGreen + 2);
-        hTestTemplate->SetMarkerStyle(kOpenTriangleUp);
-        hTestTemplate->SetMarkerSize(1.0);
-    }
-
     TCanvas* canvas = new TCanvas(plotName.c_str(), "Normalized MC Templates", 700, 600);
     canvas->SetLogy();
     canvas->SetLeftMargin(0.15);
@@ -2705,13 +2452,6 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
          for(int i=1; i<=hNonPrompt->GetNbinsX(); ++i) {
             if(hNonPrompt->GetBinContent(i) > 0) minY = std::min(minY, hNonPrompt->GetBinContent(i));
             maxY = std::max(maxY, hNonPrompt->GetBinContent(i) + hNonPrompt->GetBinError(i));
-        }
-    }
-    // Update axis range with test template if present
-    if (hTestTemplate) {
-        for (int i=1; i<=hTestTemplate->GetNbinsX(); ++i) {
-            if (hTestTemplate->GetBinContent(i) > 0) minY = std::min(minY, hTestTemplate->GetBinContent(i));
-            maxY = std::max(maxY, hTestTemplate->GetBinContent(i) + hTestTemplate->GetBinError(i));
         }
     }
     if (minY > maxY) { minY = 0.1; maxY = 100; } 
@@ -2739,16 +2479,12 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     if (hNonPrompt) {
         hNonPrompt->Draw("E1 SAME"); 
     }
-    if (hTestTemplate) {
-        hTestTemplate->Draw("E1 SAME");
-    }
      if (hAxis) hAxis->Draw("AXIS SAME"); 
 
 
     TLegend* legend = new TLegend(0.55, 0.75, 0.93, 0.88); 
     if (hPrompt) legend->AddEntry(hPrompt, "MC Prompt D^{*}", "pe");
     if (hNonPrompt) legend->AddEntry(hNonPrompt, "MC Non-prompt D^{*}", "pe");
-    if (hTestTemplate) legend->AddEntry(hTestTemplate, "Test Template (shape)", "pe");
     legend->SetBorderSize(0);
     legend->SetFillStyle(0);
     legend->SetTextFont(42);
@@ -2776,7 +2512,6 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     delete canvas;
     delete hPrompt;
     delete hNonPrompt;
-    delete hTestTemplate;
 }
 
 #endif // DCA_FITTER_H

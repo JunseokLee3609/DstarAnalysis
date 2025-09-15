@@ -36,8 +36,9 @@ struct FitConfig {
     bool verbose = false;
     int numCPU = 24;
     int maxRetries = 3;
-    std::string strategy = "Minuit";
-    std::string minimizer = "Minimizer";
+    std::string strategy = "Minuit2";   // Minimizer type
+    std::string minimizer = "migrad";   // Minimizer algorithm
+    int strategyLevel = 2;               // RooFit strategy level: start with 2, then 1 -> 0 on fallback
     double rangeMin = 0.0;
     double rangeMax = 0.0;
     std::string rangeName = "analysis";
@@ -161,6 +162,7 @@ inline RooLinkedList FitStrategy::CreateFitOptions(const FitConfig& config) {
     fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(config.verbose ? 1 : -1)));
     fitOpts.Add(new RooCmdArg(RooFit::Save(true)));
     fitOpts.Add(new RooCmdArg(RooFit::Minimizer(config.strategy.c_str(), config.minimizer.c_str())));
+    fitOpts.Add(new RooCmdArg(RooFit::Strategy(config.strategyLevel)));
     fitOpts.Add(new RooCmdArg(RooFit::SumW2Error(true)));
     fitOpts.Add(new RooCmdArg(RooFit::Optimize(1)));
     
@@ -296,10 +298,17 @@ inline void FitStrategy::AdjustParameterLimits(RooFitResult* result, RooAbsPdf* 
 inline std::unique_ptr<RooFitResult> BasicFitStrategy::Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) {
     if (!pdf || !data) return nullptr;
     
-    auto fitOpts = CreateFitOptions(config);
-    auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, fitOpts));
-    
-    return result;
+    // Try initial strategyLevel, then fall back to 1 and 0 if needed
+    for (int lvl = config.strategyLevel; lvl >= 0; --lvl) {
+        FitConfig cfg = config;
+        cfg.strategyLevel = lvl;
+        auto fitOpts = CreateFitOptions(cfg);
+        auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, fitOpts));
+        if (!result || result->status() == 0) return result;
+        // Otherwise, continue to try lower strategy levels
+        if (lvl == 0) return result; // give back the last attempt if all failed
+    }
+    return nullptr;
 }
 
 inline std::unique_ptr<RooFitResult> RobustFitStrategy::Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) {
@@ -329,15 +338,15 @@ inline std::unique_ptr<RooFitResult> RobustFitStrategy::PerformIterativeFit(RooA
         auto retryOpts = CreateFitOptions(config);
         auto newResult = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, retryOpts));
         
-        // Check for retry with different strategy
-        int retryCount = 0;
-        while (newResult->status() != 0 && retryCount < config.maxRetries) {
-            FitConfig retryConfig = config;
-            retryConfig.strategy = "Strategy(" + std::to_string(2 - retryCount) + ")";
-            
-            auto retryOpts2 = CreateFitOptions(retryConfig);
-            newResult = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, retryOpts2));
-            retryCount++;
+        // If still failing, try loosening RooFit strategy: 1 then 0
+        if (newResult && newResult->status() != 0) {
+            int fallbackLevels[2] = {1, 0};
+            for (int i = 0; i < 2 && newResult->status() != 0; ++i) {
+                FitConfig retryConfig = config;
+                retryConfig.strategyLevel = fallbackLevels[i];
+                auto retryOpts2 = CreateFitOptions(retryConfig);
+                newResult = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, retryOpts2));
+            }
         }
         
         currentResult = std::move(newResult);
@@ -366,10 +375,15 @@ inline std::unique_ptr<RooFitResult> MCFitStrategy::Execute(RooAbsPdf* pdf, RooD
     FitConfig mcConfig = config;
     mcConfig.useMinos = false;  // Usually don't need Minos for MC
     
-    auto fitOpts = CreateFitOptions(mcConfig);
-    auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, fitOpts));
-    
-    return result;
+    // Try initial strategyLevel, then 1 and 0
+    for (int lvl = mcConfig.strategyLevel; lvl >= 0; --lvl) {
+        mcConfig.strategyLevel = lvl;
+        auto fitOpts = CreateFitOptions(mcConfig);
+        auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, fitOpts));
+        if (!result || result->status() == 0) return result;
+        if (lvl == 0) return result;
+    }
+    return nullptr;
 }
 
 inline ConstraintFitStrategy::ConstraintFitStrategy(const std::string& mcFilePath, const std::vector<std::string>& constraintParams)
@@ -532,7 +546,16 @@ public:
             auto binnedData = std::make_unique<RooDataHist>((std::string(data->GetName()) + "_binned").c_str(),
                                                             (std::string(data->GetTitle()) + " (binned)").c_str(),
                                                             RooArgSet(*binnedVar), *data);
-            auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, opts));
+            // Try initial strategyLevel, then 1 and 0
+            std::unique_ptr<RooFitResult> result;
+            for (int lvl = config.strategyLevel; lvl >= 0; --lvl) {
+                FitConfig cfg2 = config;
+                cfg2.strategyLevel = lvl;
+                auto opts2 = CreateFitOptions(cfg2);
+                if (ext.getSize() > 0) opts2.Add(new RooCmdArg(RooFit::ExternalConstraints(ext)));
+                result = std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, opts2));
+                if (!result || result->status() == 0) break;
+            }
             // Post-fit debug: compare to MC means
             if (result) {
                 auto finals = result->floatParsFinal();
@@ -554,7 +577,15 @@ public:
         }
 
         // 5) Unbinned fit
-        auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, opts));
+        std::unique_ptr<RooFitResult> result;
+        for (int lvl = config.strategyLevel; lvl >= 0; --lvl) {
+            FitConfig cfg2 = config;
+            cfg2.strategyLevel = lvl;
+            auto opts2 = CreateFitOptions(cfg2);
+            if (ext.getSize() > 0) opts2.Add(new RooCmdArg(RooFit::ExternalConstraints(ext)));
+            result = std::unique_ptr<RooFitResult>(pdf->fitTo(*data, opts2));
+            if (!result || result->status() == 0) break;
+        }
         // Post-fit debug: compare to MC means
         if (result) {
             auto finals = result->floatParsFinal();
@@ -619,11 +650,15 @@ inline std::unique_ptr<RooFitResult> BinnedFitStrategy::Execute(RooAbsPdf* pdf, 
     }
     
     // Create fit options for binned fit
-    auto fitOpts = CreateFitOptions(config);
-    
-    // Perform binned fit
-    auto result = std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, fitOpts));
-    
+    // Perform binned fit with strategy fallback 2 -> 1 -> 0
+    std::unique_ptr<RooFitResult> result;
+    for (int lvl = config.strategyLevel; lvl >= 0; --lvl) {
+        FitConfig cfg = config;
+        cfg.strategyLevel = lvl;
+        auto fitOpts = CreateFitOptions(cfg);
+        result = std::unique_ptr<RooFitResult>(pdf->fitTo(*binnedData, fitOpts));
+        if (!result || result->status() == 0) break;
+    }
     return result;
 }
 

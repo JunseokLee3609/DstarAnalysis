@@ -30,7 +30,7 @@
               "value": 0.0005,
               "min": 0.0001,
               "max": 0.01,
-              "fixed": false
+              "fixed": true
             },
             "alphaL": {
               "value": 1.1,
@@ -48,41 +48,41 @@
               "value": 2.0,
               "min": 1,
               "max": 100.0,
-              "fixed": true
+              "fixed": false
             },
             "nR": {
               "value": 2.5,
               "min": 1,
               "max": 50.0,
-              "fixed": true
+              "fixed": false
             }
           }
         },
         "background_pdf": {
-          "type": "Phenomenological2",
+          "type": "Phenomenological",
           "parameters": {
             "m": {
-              "value": 1,
+              "value": 0.1,
               "min": 0,
-              "max": 10.0,
+              "max": 100.0,
               "fixed": false
             },
             "p0": {
-              "value": -1,
-              "min": -100,
-              "max": 0,
+              "value": 0.01,
+              "min": -1000,
+              "max": 1000,
               "fixed": false
             },
             "p1": {
-              "value":-10,
+              "value": 0.1,
               "min": -1000.0,
-              "max": 100.0,
+              "max": 1000.0,
               "fixed": false
             },
             "p2": {
-              "value": -10,
+              "value": 0.1,
               "min": -1000.0,
-              "max": 100.0,
+              "max": 1000.0,
               "fixed": false
             },
             "m_pi": {
@@ -101,9 +101,9 @@
             "fixed": false
           },
           "nbkg_ratio": {
-            "value": 0.2,
+            "value": 0.1,
             "min": 0.1,
-            "max": 0.6,
+            "max": 0.5,
             "fixed": false
           }
         }
@@ -178,12 +178,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -274,12 +268,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -369,12 +357,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -386,7 +368,7 @@
             "fixed": false
           },
           "nbkg_ratio": {
-            "value": 0.2,
+            "value": 0.1,
             "min": 0.1,
             "max": 0.5,
             "fixed": false
@@ -463,12 +445,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -559,12 +535,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -653,12 +623,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -749,12 +713,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -843,12 +801,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -939,12 +891,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1033,12 +979,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -1129,12 +1069,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1223,12 +1157,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -1319,12 +1247,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1413,12 +1335,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -1509,12 +1425,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1603,12 +1513,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -1699,12 +1603,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1793,12 +1691,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -1889,12 +1781,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -1983,12 +1869,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -2079,12 +1959,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -2173,12 +2047,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -2269,12 +2137,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -2363,12 +2225,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -2459,12 +2315,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -2553,12 +2403,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -2649,12 +2493,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -2743,12 +2581,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -2839,12 +2671,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -2933,12 +2759,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -3029,12 +2849,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -3123,12 +2937,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -3219,12 +3027,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -3313,12 +3115,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -3409,12 +3205,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -3503,12 +3293,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }
@@ -3599,12 +3383,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -3694,12 +3472,6 @@
               "min": -1000.0,
               "max": 1000.0,
               "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
-              "fixed": false
             }
           }
         },
@@ -3788,12 +3560,6 @@
               "value": 0.1,
               "min": -1000.0,
               "max": 1000.0,
-              "fixed": false
-            },
-            "m": {
-              "value": 0.1,
-              "min": 0,
-              "max": 100.0,
               "fixed": false
             }
           }

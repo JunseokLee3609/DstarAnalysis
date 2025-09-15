@@ -238,7 +238,11 @@ void initializeFitStatusTracking() {
 }
 
 void addFitStatus(const BinInfo& binInfo, const FitStatus& fitStatus) {
+    cout << "Adding fit status for bin: " << binInfo.toString() << endl;
+    cout << "Fit type: " << fitStatus.fitType << ", Status: " << fitStatus.status << endl;
+    cout << g_fitStatusMap[binInfo].size() << endl;
     g_fitStatusMap[binInfo].push_back(fitStatus);
+    cout << "1234 " <<endl;
     
     // Call global callback if registered
     if (g_globalFitStatusCallback) {
@@ -248,6 +252,7 @@ void addFitStatus(const BinInfo& binInfo, const FitStatus& fitStatus) {
 
 void checkAndRecordFitStatus(RooFitResult* fitResult, const BinInfo& binInfo, 
                             const std::string& fitType, const std::string& additionalInfo) {
+    cout << binInfo.toString() << endl;
     FitStatus status = extractFitStatus(fitResult, fitType, additionalInfo);
     addFitStatus(binInfo, status);
     
@@ -380,16 +385,26 @@ void notifyDCASliceFit(const BinInfo& binInfo, const DCASliceInfo& sliceInfo,
     // Record the fit status
     BinInfo sliceBinInfo = binInfo;
     sliceBinInfo.dcaMin = sliceInfo.dcaMin;
+    cout << "sliceInfo.dcaMin: " << sliceInfo.dcaMin << endl;
     sliceBinInfo.dcaMax = sliceInfo.dcaMax;
+    cout << "sliceInfo.dcaMax: " << sliceInfo.dcaMax << endl;
+    cout << "sliceBinInfo.dcaMax: " << sliceBinInfo.dcaMax << endl;
+    cout << sliceBinInfo.toString() << endl;
+
     
     std::string additionalInfo = "DCA slice " + std::to_string(sliceInfo.sliceIndex) + 
                                 " (" + sliceInfo.sliceName + ")";
     
     checkAndRecordFitStatus(fitResult, sliceBinInfo, fitType, additionalInfo);
     
-    // Call registered callback
+    // Call registered callback only when fitResult is valid to avoid segfaults
     if (g_dcaSliceFitCallback) {
-        g_dcaSliceFitCallback(binInfo, sliceInfo, fitResult, fitType);
+        if (fitResult) {
+            g_dcaSliceFitCallback(binInfo, sliceInfo, fitResult, fitType);
+        } else {
+            std::cout << "[notifyDCASliceFit] Skipping callback: fitResult is null for "
+                      << sliceInfo.sliceName << std::endl;
+        }
     }
 }
 

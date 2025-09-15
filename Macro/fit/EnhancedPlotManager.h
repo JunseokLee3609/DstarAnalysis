@@ -10,12 +10,16 @@
 #include "RooRealVar.h"
 #include "RooDataSet.h"
 #include "RooAbsPdf.h"
+#include "RooAbsReal.h"
+#include "RooAbsArg.h"
 #include "RooPlot.h"
 #include "RooWorkspace.h"
 #include "TCanvas.h"
 #include "TPad.h"
 #include "TLatex.h"
 #include "TLegend.h"
+#include "TKey.h"
+#include "TParameter.h"
 #include "RooFitResult.h"
 #include "TStyle.h"
 #include "TDirectory.h"
@@ -102,6 +106,11 @@ private:
     void AddLabels(TPad* pad);
     std::string GetOutputFileName(const std::string& baseName, const std::string& suffix = "");
     void CleanupMemory();
+
+    // Yield helpers
+    void DrawYieldAnnotations(TPad* pad);
+    bool IsFractionYieldMode() const;
+    bool FetchYieldFromFile(const std::string& baseName, double& value, double& error) const;
 };
 
 // Implementation
@@ -569,7 +578,7 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
     frame->SetYTitle("Events / (0.4 MeV/c^{2})");
     frame->Draw();
     legend->Draw();
-    
+
     // --- CMS Labels matching backup style ---
     TLatex latex;
     latex.SetNDC();
@@ -591,6 +600,11 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
     latex.DrawLatex(x_pos, y_pos, opt_.pTLegend.c_str());
     latex.DrawLatex(x_pos, y_pos - 0.07, opt_.yLegend.c_str());
     latex.DrawLatex(x_pos, y_pos - 0.14, opt_.centLegend.c_str());
+
+    // If fraction-yield mode is detected, annotate Nsig/NBkg on the main pad
+    if (IsFractionYieldMode()) {
+        DrawYieldAnnotations(mainPad);
+    }
     
     // Draw pull plot if requested
     if (drawPull && pullPad) {
@@ -689,6 +703,103 @@ void EnhancedPlotManager::DrawParameterPad(TPad* paramPad) {
 void EnhancedPlotManager::CleanupMemory() {
     // ROOT objects are owned by TFile or RooWorkspace
     // std::unique_ptr<TFile> will handle cleanup automatically
+}
+
+bool EnhancedPlotManager::IsFractionYieldMode() const {
+    if (!ws_) return false;
+    // Fraction mode: nsig, nbkg are RooFormulaVar built from fsig and Ntot
+    // Try to infer by presence of fsig and/or by nsig being a formula (not a RooRealVar)
+    if (auto* nsArg = dynamic_cast<RooAbsArg*>(ws_->obj("nsig"))) {
+        // If not a RooRealVar, treat as fraction (formula)
+        if (dynamic_cast<RooRealVar*>(nsArg) == nullptr) return true;
+    }
+    // Also check for fsig existing in workspace
+    if (ws_->var("fsig") != nullptr) return true;
+    return false;
+}
+
+void EnhancedPlotManager::DrawYieldAnnotations(TPad* pad) {
+    if (!ws_) return;
+    pad->cd();
+    TLatex latex;
+    latex.SetNDC();
+    latex.SetTextFont(42);
+    latex.SetTextSize(0.035);
+
+    double x = 0.13;
+    double y = 0.58; // below the physics labels
+    // Preferred: fetch yields from saved TParameter in the ROOT file
+    double nsVal=0, nsErr=0, nbVal=0, nbErr=0;
+    bool haveNS = FetchYieldFromFile("nsig", nsVal, nsErr);
+    bool haveNB = FetchYieldFromFile("nbkg", nbVal, nbErr);
+
+    // Fallback: evaluate from workspace if TParameters are not present
+    if (!haveNS || !haveNB) {
+        RooAbsReal* nsigAbs = nullptr;
+        RooAbsReal* nbkgAbs = nullptr;
+        if (auto* arg = dynamic_cast<RooAbsArg*>(ws_->obj("nsig"))) nsigAbs = dynamic_cast<RooAbsReal*>(arg);
+        if (auto* arg = dynamic_cast<RooAbsArg*>(ws_->obj("nbkg"))) nbkgAbs = dynamic_cast<RooAbsReal*>(arg);
+        if (nsigAbs) {
+            nsVal = nsigAbs->getVal();
+            if (fitResult_) nsErr = nsigAbs->getPropagatedError(*fitResult_);
+            haveNS = true;
+        }
+        if (nbkgAbs) {
+            nbVal = nbkgAbs->getVal();
+            if (fitResult_) nbErr = nbkgAbs->getPropagatedError(*fitResult_);
+            haveNB = true;
+        }
+        if (!haveNS && !haveNB) return;
+    }
+
+    if (haveNS) {
+        if (nsErr > 0) latex.DrawLatex(x, y, Form("N_{sig} = %.0f #pm %.0f", nsVal, nsErr));
+        else           latex.DrawLatex(x, y, Form("N_{sig} = %.0f", nsVal));
+        y -= 0.06;
+    }
+    if (haveNB) {
+        if (nbErr > 0) latex.DrawLatex(x, y, Form("N_{bkg} = %.0f #pm %.0f", nbVal, nbErr));
+        else           latex.DrawLatex(x, y, Form("N_{bkg} = %.0f", nbVal));
+    }
+}
+
+bool EnhancedPlotManager::FetchYieldFromFile(const std::string& baseName, double& value, double& error) const {
+    if (!file_) return false;
+    value = 0.0; error = 0.0;
+
+    // 1) Try exact key first (SaveResult-style)
+    if (auto* p = dynamic_cast<TParameter<double>*>(file_->Get(baseName.c_str()))) {
+        value = p->GetVal();
+        if (auto* pe = dynamic_cast<TParameter<double>*>(file_->Get((baseName + std::string("_err")).c_str()))) {
+            error = pe->GetVal();
+        }
+        return true;
+    }
+
+    // 2) Try prefixed key (SaveResults-style): find any key ending with _<baseName>
+    TList* keys = file_->GetListOfKeys();
+    if (!keys) return false;
+    std::string matchName;
+    for (int i=0;i<keys->GetSize();++i) {
+        if (auto* k = dynamic_cast<TKey*>(keys->At(i))) {
+            std::string kname = k->GetName();
+            std::string suffix = std::string("_") + baseName;
+            if (kname.size() > suffix.size() && kname.rfind(suffix) == kname.size()-suffix.size()) {
+                matchName = kname; break;
+            }
+        }
+    }
+    if (!matchName.empty()) {
+        if (auto* p = dynamic_cast<TParameter<double>*>(file_->Get(matchName.c_str()))) {
+            value = p->GetVal();
+            std::string errKey = matchName + std::string("_err");
+            if (auto* pe = dynamic_cast<TParameter<double>*>(file_->Get(errKey.c_str()))) {
+                error = pe->GetVal();
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 #endif // ENHANCED_PLOTMANAGER_H

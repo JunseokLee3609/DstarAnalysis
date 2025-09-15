@@ -141,7 +141,7 @@ public:
     bool PerformSidebandPrefitBackgroundConstraintFit(const FitOpt& options, RooDataSet* dataset,
                                                       const SignalParams& signalParams, const BackgroundParams& backgroundParams,
                                                       double sbLoMin, double sbLoMax, double sbHiMin, double sbHiMax,
-                                                      double sigmaScale = 2.0,
+                                                      double sigmaScale = 1.0,
                                                       const std::string& resultName = "");
 
     // Combined: MC-driven Gaussian constraints on signal + SB-prefit constraints on background
@@ -150,7 +150,7 @@ public:
                                                     const SignalParams& signalParams, const BackgroundParams& backgroundParams,
                                                     const std::vector<std::string>& signalParamsToConstrain,
                                                     double sbLoMin, double sbLoMax, double sbHiMin, double sbHiMax,
-                                                    double sigmaScaleSignal = 5.0, double sigmaScaleBkg = 2.0,
+                                                    double sigmaScaleSignal = 1.0, double sigmaScaleBkg = 2.0,
                                                     const std::string& resultName = "");
 
     // Fixed-from-MC: fit MC to get shape, fix selected params in data to MC values, then fit data
@@ -955,9 +955,11 @@ inline void MassFitterV2::SetData(RooDataSet* dataset) {
     if (yieldMode_ == YieldMode::Fraction) {
         // Update total yield based on dataset size
         if (ntot_) {
+            // Set Ntot to the current (weighted) data size without tightening the range,
+            // to avoid unintended clamping after subsequent cuts.
             ntot_->setVal(dataSize);
-            ntot_->setRange(std::max(0.0, dataSize * 0.2), std::max(1.0, dataSize * 5.0));
-            ntot_->setConstant(true);
+            // Keep the wide default range set at construction (0 .. 1e12).
+            // ntot_->setConstant(true);
             double fval = fsig_ ? fsig_->getVal() : -1.0;
             LogOperation("SetData", "Updated Ntot to " + std::to_string(dataSize) +
                          ", fsig=" + std::to_string(fval));
@@ -1001,10 +1003,10 @@ inline void MassFitterV2::ApplyCut(const std::string& cutExpr) {
             // Update Ntot based on cut dataset size
             if (ntot_) {
                 ntot_->setVal(cutDataSize);
-                ntot_->setRange(std::max(0.0, cutDataSize * 0.2), std::max(1.0, cutDataSize * 5.0));
+                // ntot_->setRange(std::max(0.0, cutDataSize * 0.2), std::max(1.0, cutDataSize * 5.0));
                 ntot_->setConstant(true);
                 double fval = fsig_ ? fsig_->getVal() : -1.0;
-                LogOperation("ApplyCut", "Updated Ntot to " + std::to_string(cutDataSize) +
+                LogOperation("ApplyCut", "Updated Ntot to " + std::to_string(cutDataSize) + ", ntot_=" + std::to_string(ntot_->getVal()) +
                              ", fsig=" + std::to_string(fval));
             }
         } else {
@@ -1080,7 +1082,7 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, Roo
         }
 
         // Create strategy and execute constrained fit
-        auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 5.0);
+        auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 1.0);
         FitConfig cfg = options.ToFitConfig();
         if (activeMassVar_) {
             if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
@@ -1831,21 +1833,25 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMCAndBkgSB(
 
         // 4) Fit with combined external constraints
         FitConfig cfg = baseCfg;
-        RooLinkedList fitOpts;
-        fitOpts.Add(new RooCmdArg(RooFit::NumCPU(cfg.numCPU)));
-        fitOpts.Add(new RooCmdArg(RooFit::PrintLevel(cfg.verbose ? 1 : -1)));
-        fitOpts.Add(new RooCmdArg(RooFit::Save(true)));
-        fitOpts.Add(new RooCmdArg(RooFit::Minimizer(cfg.strategy.c_str(), cfg.minimizer.c_str())));
-        fitOpts.Add(new RooCmdArg(RooFit::SumW2Error(true)));
-        fitOpts.Add(new RooCmdArg((cfg.fitMethod == FitMethod::Extended || cfg.fitMethod == FitMethod::Robust)
-                                  ? RooFit::Extended(true) : RooFit::Extended(false)));
-        if (cfg.useHesse) fitOpts.Add(new RooCmdArg(RooFit::Hesse(true)));
-        if (cfg.useMinos) fitOpts.Add(new RooCmdArg(RooFit::Minos(true)));
-        if (!cfg.rangeName.empty()) fitOpts.Add(new RooCmdArg(RooFit::Range(cfg.rangeName.c_str())));
+        auto makeFitOptsWithStrategy = [&](int strategyLevel){
+            RooLinkedList opts;
+            opts.Add(new RooCmdArg(RooFit::NumCPU(cfg.numCPU)));
+            opts.Add(new RooCmdArg(RooFit::PrintLevel(cfg.verbose ? 1 : -1)));
+            opts.Add(new RooCmdArg(RooFit::Save(true)));
+            opts.Add(new RooCmdArg(RooFit::Minimizer(cfg.strategy.c_str(), cfg.minimizer.c_str())));
+            opts.Add(new RooCmdArg(RooFit::Strategy(strategyLevel)));
+            opts.Add(new RooCmdArg(RooFit::SumW2Error(true)));
+            opts.Add(new RooCmdArg((cfg.fitMethod == FitMethod::Extended || cfg.fitMethod == FitMethod::Robust)
+                                      ? RooFit::Extended(true) : RooFit::Extended(false)));
+            if (cfg.useHesse) opts.Add(new RooCmdArg(RooFit::Hesse(true)));
+            if (cfg.useMinos) opts.Add(new RooCmdArg(RooFit::Minos(true)));
+            if (!cfg.rangeName.empty()) opts.Add(new RooCmdArg(RooFit::Range(cfg.rangeName.c_str())));
 #if ROOT_VERSION_CODE >= ROOT_VERSION(6, 26, 00)
-        if (cfg.useCUDA) fitOpts.Add(new RooCmdArg(RooFit::EvalBackend("cuda")));
+            if (cfg.useCUDA) opts.Add(new RooCmdArg(RooFit::EvalBackend("cuda")));
 #endif
-        if (consPdfs.getSize() > 0) fitOpts.Add(new RooCmdArg(RooFit::ExternalConstraints(consPdfs)));
+            if (consPdfs.getSize() > 0) opts.Add(new RooCmdArg(RooFit::ExternalConstraints(consPdfs)));
+            return opts;
+        };
 
         std::unique_ptr<RooFitResult> fitResult;
         if (cfg.fitMethod == FitMethod::BinnedNLL) {
@@ -1862,9 +1868,19 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMCAndBkgSB(
             auto binnedData = std::make_unique<RooDataHist>((std::string(activeDataset_->GetName()) + "_binned").c_str(),
                                                             (std::string(activeDataset_->GetTitle()) + " (binned)").c_str(),
                                                             RooArgSet(*binnedVar), *activeDataset_);
-            fitResult = std::unique_ptr<RooFitResult>(totalPdf_->fitTo(*binnedData, fitOpts));
+            // Try strategy fallback: start with cfg.strategyLevel (commonly 2) then 1, then 0
+            for (int lvl = cfg.strategyLevel; lvl >= 0; --lvl) {
+                auto fitOpts = makeFitOptsWithStrategy(lvl);
+                fitResult = std::unique_ptr<RooFitResult>(totalPdf_->fitTo(*binnedData, fitOpts));
+                if (!fitResult || fitResult->status() == 0) break;
+            }
         } else {
-            fitResult = std::unique_ptr<RooFitResult>(totalPdf_->fitTo(*activeDataset_, fitOpts));
+            // Try strategy fallback: start with cfg.strategyLevel (commonly 2) then 1, then 0
+            for (int lvl = cfg.strategyLevel; lvl >= 0; --lvl) {
+                auto fitOpts = makeFitOptsWithStrategy(lvl);
+                fitResult = std::unique_ptr<RooFitResult>(totalPdf_->fitTo(*activeDataset_, fitOpts));
+                if (!fitResult || fitResult->status() == 0) break;
+            }
         }
         if (!fitResult) {
             LOG_AND_THROW(MassFitterException, "Combined constraint fit returned null result", "GC+SB");
