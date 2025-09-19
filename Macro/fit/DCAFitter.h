@@ -1,38 +1,29 @@
-// DCAFitter.h - Enhanced version compatible with MassFitterV2
-// Key improvements:
-// 1. MassFitterV2 integration with modular architecture
-// 2. Dependency injection pattern for enhanced testability
-// 3. Template-based fitting interface for type safety
-// 4. Enhanced error handling with exception safety
-// 5. Configuration management with ConfigManager
-// 6. Smart pointer-based memory management (RAII)
-// 7. Result management with ResultManager integration
-
 #ifndef DCA_FITTER_H
 #define DCA_FITTER_H
 
 #include <string>
 #include <vector>
 #include <map>
+#include <tuple>
+#include <unordered_set>
+#include <algorithm>
+#include <cmath>
 #include <iostream> // Added for output
+#include <limits>
 #include <memory>   // Added for smart pointers
 
 // ROOT includes
 #include "TFile.h"
-#include "TTree.h"
 #include "TH1D.h"
 #include "TCanvas.h"
 #include "TLegend.h"
 #include "TString.h" // Added for string manipulation
-#include "Helper.h" // Assuming Helper.h provides necessary utilities
 #include "TStyle.h" // For gStyle
 #include "TPad.h"   // For gPad
 #include "TH1.h"    // For TH1
-#include "THStack.h" // For THStack
 #include "TLatex.h"  // For CMS label
 #include "Opt.h"
-#include "PlotManager.h"
-#include "Helper.h" 
+#include "Helper.h"
 
 // RooFit includes
 #include "RooRealVar.h"
@@ -51,16 +42,13 @@
 #include "TSystem.h" // Added for gSystem
 
 #include "MassFitterV2.h"  // Updated to use V2
-#include "PDFFactory.h"     // For modular PDF creation
 #include "FitStrategy.h"    // For configurable fitting strategies
-#include "ResultManager.h"  // For enhanced result management
 #include "JSONParameterUtils.h"    // For loading PDF params from JSON
 #include "JSONParameterLoader.h"   // Loader interface
-#include "../Tools/ConfigManager.h"  // For selection cuts (may not define a ConfigManager class)
+// #include "../Tools/ConfigManager.h"  // Optional external configuration manager
 #include "ErrorHandler.h"   // For enhanced error handling (ConsoleErrorHandler, etc.)
 #include <stdexcept>
 #include "Params.h"
-#include "Helper.h"
 using namespace RooFit;
 using std::cout;
 using std::endl;
@@ -68,12 +56,12 @@ using std::endl;
 // -----------------------------------------------------------------------------
 // Shim classes to ensure this header builds even when a full ConfigManager or
 // ErrorHandler class is not available in the project.
-// - ConfigManager: provides GetConfiguration returning default FitConfig
+// - ConfigManager: provides GetConfiguration returning default FitOpt
 // - DCAErrorHandler: provides HandleError(context, message) using ConsoleErrorHandler
 // -----------------------------------------------------------------------------
 class ConfigManager {
 public:
-    FitConfig GetConfiguration(const std::string&) const { return FitConfig(); }
+    FitOpt GetConfiguration(const std::string&) const { return FitOpt(); }
 };
 
 class DCAErrorHandler {
@@ -136,9 +124,6 @@ public:
             // Enhanced parameter validation with error handler
             validateConstructorParameters(name, massVarName, dcaMin, dcaMax, nBins);
             
-            // Initialize configuration
-            initializeConfiguration();
-            
             // Create workspace with enhanced error handling
             initializeWorkspace();
             
@@ -155,25 +140,23 @@ public:
         }
     }
     
-    // Alternative constructor for backward compatibility
-    DCAFitter(FitOpt &opt, const std::string& name, const std::string& massVarName, 
-              double dcaMin, double dcaMax, int nBins) :
-        DCAFitter(static_cast<const FitOpt&>(opt), name, massVarName, dcaMin, dcaMax, nBins)
-    {}
-
+    // MassFitterV2-style DCA mass fits over all DCA slices
+    template<typename SignalParams, typename BackgroundParams>
+    bool FitSlicesMassV2(
+        RooDataSet* fullDataset,
+        const SignalParams& signalParams,
+        const BackgroundParams& backgroundParams,
+        const std::string& sliceResultPrefix = "DCA_Mass_Slice",
+        bool savePlots = false);
+    
     // Destructor
     virtual ~DCAFitter() {
-        
-        // delete promptHist_;
-        // delete nonPromptHist_;
-
         std::cout << "DCAFitter instance destroyed: " << name_ << std::endl;
     }
 
     // --- Configuration ---
     void setMCFile(const std::string& fileName, const std::string& datasetName = "") {
         mcFileName_ = fileName;
-        // mcTreeName_ = treeName;
         mcRooDatsetName_ = datasetName;
     }
     // Use MC mass-fit result ROOT (with RooWorkspace) as input for templates
@@ -214,11 +197,16 @@ public:
     // Enable/disable third "test" component and configure transformation
     void EnableTestComponent(bool enable = true) { enableTestComponent_ = enable; }
     void SetTestComponentPower(double power) { testComponentPower_ = power; }
-    void UseTestExponential(double lambda) { testUseExponential_ = true; testExpLambda_ = lambda; enableTestComponent_ = true; }
-    void DisableTestExponential() { testUseExponential_ = false; }
+    void UseTestSlope(double slope) { testUseSlope_ = true; testSlope_ = slope; enableTestComponent_ = true; }
+    void DisableTestSlope() { testUseSlope_ = false; testSlope_ = 0.0; }
+    void UseTestExponential(double lambda) { UseTestSlope(lambda); }
+    void DisableTestExponential() { DisableTestSlope(); }
     void UseTestBasePrompt() { testBasePrompt_ = true; }
     void UseTestBaseNonPrompt() { testBasePrompt_ = false; }
     void plotSignalAndSidebandDCAFromHist(const std::string& plotName = "dca_sig_vs_sb_hist_plot");
+    bool GenerateTemplatesWithScale(double scale,
+                                    std::unique_ptr<TH1D>& promptOut,
+                                    std::unique_ptr<TH1D>& nonPromptOut) const;
     void setWeightBranchName(const std::string& branchName = "") {
         weightBranchName_ = branchName;
         if (!weightBranchName_.empty()) {
@@ -241,6 +229,29 @@ public:
             jsonLoader_.reset();
         }
     }
+
+    void ConfigureGaussianConstraint(double massCenter, double innerWidth, double outerWidth,
+                                     double sigmaScaleSignal = 2.0, double sigmaScaleBackground = 2.0) {
+        gaussianConstraintMassCenter_ = massCenter;
+        // Ensure inner/outer widths are positive and ordered (inner < outer)
+        double inner = std::abs(innerWidth);
+        double outer = std::abs(outerWidth);
+        if (inner > outer) std::swap(inner, outer);
+        gaussianConstraintInnerWidth_ = inner;
+        gaussianConstraintOuterWidth_ = outer;
+        gaussianConstraintSignalScale_ = sigmaScaleSignal;
+        gaussianConstraintBackgroundScale_ = sigmaScaleBackground;
+    }
+
+    void SetGaussianConstraintSigmaScales(double sigmaScaleSignal, double sigmaScaleBackground) {
+        gaussianConstraintSignalScale_ = sigmaScaleSignal;
+        gaussianConstraintBackgroundScale_ = sigmaScaleBackground;
+    }
+
+    void SetDefaultGaussianConstraintParameters(const std::vector<std::string>& params) {
+        defaultConstraintParams_ = params;
+    }
+
     void setMCCuts(const std::string& cuts) {
         mcCuts_ = cuts;
     }
@@ -252,6 +263,20 @@ public:
         if (outFile_) {
             outFile_.reset();
         }
+    }
+
+    void EnableMassFits(bool enable = true) { runMassFits_ = enable; }
+
+    void setDataYieldHistInput(const std::string& fileName,
+                               const std::string& histName = "dataYieldHist") {
+        dataYieldHistInputFile_ = fileName;
+        dataYieldHistInputHist_ = histName;
+    }
+
+    void setDataYieldHistOutput(const std::string& fileName,
+                                const std::string& histName = "dataYieldHist") {
+        dataYieldHistOutputFile_ = fileName;
+        dataYieldHistOutputHist_ = histName;
     }
     
     // Helper function for safe file opening
@@ -272,6 +297,7 @@ public:
                      const SignalParams& signalParams, 
                      const BackgroundParams& backgroundParams,
                      const std::string& sliceName,
+                     double dcaLow, double dcaHigh,
                      double& yield, double& yieldError) {
         try {
             if (!dataSlice) {
@@ -285,19 +311,19 @@ public:
             massFitter->SetData(dataSlice);
             
             // Setup configuration for mass fitting
-            FitConfig massFitConfig = createMassFitConfig(sliceName);
-            massFitter->SetConfiguration(massFitConfig);
+            FitOpt massFitOpt = createMassFitOpt(sliceName, dcaLow, dcaHigh);
+            massFitter->SetConfiguration(massFitOpt);
             
             // Perform template-based fit
             bool fitSuccess = false;
             if (mcSlice) {
                 fitSuccess = massFitter->PerformConstraintFit(
-                    opt_, dataSlice, mcSlice, signalParams, backgroundParams,
+                    massFitOpt, dataSlice, mcSlice, signalParams, backgroundParams,
                     {}, sliceName
                 );
             } else {
                 fitSuccess = massFitter->PerformFit(
-                    opt_, dataSlice, signalParams, backgroundParams, sliceName
+                    massFitOpt, dataSlice, signalParams, backgroundParams, sliceName
                 );
             }
             
@@ -336,7 +362,7 @@ public:
             }
             
             // Create global configuration
-            FitConfig globalConfig = configManager_->GetConfiguration("DCAFitting");
+            FitOpt globalConfig = configManager_->GetConfiguration("DCAFitting");
             
             bool allFitsSuccessful = true;
             sliceFitResults_.clear();
@@ -352,7 +378,9 @@ public:
                 double yield, yieldError;
                 bool sliceSuccess = FitDCASlice(dataSlice.get(), mcSlice.get(),
                                               signalParams, backgroundParams,
-                                              sliceName, yield, yieldError);
+                                              sliceName,
+                                              dcaBins_[i], dcaBins_[i+1],
+                                              yield, yieldError);
                 
                 if (sliceSuccess) {
                     // Store results in histogram
@@ -562,6 +590,7 @@ public:
                   << ", nonPromptDataSet entries=" << (nonPromptDataSet?nonPromptDataSet->numEntries():-1) << std::endl;
         ws_->import(*promptDataSet);
         ws_->import(*nonPromptDataSet);
+        double scale = 1.2;
 
         promptHist_ = new TH1D("promptHist", "Prompt Histogram", dcaBins_.size() - 1, dcaBins_.data());
         promptHist_->Sumw2();
@@ -569,7 +598,7 @@ public:
             const RooArgSet* row = promptDataSet->get(i);
             double val = row->getRealValue(dcaVar_->GetName());
             double w = promptDataSet->isWeighted() ? promptDataSet->weight() : 1.0;
-            promptHist_->Fill(val, w);
+            promptHist_->Fill(scale*val, w);
         }
         nonPromptHist_ = new TH1D("nonPromptHist", "Non-prompt Histogram", dcaBins_.size() - 1,dcaBins_.data());
         nonPromptHist_->Sumw2();
@@ -577,7 +606,7 @@ public:
             const RooArgSet* row = nonPromptDataSet->get(i);
             double val = row->getRealValue(dcaVar_->GetName());
             double w = nonPromptDataSet->isWeighted() ? nonPromptDataSet->weight() : 1.0;
-            nonPromptHist_->Fill(val, w);
+            nonPromptHist_->Fill(scale*val, w);
         }
         // promptHist_->Scale(1.0, "width"); // Scale by bin width
         // nonPromptHist_->Scale(1.0, "width"); // Scale by bin width
@@ -637,14 +666,6 @@ public:
         }
         RooDataSet* dataDataset = dynamic_cast<RooDataSet*>(dataFile->Get(dataRooDatsetName_.c_str()));
 
-        // TTree* dataTree = dynamic_cast<TTree*>(dataFile->Get(dataTreeName_.c_str()));
-        // if (!dataTree) {
-        //     std::cerr << "Error: Could not find data tree: " << dataTreeName_ << " in file: " << dataFileName_ << std::endl;
-        //     dataFile->Close();
-        //     delete dataFile;
-        //     return false;
-        // }
-
         // Ensure dcaVar_ uses the correct branch name for loading
         dcaVar_->SetName(dcaBranchName_.c_str());
         RooArgSet dataVars(*dcaVar_);
@@ -663,17 +684,21 @@ public:
 
         // Delete previous dataset if it exists
         if (dataSet_) {
-            // If imported into workspace, ws_->Delete("dataSet_") might be needed first
-            // However, RooWorkspace::import with the same name should replace it.
             delete dataSet_; // Delete the old object before creating a new one
             dataSet_ = nullptr;
         }
 
         const char* weightVarName = !weightBranchName_.empty() ? weightBranchName_.c_str() : nullptr;
-        if(dataDataset) 
+        if(dataDataset) {
             dataSet_ = dynamic_cast<RooDataSet*>(dataDataset);
-        else cout << "Error: Could not find data dataset: " << dataRooDatsetName_ << " in file: " << dataFileName_ << std::endl, false;
-        // else dataSet_ = new RooDataSet("dataSet", "Data Set", dataTree, dataVars, dataCuts_.c_str(), weightVarName);
+        } else {
+            std::cout << "Error: Could not find data dataset: " << dataRooDatsetName_
+                      << " in file: " << dataFileName_ << std::endl;
+            dataFile->Close();
+            delete dataFile;
+            dcaVar_->SetName(opt_.dcaVar.c_str());
+            return false;
+        }
 
 
         if (!dataSet_ || dataSet_->numEntries() == 0) {
@@ -689,7 +714,7 @@ public:
         ws_->import(*dataSet_); // Import dataset into workspace
 
         dataFile->Close();
-        // delete dataFile;
+        delete dataFile;
         // Restore dcaVar_ name
         dcaVar_->SetName(opt_.dcaVar.c_str());
         return true;
@@ -725,9 +750,7 @@ public:
             std::cerr << "Error: No suitable RooDataSet found in workspace." << std::endl;
             return false;
         }
-        // Ensure DCA branch name is applied
         dcaVar_->SetName(dcaBranchName_.c_str());
-        // Import dataset into our workspace; avoid keeping separate clone to prevent double-free
         int rc = ws_->import(*ds);
         if (rc != 0) {
             std::cerr << "Error: Failed to import dataset into local workspace." << std::endl;
@@ -741,6 +764,71 @@ public:
         }
         std::cout << "Loaded " << dataSet_->sumEntries() << " entries from result file workspace." << std::endl;
         return true;
+    }
+
+    bool loadDataYieldHistFromFile() {
+        if (dataYieldHistInputFile_.empty()) {
+            std::cerr << "[DCAFitter] No data-yield histogram input file specified." << std::endl;
+            return false;
+        }
+        std::unique_ptr<TFile> fIn(TFile::Open(dataYieldHistInputFile_.c_str(), "READ"));
+        if (!fIn || fIn->IsZombie()) {
+            std::cerr << "[DCAFitter] Failed to open data-yield histogram file: "
+                      << dataYieldHistInputFile_ << std::endl;
+            return false;
+        }
+
+        TH1* h = dynamic_cast<TH1*>(fIn->Get(dataYieldHistInputHist_.c_str()));
+        if (!h) {
+            std::cerr << "[DCAFitter] Histogram '" << dataYieldHistInputHist_
+                      << "' not found in file " << dataYieldHistInputFile_ << std::endl;
+            return false;
+        }
+
+        TH1D* hClone = dynamic_cast<TH1D*>(h->Clone("dataYieldHist_loaded"));
+        if (!hClone) {
+            TH1D* hAsD = dynamic_cast<TH1D*>(h);
+            if (!hAsD) {
+                std::cerr << "[DCAFitter] Histogram '" << dataYieldHistInputHist_
+                          << "' is not a TH1D." << std::endl;
+                return false;
+            }
+            hClone = static_cast<TH1D*>(hAsD->Clone("dataYieldHist_loaded"));
+        }
+        hClone->SetDirectory(nullptr);
+
+        if (static_cast<int>(dcaBins_.size()) - 1 != hClone->GetNbinsX()) {
+            std::cerr << "[DCAFitter] Histogram binning mismatch (" << hClone->GetNbinsX()
+                      << " vs expected " << dcaBins_.size() - 1 << ")." << std::endl;
+        }
+
+        dataYieldHist_.reset(hClone);
+        std::cout << "[DCAFitter] Loaded data-yield histogram '" << dataYieldHistInputHist_
+                  << "' from " << dataYieldHistInputFile_ << " with integral "
+                  << dataYieldHist_->Integral() << std::endl;
+        return true;
+    }
+
+    void saveDataYieldHistToFile() const {
+        if (!dataYieldHist_ || dataYieldHistOutputFile_.empty()) {
+            return;
+        }
+        std::unique_ptr<TFile> fOut(TFile::Open(dataYieldHistOutputFile_.c_str(), "UPDATE"));
+        if (!fOut || fOut->IsZombie()) {
+            fOut.reset(TFile::Open(dataYieldHistOutputFile_.c_str(), "RECREATE"));
+        }
+        if (!fOut || fOut->IsZombie()) {
+            std::cerr << "[DCAFitter] Failed to open output file for writing histogram: "
+                      << dataYieldHistOutputFile_ << std::endl;
+            return;
+        }
+        fOut->cd();
+        TH1D tmp(*dataYieldHist_);
+        tmp.SetName(dataYieldHistOutputHist_.c_str());
+        tmp.SetDirectory(fOut.get());
+        tmp.Write(dataYieldHistOutputHist_.c_str(), TObject::kOverwrite);
+        std::cout << "[DCAFitter] Saved data-yield histogram to " << dataYieldHistOutputFile_
+                  << " as '" << dataYieldHistOutputHist_ << "'." << std::endl;
     }
 
         // Legacy buildModel disabled due to unstable brace structure; use buildModelwSideband instead
@@ -781,26 +869,24 @@ public:
         }
 
 
-            std::cout << "Building model using data-driven DCA templates from mass fits." << std::endl;
-            // RooRealVar* mass = ws_->var(massVarName_.c_str()); 
-            // RooRealVar* mass = new RooRealVar(mass)
-            // if (!mass) {
-            //     std::cerr << "Error: Mass variable '" << massVarName_ << "' not found in workspace." << std::endl;
-            //     return false;
-            // }
+        bool histogramReady = false;
+        bool shouldSaveYieldHistogram = false;
 
-            dataYieldHist_.reset(); 
+        if (runMassFits_) {
+            std::cout << "Building model using data-driven DCA templates from mass fits." << std::endl;
+
+            dataYieldHist_.reset();
             dataYieldHist_ = std::make_unique<TH1D>("dataYieldHist", "DCA Yield from Mass Fits", dcaBins_.size() - 1, dcaBins_.data());
             dataYieldHist_->Sumw2();
             for (size_t i = 0; i < dcaBins_.size() - 1; ++i) {
-                cout << "Processing DCA bin " << i << ": [" << dcaBins_[i] << ", " << dcaBins_[i+1] << "]" << endl;
+                cout << "Processing DCA bin " << i << ": [" << dcaBins_[i] << ", " << dcaBins_[i + 1] << "]" << endl;
                 double dcaLow = dcaBins_[i];
-                double dcaHigh = dcaBins_[i+1];
-                    DCASliceInfo sliceInfo(dcaLow, dcaHigh, static_cast<int>(i), 
-                          Form("DCA_%.4f_%.4f", dcaLow, dcaHigh));
-                     BinInfo currentBin = createBinInfoFromFitOpt(opt_, dcaLow, dcaHigh);
+                double dcaHigh = dcaBins_[i + 1];
+                DCASliceInfo sliceInfo(dcaLow, dcaHigh, static_cast<int>(i),
+                                       Form("DCA_%.4f_%.4f", dcaLow, dcaHigh));
+                BinInfo currentBin = createBinInfoFromFitOpt(opt_, dcaLow, dcaHigh);
                 std::string sliceName = Form("dca_%.3f_%.3f", dcaLow, dcaHigh);
-                std::replace(sliceName.begin(), sliceName.end(), '.', 'p'); 
+                std::replace(sliceName.begin(), sliceName.end(), '.', 'p');
 
                 TString dcaCut = TString::Format("%s >= %f && %s < %f", dca->GetName(), dcaLow, dca->GetName(), dcaHigh);
                 RooDataSet* dcaSliceData = dynamic_cast<RooDataSet*>(dataSet_->reduce(dcaCut.Data()));
@@ -811,70 +897,201 @@ public:
                 bool fitSuccess = false;
 
                 if (dcaSliceData && dcaSliceData->numEntries() > 0) {
-                    
-                    // RooPlot* massFrameBeforeFit = massVar_->frame(RooFit::Title(Form("Mass Distribution for %s (Before Fit)", sliceName.c_str())));
-                    // dcaSliceData->plotOn(massFrameBeforeFit); 
-
-                    // TCanvas* cSliceMassBeforeFit = new TCanvas(Form("cSliceMassBeforeFit_%s", sliceName.c_str()), Form("Mass Distribution for %s (Before Fit)", sliceName.c_str()), 800, 600);
-                    // massFrameBeforeFit->Draw();
-
-                    std::string plotDir = opt_.outputPlotDir + "/mass_fits_" + name_ + "/slice_mass_distributions/";
-                    gSystem->mkdir(plotDir.c_str(), kTRUE); 
-                    // std::string plotFileNameBeforeFit = plotDir + "mass_dist_before_fit_" + sliceName + ".png"ㅈ 
-                    // cSliceMassBeforeFit->SaveAs(plotFileNameBeforeFit.c_str());
-                    // delete cSliceMassBeforeFit;
-                    // delete massFrameBeforeFit;
-                    // End of plotting before fit
-
-                    // Prepare mass fit parameters (signal/background) either from JSON (preferred) or defaults
                     std::cout << "Attempting to fit mass for slice: " << sliceName << std::endl;
-                    
-                    // Enhanced MassFitterV2 integration with proper error handling
+
                     try {
-                        // Create MassFitterV2 instance with dependency injection
                         auto* massFitter = createMassFitterV2ForSlice(sliceName);
-                        
-                        // Setup configuration
-                        FitConfig massFitConfig = createMassFitConfig(sliceName);
-                        gSystem->mkdir(opt_.outputDir.c_str(), kTRUE);
-                        
-                        massFitter->SetConfiguration(massFitConfig); 
-                        // Set data for fitting
+
+                        FitOpt massFitOpt = createMassFitOpt(sliceName, dcaLow, dcaHigh);
+                        massFitter->SetConfiguration(massFitOpt);
                         massFitter->SetData(dcaSliceData);
-                        
-                        // Prepare parameter source
-                        bool fitSuccess = false;
+
+                        std::string sliceBaseOutputDir = joinPath(massFitOpt.outputDir, massFitOpt.subDir);
+                        gSystem->mkdir(massFitOpt.outputDir.c_str(), kTRUE);
+                        gSystem->mkdir(sliceBaseOutputDir.c_str(), kTRUE);
+                        std::string detailedPlotOutputDir = joinPath(
+                            sliceBaseOutputDir,
+                            Form("pt%.0f_%.0f_cos%02.0f_%02.0f", opt_.pTMin, opt_.pTMax,
+                                 opt_.cosMin * 100.0, opt_.cosMax * 100.0));
+                        gSystem->mkdir(detailedPlotOutputDir.c_str(), kTRUE);
+
+                        const std::string particleTypeLabel = "D^{*+}";
+                        const std::string energyLabel = "ppRef #sqrt{s_{NN}} = 5.36 TeV";
+
+                        std::string ptLabel = massFitOpt.pTLegend;
+                        if (ptLabel.empty()) {
+                            ptLabel = Form("%.1f < p_{T} < %.1f GeV/c", massFitOpt.pTMin, massFitOpt.pTMax);
+                        }
+
+                        std::string yLabel = massFitOpt.yLegend;
+                        if (yLabel.empty()) {
+                            yLabel = Form("|y| < %.1f", std::abs(massFitOpt.etaMax));
+                        }
+
+                        std::string analysisCutLabel = massFitOpt.cosLegend;
+                        if (analysisCutLabel.empty()) {
+                            analysisCutLabel = Form("%.2f < cos#theta_{HX} < %.2f",
+                                                     massFitOpt.cosMin, massFitOpt.cosMax);
+                        }
+
+                        std::string dcaLabel = massFitOpt.dcaLegend;
+                        if (dcaLabel.empty()) {
+                            dcaLabel = Form("%.3f < DCA < %.3f cm", dcaLow, dcaHigh);
+                        }
+
+                        auto runMCFitAndPlot = [&](const auto& sigParamsForMC,
+                                                   const auto& /*bkgParamsForMC*/,
+                                                   const std::vector<std::string>& paramsToConstrainForMC) {
+                            if (!dcaSliceMC || dcaSliceMC->numEntries() == 0) {
+                                return;
+                            }
+
+                            std::string mcSliceName = sliceName + "_MC";
+                            auto* mcMassFitter = createMassFitterV2ForSlice(mcSliceName);
+                            FitOpt mcOpt = createMassFitOpt(mcSliceName, dcaLow, dcaHigh, true);
+                            mcOpt.fitMethod = FitMethod::GaussianConstraint;
+                            mcMassFitter->SetConfiguration(mcOpt);
+                            mcMassFitter->SetData(dcaSliceMC);
+
+                            std::vector<std::string> constr = paramsToConstrainForMC;
+                            if (constr.empty()) constr = defaultConstraintParams_;
+
+                            bool mcFitOk = false;
+                            try {
+                                mcFitOk = mcMassFitter->PerformMCFit(
+                                    mcOpt, dcaSliceMC,
+                                    sigParamsForMC,
+                                    mcSliceName);
+                            } catch (const std::exception& e) {
+                                std::cerr << "[DCAFitter][MC] Exception during MC fit for slice "
+                                          << mcSliceName << ": " << e.what() << std::endl;
+                                mcFitOk = false;
+                            }
+
+                            if (!mcFitOk) {
+                                std::cout << "[DCAFitter][MC] MC fit failed for slice "
+                                          << mcSliceName << std::endl;
+                                return;
+                            }
+
+                            RooWorkspace* mcWs = mcMassFitter->GetWorkspace(mcSliceName);
+                            RooFitResult* mcFitResult = mcMassFitter->GetRooFitResult(mcSliceName);
+                            if (!mcWs || !mcFitResult) {
+                                std::cerr << "[DCAFitter][MC] Missing workspace or fit result for slice "
+                                          << mcSliceName << std::endl;
+                                return;
+                            }
+
+                            std::string mcPlotDir = joinPath(detailedPlotOutputDir, "mc");
+                            gSystem->mkdir(mcPlotDir.c_str(), kTRUE);
+
+                            double mcYield = mcMassFitter->GetSignalYield(mcSliceName);
+                            double mcYieldErr = mcMassFitter->GetSignalYieldError(mcSliceName);
+
+                            plotSliceFitDetails(dcaSliceMC, mcWs, mcFitResult, massVar_.get(),
+                                                mcSliceName, mcOpt, mcPlotDir, true,
+                                                particleTypeLabel, energyLabel + " (MC)", ptLabel, yLabel,
+                                                analysisCutLabel, dcaLabel,
+                                                mcYield, mcYieldErr);
+                        };
+
+                        fitSuccess = false;
+                        massParamFixedInfo_ = ParameterFixedInfo();
                         if (useJSONParams_ && jsonLoader_) {
-                            BinIdentifier binId; // derive from FitOpt ranges
+                            BinIdentifier binId;
                             binId.ptMin = opt_.pTMin; binId.ptMax = opt_.pTMax;
                             binId.cosMin = opt_.cosMin; binId.cosMax = opt_.cosMax;
                             binId.centralityMin = opt_.centMin; binId.centralityMax = opt_.centMax;
+                            binId.dcaMin = dcaBins_[i];
+                            binId.dcaMax = dcaBins_[i + 1];
 
                             auto loaded = LoadBinParametersFromJSONWithFixedInfo(*jsonLoader_, binId);
                             DStarBinParameters jsonParams = loaded.first;
                             massParamFixedInfo_ = loaded.second;
 
-                            // Dispatch to active PDF parameter types
-                            jsonParams.ApplyToSignalParams([&](const auto& sigParams){
-                                jsonParams.ApplyToBackgroundParams([&](const auto& bkgParams){
+                            auto logParams = [&](const char* tag, const auto& sigParams, const auto& bkgParams) {
+                                double meanVal = safeGetMean(sigParams);
+                                double sigmaVal = safeGetSigma(sigParams);
+                                if (std::isnan(sigmaVal)) sigmaVal = safeGetSigmaL(sigParams);
+                                double lambdaVal = safeGetLambda(bkgParams);
+                                std::cout << "[DCAFitter][JSON] " << tag
+                                          << " slice=" << sliceName
+                                          << " mean=" << meanVal
+                                          << " sigma=" << sigmaVal
+                                          << " bkg_lambda=" << lambdaVal
+                                          << std::endl;
+                            };
+
+                            auto paramsToConstrain = buildGaussianConstraintParameterList();
+                            if (paramsToConstrain.empty()) {
+                                paramsToConstrain = defaultConstraintParams_;
+                            }
+                            const double sbLoMin = 0.140;
+                            const double sbLoMax = 0.143;
+                            const double sbHiMin = 0.149;
+                            const double sbHiMax = 0.155;
+                            std::cout << "[DCAFitter][GC] Sideband windows: LO[" << sbLoMin << ", " << sbLoMax
+                                      << "], HI[" << sbHiMin << ", " << sbHiMax << "]" << std::endl;
+                            std::cout << "[DCAFitter][GC] Sigma scales (signal, background) = ("
+                                      << gaussianConstraintSignalScale_ << ", "
+                                      << gaussianConstraintBackgroundScale_ << ")" << std::endl;
+
+                            if (!paramsToConstrain.empty()) {
+                                std::cout << "[DCAFitter][GC] Constraining parameters: ";
+                                for (size_t idx = 0; idx < paramsToConstrain.size(); ++idx) {
+                                    if (idx) std::cout << ", ";
+                                    std::cout << paramsToConstrain[idx];
+                                }
+                                std::cout << std::endl;
+                            }
+
+                            jsonParams.ApplyToSignalParams([&](const auto& sigParams) {
+                                jsonParams.ApplyToBackgroundParams([&](const auto& bkgParams) {
+                                    logParams("Using JSON-loaded parameters", sigParams, bkgParams);
                                     if (dcaSliceMC) {
-                                        fitSuccess = massFitter->PerformConstraintFit(
-                                            opt_, dcaSliceData, dcaSliceMC,
-                                            sigParams, bkgParams, {}, sliceName);
+                                        fitSuccess = massFitter->PerformGaussianConstraintFitWithMCAndBkgSB(massFitOpt, dcaSliceData, dcaSliceMC,
+                                            sigParams, bkgParams,
+                                            paramsToConstrain,
+                                            sbLoMin, sbLoMax, sbHiMin, sbHiMax,
+                                            gaussianConstraintSignalScale_, gaussianConstraintBackgroundScale_,
+                                            sliceName);
+                                        if (fitSuccess) {
+                                            runMCFitAndPlot(sigParams, bkgParams, paramsToConstrain);
+                                        }
                                     } else {
-                                        fitSuccess = massFitter->PerformFit(
-                                            opt_, dcaSliceData,
+                                        fitSuccess = massFitter->PerformFit(massFitOpt, dcaSliceData,
                                             sigParams, bkgParams, sliceName);
                                     }
                                 });
                             });
                         } else {
-                            // Fallback to built-in defaults (DBCB + Phenomenological)
-                            PDFParams::DBCrystalBallParams sigDBCBParams; 
-                            sigDBCBParams.mean = 0.1455;        // D* mass in GeV
-                            sigDBCBParams.mean_min = 0.1452;
-                            sigDBCBParams.mean_max = 0.1458;
-                            sigDBCBParams.sigma = 0.0005; // D* sigma in GeV
+                                                        auto paramsToConstrain = buildGaussianConstraintParameterList();
+                            if (paramsToConstrain.empty()) {
+                                paramsToConstrain = defaultConstraintParams_;
+                            }
+                                                        const double sbLoMin = 0.140;
+                            const double sbLoMax = 0.143;
+                            const double sbHiMin = 0.149;
+                            const double sbHiMax = 0.155;
+                            std::cout << "[DCAFitter][GC] Sideband windows (fallback): LO[" << sbLoMin << ", "
+                                      << sbLoMax << "], HI[" << sbHiMin << ", " << sbHiMax << "]" << std::endl;
+                            std::cout << "[DCAFitter][GC] Sigma scales (signal, background) fallback = ("
+                                      << gaussianConstraintSignalScale_ << ", "
+                                      << gaussianConstraintBackgroundScale_ << ")" << std::endl;
+                            if (!paramsToConstrain.empty()) {
+                                std::cout << "[DCAFitter][GC] Constraining parameters (fallback): ";
+                                for (size_t idx = 0; idx < paramsToConstrain.size(); ++idx) {
+                                    if (idx) std::cout << ", ";
+                                    std::cout << paramsToConstrain[idx];
+                                }
+                                std::cout << std::endl;
+                            }
+
+                            PDFParams::DBCrystalBallParams sigDBCBParams;
+                            sigDBCBParams.mean = 0.1455;
+                            sigDBCBParams.mean_min = 0.145;
+                            sigDBCBParams.mean_max = 0.146;
+                            sigDBCBParams.sigma = 0.0005;
                             sigDBCBParams.sigma_min = 0.0001;
                             sigDBCBParams.sigma_max = 0.01;
                             sigDBCBParams.sigmaR = 0.0005;
@@ -884,127 +1101,154 @@ public:
                             sigDBCBParams.sigmaL_min = 0.0001;
                             sigDBCBParams.sigmaL_max = 0.01;
                             sigDBCBParams.alphaL = 1.1;
-                            sigDBCBParams.alphaL_min = 0.01;
-                            sigDBCBParams.alphaL_max = 5;
-                            sigDBCBParams.nL = 1.2;
-                            sigDBCBParams.nL_min = 1.1;
-                            sigDBCBParams.nL_max = 20;
+                            sigDBCBParams.alphaL_min = 0.1;
+                            sigDBCBParams.alphaL_max = 3;
+                            sigDBCBParams.nL = 2.5;
+                            sigDBCBParams.nL_min = 1;
+                            sigDBCBParams.nL_max = 50;
                             sigDBCBParams.alphaR = 1.1;
-                            sigDBCBParams.alphaR_min = 0.01;
-                            sigDBCBParams.alphaR_max = 5.;
-                            sigDBCBParams.nR = 1.85;
-                            sigDBCBParams.nR_min = 1.1;
-                            sigDBCBParams.nR_max = 20;
+                            sigDBCBParams.alphaR_min = 0.1;
+                            sigDBCBParams.alphaR_max = 3.;
+                            sigDBCBParams.nR = 2.5;
+                            sigDBCBParams.nR_min = 1;
+                            sigDBCBParams.nR_max = 50;
 
-                            PDFParams::PhenomenologicalParams bkgD0dstParams; 
-                            bkgD0dstParams.p0 = 0.01; bkgD0dstParams.p0_min = 0.001; bkgD0dstParams.p0_max = 0.1;
-                            bkgD0dstParams.p1 = 1;     bkgD0dstParams.p1_min = -10;   bkgD0dstParams.p1_max = 10.0;
-                            bkgD0dstParams.p2 = 1;     bkgD0dstParams.p2_min = -10.0; bkgD0dstParams.p2_max = 10.0;
+                            PDFParams::Phenomenological2Params bkgD0dstParams;
+                            bkgD0dstParams.m = 0.5;   bkgD0dstParams.m_min = 0.0;    bkgD0dstParams.m_max = 5.0;
+                            bkgD0dstParams.lambda = -1; bkgD0dstParams.lambda_min = -1000; bkgD0dstParams.lambda_max = 2;
+                            // PDFParams::Phenomenological2Params bkgD0dstParams;
+                            // PDFParams::DstD0Params bkgD0dstParams;
+                            // bkgD0dstParams.p0 = 0.1;   bkgD0dstParams.p0_min = 0.0;    bkgD0dstParams.p0_max = 1.0;
+                            // bkgD0dstParams.p1 = -1;    bkgD0dstParams.p1_min = -100;   bkgD0dstParams.p1_max = 100;
+                            // bkgD0dstParams.p2 = 10;    bkgD0dstParams.p2_min = -1000;  bkgD0dstParams.p2_max = 1000;
 
                             if (dcaSliceMC) {
-                                fitSuccess = massFitter->PerformConstraintFit(
-                                    opt_, dcaSliceData, dcaSliceMC,
-                                    sigDBCBParams, bkgD0dstParams, {}, sliceName);
+                                fitSuccess = massFitter->PerformGaussianConstraintFitWithMCAndBkgSB(massFitOpt, dcaSliceData, dcaSliceMC,
+                                    sigDBCBParams, bkgD0dstParams,
+                                    paramsToConstrain,
+                                    sbLoMin, sbLoMax, sbHiMin, sbHiMax,
+                                    gaussianConstraintSignalScale_, gaussianConstraintBackgroundScale_,
+                                    sliceName);
+                                if (fitSuccess) {
+                                    runMCFitAndPlot(sigDBCBParams, bkgD0dstParams, paramsToConstrain);
+                                }
                             } else {
-                                fitSuccess = massFitter->PerformFit(
-                                    opt_, dcaSliceData,
+                                fitSuccess = massFitter->PerformFit(massFitOpt, dcaSliceData,
                                     sigDBCBParams, bkgD0dstParams, sliceName);
                             }
                         }
 
-
-                        // Enhanced result handling with MassFitterV2
                         if (fitSuccess && massFitter->GetSignalYield(sliceName) >= 0) {
                             yield = massFitter->GetSignalYield(sliceName);
                             yieldError = massFitter->GetSignalYieldError(sliceName);
-                            std::cout << "Mass fit SUCCESS for DCA slice " << sliceName 
-                                     << ": Yield = " << yield << " +/- " << yieldError << std::endl;
+                            std::cout << "Mass fit SUCCESS for DCA slice " << sliceName
+                                      << ": Yield = " << yield << " +/- " << yieldError << std::endl;
 
-                            // Store results
-                            int i =0;
                             sliceFitResults_[sliceName] = massFitter->GetFitResults(sliceName);
-                            
-                            // Update yield histogram (use DCA bin index)
-                            updateYieldHistogram(i, yield, yieldError);
-
-                            // Get enhanced result objects
-                            std::cout << massFitter << std::endl;
-                            std::cout << massFitter->GetWorkspace(sliceName) << std::endl;
-                            std::cout << std::boolalpha << massFitter->GetFitResults(sliceName) << std::endl;
-                            std::cout << std::boolalpha << massFitter->GetRooFitResult(sliceName) << std::endl;
 
                             RooWorkspace* mfWs = massFitter->GetWorkspace(sliceName);
                             RooFitResult* mfFitResult = massFitter->GetRooFitResult(sliceName);
 
                             if (mfWs && mfFitResult) {
-                                // Process successful fit results 
-                            // RooRealVar* sliceMassVar = mfWs->var(massVar_->GetName());
+                                notifyDCASliceFit(currentBin, sliceInfo, mfFitResult, "DCA_Mass_Slice");
+                                gSystem->mkdir(detailedPlotOutputDir.c_str(), kTRUE);
 
-
-                            cout << i++ << endl;
-                            notifyDCASliceFit(currentBin, sliceInfo, mfFitResult, "DCA_Mass_Slice");
-                            cout << i++ << endl;
-
-
-                            plotDir += Form("pt%.0f_%.0f_cos%2f_%2f/", opt_.pTMin, opt_.pTMax,opt_.cosMin*100,opt_.cosMax*100);
-                            std::string detailedPlotOutputDir = plotDir; 
-                            cout << i++ << endl;
-                            
-                            // --- Prepare strings for the plot labels ---
-                            std::string particleTypeLabel = "D^{*+}";
-                            std::string energyLabel = "ppRef #sqrt{s_{NN}} = 5.36 TeV"; // Adjust as needed
-                            // Use legend strings from opt_ struct instead of hardcoded strings
-                            std::string ptLabel = opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend;
-                            std::string yLabel = opt_.yLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.yLegend;
-                            std::string analysisCutLabel = opt_.centLegend.empty() ? Form("%.2f < cos#theta_{HX} < %.2f", opt_.cosMin, opt_.cosMax) : opt_.centLegend;
-                            std::string dcaLabel = opt_.dcaLegend.empty() ? Form("%.3f < DCA < %.3f cm", dcaLow, dcaHigh) : opt_.dcaLegend;
-
-                            // --- Call the new plotting function ---
-                                         plotSliceFitDetails(dcaSliceData, mfWs, mfFitResult, massVar_.get(),
-                                                sliceName, opt_, detailedPlotOutputDir,false,
-                                                particleTypeLabel, energyLabel, ptLabel, yLabel, analysisCutLabel, dcaLabel);
-
-                            // Store path for the final summary plot
-                            // std::string detailedPlotFileName = detailedPlotOutputDir + "mass_fit_detailed_" + sliceName + ".png"; 
-                            // detailedPlotPaths_.push_back(detailedPlotFileName);
+                                plotSliceFitDetails(dcaSliceData, mfWs, mfFitResult, massVar_.get(),
+                                                    sliceName, massFitOpt, detailedPlotOutputDir, false,
+                                                    particleTypeLabel, energyLabel, ptLabel, yLabel,
+                                                    analysisCutLabel, dcaLabel, yield, yieldError);
+                            } else {
+                                std::cerr << "Error: Could not retrieve workspace or fit result from MassFitter for slice "
+                                          << sliceName << std::endl;
+                            }
                         } else {
-                            std::cerr << "Error: Could not retrieve workspace or fit result from MassFitter for slice " << sliceName << std::endl;
+                            FitStatus failedStatus(-998, "DCA_Mass_Slice", "Slice fit failed", -1, -1, sliceInfo.sliceName);
+                            addFitStatus(currentBin, failedStatus);
+                            std::cout << "Mass fit FAILED for DCA slice " << sliceName << ". Yield set to 0." << std::endl;
+                            yield = 0;
+                            yieldError = 0;
+                            fitSuccess = false;
                         }
-                    } else {
-                        // Fit failed for this slice
-                        FitStatus failedStatus(-998, "DCA_Mass_Slice", "Slice fit failed", -1, -1, sliceInfo.sliceName);
-                        addFitStatus(currentBin, failedStatus);
-                        std::cout << "Mass fit FAILED for DCA slice " << sliceName << ". Yield set to 0." << std::endl;
-                        yield = 0; 
-                        yieldError = 0; 
-                        fitSuccess = false;
-                    }
-                
                     } catch (const std::exception& e) {
-                        // Enhanced exception handling
                         std::string errorMsg = "Exception in mass fitting for slice " + sliceName + ": " + std::string(e.what());
                         errorHandler_->HandleError("FitDCASlice", errorMsg);
                         yield = 0.0;
                         yieldError = 0.0;
                         fitSuccess = false;
                     }
-                    
-                    // Cleanup
+
                     delete dcaSliceData;
-                    if (dcaSliceMC) delete dcaSliceMC;
+                    dcaSliceData = nullptr;
+                    if (dcaSliceMC) {
+                        delete dcaSliceMC;
+                        dcaSliceMC = nullptr;
+                    }
 
-                    // Record yields into histogram
-                    dataYieldHist_->SetBinContent(i + 1, yield); 
+                    dataYieldHist_->SetBinContent(i + 1, yield);
                     dataYieldHist_->SetBinError(i + 1, yieldError);
-                } // end if (dcaSliceData)
-            } // end for (DCA bins)
+                }
 
-            delete dataDrivenTemplate_;
-            dataDrivenTemplate_ = new RooDataHist("dataDrivenTemplate", "Data-driven DCA Template", RooArgList(*dca), dataYieldHist_.get());
-            ws_->import(*dataDrivenTemplate_, RooFit::RecycleConflictNodes());
-            std::cout << "Data-driven DCA template (RooDataHist) created from mass fits." << std::endl;
+                if (dcaSliceData) delete dcaSliceData;
+                if (dcaSliceMC) delete dcaSliceMC;
+            }
 
-            
+            histogramReady = true;
+            shouldSaveYieldHistogram = true;
+        } else {
+            std::cout << "Using pre-computed data-yield histogram for template building." << std::endl;
+            if (!dataYieldHistInputFile_.empty()) {
+                if (!loadDataYieldHistFromFile()) {
+                    std::cerr << "[DCAFitter] Failed to load data-yield histogram from file."
+                              << " Enable mass fits or provide a valid histogram." << std::endl;
+                    return false;
+                }
+            } else if (!dataYieldHist_) {
+                std::cerr << "[DCAFitter] No data-yield histogram in memory and no input file specified." << std::endl;
+                std::cerr << "           Call setDataYieldHistInput() or enable mass fits." << std::endl;
+                return false;
+            } else {
+                std::cout << "[DCAFitter] Reusing in-memory data-yield histogram with integral "
+                          << dataYieldHist_->Integral() << std::endl;
+            }
+            histogramReady = static_cast<bool>(dataYieldHist_);
+        }
+
+        if (!histogramReady || !dataYieldHist_) {
+            std::cerr << "[DCAFitter] Data-yield histogram is not available. Cannot build data-driven template." << std::endl;
+            return false;
+        }
+
+        if (dataYieldHist_->GetNbinsX() != static_cast<int>(dcaBins_.size() - 1)) {
+            std::cerr << "[DCAFitter] Warning: Histogram binning (" << dataYieldHist_->GetNbinsX()
+                      << ") does not match configured DCA bins (" << (dcaBins_.size() - 1) << ")." << std::endl;
+        }
+
+        delete dataDrivenTemplate_;
+        dataDrivenTemplate_ = new RooDataHist("dataDrivenTemplate", "Data-driven DCA Template", RooArgList(*dca), dataYieldHist_.get());
+        ws_->import(*dataDrivenTemplate_, RooFit::RecycleConflictNodes());
+        std::cout << "[DCAFitter] Data-driven DCA template (RooDataHist) created from "
+                  << (runMassFits_ ? "mass fits." : "loaded histogram.") << std::endl;
+
+        if (shouldSaveYieldHistogram) {
+            saveDataYieldHistToFile();
+        }
+
+        if (dataYieldHist_ && dataDrivenTemplate_) {
+            std::cout << "[DCAFitter][DBG] Comparing dataYieldHist vs dataDrivenTemplate." << std::endl;
+            for (int ib = 1; ib <= dataYieldHist_->GetNbinsX(); ++ib) {
+                double histYield = dataYieldHist_->GetBinContent(ib);
+                double templYield = 0.0;
+                if (dataDrivenTemplate_->numEntries() >= ib) {
+                    dataDrivenTemplate_->get(ib - 1);
+                    templYield = dataDrivenTemplate_->weight();
+                }
+                std::cout << "  bin " << ib
+                          << ": hist=" << histYield
+                          << ", template=" << templYield << std::endl;
+            }
+        }
+
+
             std::cout << "Building model using MC templates." << std::endl;
             promptTemplate_ = static_cast<RooDataHist*>(ws_->data("promptTemplate"));
             nonPromptTemplate_ = static_cast<RooDataHist*>(ws_->data("nonPromptTemplate"));
@@ -1014,26 +1258,18 @@ public:
                 std::cerr << "       Please run createTemplatesFromMC() first if you intend to use MC templates." << std::endl;
                 return false;
             }
-            int a =0;
-            
-            // RooDataSet* dataForYieldEstimate = (RooDataSet*)ws_->data("dataSet");
-            // double nevt = dataForYieldEstimate ? dataForYieldEstimate->sumEntries() : 1000; 
             double nevt = dataYieldHist_->Integral();
             if (nevt <=0) nevt = 1000;
             cout << "Estimated number of events for yield: " << nevt << endl;
 
 
-            // delete n_prompt_;
             n_prompt_ = std::make_unique<RooRealVar>("n_prompt", "Number of prompt events", nevt * 0.8, 0, nevt * 1);
             ws_->import(*n_prompt_);
-            // delete n_nonprompt_;
             n_nonprompt_ = std::make_unique<RooRealVar>("n_nonprompt", "Number of non-prompt events", nevt * 0.2, 0.1, nevt * 1);
             ws_->import(*n_nonprompt_);
-            cout << a++ << endl;
 
             RooArgList pdfList;
             RooArgList yieldList;
-            cout << a++ << endl;
 
 
             if (promptTemplate_) {
@@ -1062,18 +1298,27 @@ public:
                 std::cout << "[DCAFitter][Test] enableTestComponent=" << (enableTestComponent_?"true":"false")
                           << ", base=" << (testBasePrompt_?"prompt":"nonprompt")
                           << ", basePresent=" << (baseTemplate?"yes":"no")
-                          << ", useExp=" << (testUseExponential_?"true":"false")
-                          << ", param=" << (testUseExponential_?testExpLambda_:testComponentPower_) << std::endl;
+                          << ", useSlope=" << (testUseSlope_?"true":"false")
+                          << ", param=" << (testUseSlope_?testSlope_:testComponentPower_) << std::endl;
                 if (enableTestComponent_ && baseTemplate) {
                     // Build TH1 from base template
                     TH1* hNP = baseTemplate->createHistogram((std::string(testBasePrompt_?"hPromptForTest_":"hNonPromptForTest_") + name_).c_str(), *dca);
                     if (hNP) {
-                        // Transform: y_new = y_old^power, then renormalize
+                        // Transform: apply slope scaling or power, then renormalize
                         double sum = 0.0;
                         for (int ib=1; ib<=hNP->GetNbinsX(); ++ib) {
                             double y = hNP->GetBinContent(ib);
                             if (y < 0) y = 0;
-                            double yn = std::pow(y, std::max(0.0, testComponentPower_));
+                            double yn = y;
+                            if (testUseSlope_) {
+                                double x = hNP->GetXaxis()->GetBinCenter(ib);
+                                // double factor = 1.0 + testSlope_ * x;
+                                double factor = TMath::Exp(-1*testSlope_ * x);
+                                if (factor < 0.0) factor = 0.0;
+                                yn *= factor;
+                            } else {
+                                yn = std::pow(y, std::max(0.0, testComponentPower_));
+                            }
                             hNP->SetBinContent(ib, yn);
                             hNP->SetBinError(ib, 0.0);
                             sum += yn;
@@ -1097,9 +1342,9 @@ public:
                         }
                         pdfList.add(*testPdf_);
                         yieldList.add(*n_test_);
-                        std::cout << "[DCAFitter][Test] Test PDF added (" << (testUseExponential_?"exp":"pow")
+                        std::cout << "[DCAFitter][Test] Test PDF added (" << (testUseSlope_?"slope":"pow")
                                   << ") base=" << (testBasePrompt_?"prompt":"nonprompt")
-                                  << ", param=" << (testUseExponential_?testExpLambda_:testComponentPower_)
+                                  << ", param=" << (testUseSlope_?testSlope_:testComponentPower_)
                                   << ", n_test init=" << n_test_->getVal() << "/" << nevt << std::endl;
                         delete hNP;
                     } else {
@@ -1278,19 +1523,22 @@ public:
 			std::cout << "[DCAFitter][SB][Test] enableTestComponent=" << (enableTestComponent_?"true":"false")
 			          << ", promptTemplate=" << (promptTemplate_?"present":"absent")
 			          << ", power=" << testComponentPower_
-			          << ", useExp=" << (testUseExponential_?"true":"false")
-			          << ", lambda=" << testExpLambda_ << std::endl;
+			          << ", useSlope=" << (testUseSlope_?"true":"false")
+			          << ", slope=" << testSlope_ << std::endl;
 			if (enableTestComponent_ && promptTemplate_) {
-				TH1* hNPsb = promptTemplate_->createHistogram((std::string("hPromptForTestSB_") + name_).c_str(), *dca);
+				TH1* hNPsb = nonPromptTemplate_->createHistogram((std::string("hPromptForTestSB_") + name_).c_str(), *dca);
 				if (hNPsb) {
 					double sum = 0.0;
 					for (int ib=1; ib<=hNPsb->GetNbinsX(); ++ib) {
 						double y = hNPsb->GetBinContent(ib);
 						if (y < 0) y = 0;
 						double yn = y;
-						if (testUseExponential_) {
+						if (testUseSlope_) {
 							double x = hNPsb->GetXaxis()->GetBinCenter(ib);
-							yn *= std::exp(-testExpLambda_ * x);
+							double factor = TMath::Exp(testSlope_ * x);
+							if (factor < 0.0) factor = 0.0;
+							yn *= factor;;
+                            cout << yn << " = " << y << " * " << testSlope_ << endl;
 						} else {
 							yn = std::pow(y, std::max(0.0, testComponentPower_));
 						}
@@ -1314,8 +1562,8 @@ public:
 				}
 				pdfList.add(*testPdf_);
 				yieldList.add(*n_test_);
-					std::cout << "[DCAFitter][SB][Test] Test PDF added (" << (testUseExponential_?"exp":"pow")
-					          << ") param=" << (testUseExponential_?testExpLambda_:testComponentPower_)
+					std::cout << "[DCAFitter][SB][Test] Test PDF added (" << (testUseSlope_?"slope":"pow")
+					          << ") param=" << (testUseSlope_?testSlope_:testComponentPower_)
 					          << ", n_test init=" << n_test_->getVal() << "/" << nevt << std::endl;
 					delete hNPsb;
 				} else {
@@ -1648,6 +1896,31 @@ public:
     leg->SetFillStyle(0);
     leg->SetTextSize(0.04);
 
+    auto getFinalYield = [&](const char* name) -> double {
+        if (fitResult) {
+            const RooArgList& floats = fitResult->floatParsFinal();
+            if (auto* arg = floats.find(name)) {
+                if (auto* v = dynamic_cast<RooRealVar*>(arg)) {
+                    return v->getVal();
+                }
+            }
+        }
+        if (auto* var = ws_->var(name)) {
+            return var->getVal();
+        }
+        return 0.0;
+    };
+
+    auto hasTestComponent = [&]() -> bool {
+        if (fitResult) {
+            const RooArgList& floats = fitResult->floatParsFinal();
+            if (floats.find("n_test")) {
+                return true;
+            }
+        }
+        return ws_->var("n_test") != nullptr;
+    };
+
     if (useDataTemplates) {
         TObject* dataYieldObj = frame->findObject("data_yield_hist");
         TObject* modelFitObj = frame->findObject("model_fit_to_mc");
@@ -1664,20 +1937,19 @@ public:
         if (mcTestObj) leg->AddEntry(mcTestObj, "Test Component (MC-derived)", "f");
         if (!mcTestObj && mcTestLineObj) leg->AddEntry(mcTestLineObj, "Test Component (MC-derived)", "l");
 
-        // Add fractions summary
-        RooRealVar* nPromptVar = ws_->var("n_prompt");
-        RooRealVar* nNonPromptVar = ws_->var("n_nonprompt");
-        RooRealVar* nTestVar = ws_->var("n_test");
-        double nP = nPromptVar ? nPromptVar->getVal() : 0.0;
-        double nNP = nNonPromptVar ? nNonPromptVar->getVal() : 0.0;
-        double nT = nTestVar ? nTestVar->getVal() : 0.0;
+        // Add fractions summary using final fit values when available
+        double nP = getFinalYield("n_prompt");
+        double nNP = getFinalYield("n_nonprompt");
+        double nT = getFinalYield("n_test");
         double sumN = nP + nNP + nT;
         double fP = (sumN > 0) ? (nP / sumN) : 0.0;
         double fNP = (sumN > 0) ? (nNP / sumN) : 0.0;
         double fT = (sumN > 0) ? (nT / sumN) : 0.0;
         leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fP));
         leg->AddEntry(myObject, Form("NonPrompt Fraction = %.2f", fNP));
-        if (nTestVar) leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
+        if (hasTestComponent()) {
+            leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
+        }
     } else {
         TObject* dataOrigObj = frame->findObject("data_original");
         TObject* modelFitToDataObj = frame->findObject("model_fit_to_data");
@@ -1694,20 +1966,16 @@ public:
         if (testCompObj) leg->AddEntry(testCompObj, "Test Component (MC-derived)", "f");
         if (!testCompObj && testLineObj) leg->AddEntry(testLineObj, "Test Component (MC-derived)", "l");
 
-        // Add fractions summary
-        RooRealVar* nPromptVar = ws_->var("n_prompt");
-        RooRealVar* nNonPromptVar = ws_->var("n_nonprompt");
-        RooRealVar* nTestVar = ws_->var("n_test");
-        double nP = nPromptVar ? nPromptVar->getVal() : 0.0;
-        double nNP = nNonPromptVar ? nNonPromptVar->getVal() : 0.0;
-        double nT = nTestVar ? nTestVar->getVal() : 0.0;
+        double nP = getFinalYield("n_prompt");
+        double nNP = getFinalYield("n_nonprompt");
+        double nT = getFinalYield("n_test");
         double sumN = nP + nNP + nT;
         double fP = (sumN > 0) ? (nP / sumN) : 0.0;
         double fNP = (sumN > 0) ? (nNP / sumN) : 0.0;
         double fT = (sumN > 0) ? (nT / sumN) : 0.0;
         leg->AddEntry(myObject, Form("Prompt Fraction = %.2f", fP));
         leg->AddEntry(myObject, Form("NonPrompt Fraction = %.2f", fNP));
-        if (nTestVar) leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
+        if (hasTestComponent()) leg->AddEntry(myObject, Form("Test Fraction = %.2f", fT));
     }
     leg->Draw();
 
@@ -1948,9 +2216,10 @@ public:
 private:
     // --- Internal Helper Methods ---
     // loadDataSet helper is integrated into createTemplatesFromMC and loadData for clarity
+    void addFractionSummaryToLegend(TLegend* leg) const;
     RooAbsPdf* ExtractComponent(RooAbsPdf* pdf_, const std::string& namePattern) {
-    if (std::string(pdf_->GetName()).find(namePattern) != std::string::npos) {
-    }
+    // if (std::string(pdf_->GetName()).find(namePattern) != std::string::npos) {
+    // }
 
     const RooArgSet* components = pdf_->getComponents();
     RooAbsPdf* foundPdf = nullptr;
@@ -1988,12 +2257,21 @@ private:
         const std::string& yRangeStr,    // e.g., "|y| < 1.0"
         const std::string& analysisCutStr, // e.g., MVA cut or cos(theta) cut
         const std::string& dcaRangeStr,     // e.g., "0.002 < DCA < 0.004 cm"
+         double signalYield = 0.0,
+        double signalYieldError = 0.0,
         RooDataSet* sliceMCData = nullptr,  // Optional: MC data for the same slice
         RooWorkspace* mcFitWs = nullptr,    // Optional: MC fit workspace
         RooFitResult* mcFitResult = nullptr // Optional: MC fit result
+        
     ) {
         // --- Initial Checks ---
-        RooAbsPdf* sliceModel = fitWs->pdf("total_pdf");
+        RooAbsPdf* sliceModel = fitWs->pdf("totalPdf");
+        if (!sliceModel && isMC) {
+            sliceModel = fitWs->pdf("mcSignal");
+            if (!sliceModel) {
+                sliceModel = fitWs->pdf("signal");
+            }
+        }
         RooRealVar* sliceMassVar = fitWs->var(massVar->GetName());
         if(!sliceFitResult)
         {
@@ -2040,17 +2318,20 @@ private:
 
         // Get model components from the MassFitter's workspace
 
-        RooAbsPdf* sigComponent = ExtractComponent(sliceModel, "sig");
-        RooAbsPdf* bkgComponent = ExtractComponent(sliceModel, "bkg");
+        RooAbsPdf* sigComponent = ExtractComponent(sliceModel, "signal");
+        if (!sigComponent && isMC) {
+            sigComponent = sliceModel;
+        }
+        // RooAbsPdf* bkgComponent = ExtractComponent(sliceModel, "background");
 
         // RooAbsPdf* bkgComponent = fitWs->pdf("bkg_pdf");
         // RooAbsPdf* sigComponent = fitWs->pdf("sig_pdf");
         
         // Plot components first (background, then signal)
-        if (bkgComponent) {
-            sliceModel->plotOn(frame, RooFit::Components(*bkgComponent), RooFit::Name("background"),
-                               RooFit::LineStyle(kDashed), RooFit::LineColor(kBlue + 2), RooFit::LineWidth(2));
-        }
+        // if (bkgComponent) {
+        //     sliceModel->plotOn(frame, RooFit::Components(*bkgComponent), RooFit::Name("background"),
+        //                        RooFit::LineStyle(kDashed), RooFit::LineColor(kBlue + 2), RooFit::LineWidth(2));
+        // }
         if (sigComponent) {
             sliceModel->plotOn(frame, RooFit::Components(*sigComponent), RooFit::Name("signal"),
                                RooFit::FillColor(kAzure - 9), RooFit::FillStyle(3354), RooFit::DrawOption("F"),
@@ -2082,7 +2363,7 @@ private:
         legend->AddEntry(frame->findObject("datapoints_top"), "Data", "PE");
         legend->AddEntry(frame->findObject("model"), "Fit", "L");
         if (sigComponent) legend->AddEntry(frame->findObject("signal"), Form("%s Signal", particleType.c_str()), "F");
-        if (bkgComponent) legend->AddEntry(frame->findObject("background"), "Combinatorial", "L");
+        // if (bkgComponent) legend->AddEntry(frame->findObject("background"), "Combinatorial", "L");
         legend->Draw();
 
         // --- CMS and Kinematic Labels ---
@@ -2147,6 +2428,10 @@ private:
 
                                                 // sliceFitResult->statusCodeHistory(2)));
         y_pos -= 0.08;
+        if (signalYield > 0.0 || signalYieldError > 0.0) {
+            paramLatex.DrawLatex(0.1, y_pos, Form("Yield = %.0f #pm %.0f", signalYield, signalYieldError));
+            y_pos -= 0.08;
+        }
 
         // Display Signal and Background Yields
         const RooArgList& finalParams = sliceFitResult->floatParsFinal();
@@ -2227,6 +2512,11 @@ private:
     std::string mcCuts_;
     std::string dataCuts_;
     std::string outputFileName_;
+    bool runMassFits_ = true;
+    std::string dataYieldHistInputFile_;
+    std::string dataYieldHistInputHist_ = "dataYieldHist";
+    std::string dataYieldHistOutputFile_;
+    std::string dataYieldHistOutputHist_ = "dataYieldHist";
     static constexpr double deltaM_PDG = 0.1454258; 
     static constexpr double D0_PDG = 1.86483; 
 
@@ -2282,8 +2572,8 @@ private:
     // Optional third component control
     bool enableTestComponent_ = false;
     double testComponentPower_ = 0.7; // y_new = y_old^power (renormalized)
-    bool   testUseExponential_ = false; // if true, use y_new = y_old * exp(-lambda * x)
-    double testExpLambda_ = 0.0;        // exponential slope parameter (lambda)
+    bool   testUseSlope_ = false;       // if true, apply linear slope scaling to template
+    double testSlope_ = 0.0;            // slope parameter for linear scaling
     bool   testBasePrompt_ = true;      // true: base from prompt, false: base from non-prompt
     
     // Result storage
@@ -2370,8 +2660,6 @@ private:
         }
     }
     
-    void initializeConfiguration() { /* no-op: using FitOpt directly */ }
-    
     void initializeWorkspace() {
         ws_ = std::make_unique<RooWorkspace>(Form("ws_%s", opt_.name.c_str()), 
                                            (name_ + " Enhanced Workspace").c_str());
@@ -2409,16 +2697,114 @@ private:
             massVar_->getMin(),
             massVar_->getMax(),
             /*nsigRatio*/0.5, /*nsigMin*/0.0, /*nsigMax*/1.0,
-            /*nbkgRatio*/0.5, /*nbkgMin*/0.0, /*nbkgMax*/1.0
+            /*nbkgRatio*/0.3, /*nbkgMin*/0.0, /*nbkgMax*/1.0,
+            MassFitterV2::YieldMode::Independent
         );
+
+        // Ensure independent yields even if constructor defaults change
+        sliceFitters_[sliceName]->UseIndependentYields(true);
 
         // Return non-owning pointer; ownership stays in sliceFitters_
         return sliceFitters_[sliceName].get();
     }
     
-    FitConfig createMassFitConfig(const std::string& sliceName) const {
-        // Use FitOpt -> FitConfig conversion for core settings
-        return opt_.ToFitConfig();
+    static std::string joinPath(const std::string& base, const std::string& part) {
+        if (base.empty()) return part;
+        if (part.empty()) return base;
+        const bool baseHasSlash = base.back() == '/';
+        const bool partHasSlash = part.front() == '/';
+        if (baseHasSlash && partHasSlash) {
+            return base + part.substr(1);
+        }
+        if (baseHasSlash || partHasSlash) {
+            return base + part;
+        }
+        return base + "/" + part;
+    }
+
+    FitOpt createMassFitOpt(const std::string& sliceName,
+                            double dcaLow,
+                            double dcaHigh,
+                            bool isMC = false) const {
+        FitOpt massOpt = opt_;
+
+        massOpt.name = opt_.name + "_" + sliceName + (isMC ? "_MC" : "");
+        massOpt.dcaMin = dcaLow;
+        massOpt.dcaMax = dcaHigh;
+        massOpt.dcaLegend = Form("%.3f < DCA < %.3f cm", dcaLow, dcaHigh);
+        massOpt.GenerateLegends();
+
+        std::string outputDir = joinPath(opt_.outputDir, opt_.subDir);
+        outputDir = joinPath(outputDir, isMC ? "MC" : "Data");
+        outputDir = joinPath(outputDir, "mass_fits_" + name_);
+        massOpt.outputDir = outputDir;
+        massOpt.subDir = "/slice_mass_distributions";
+
+        std::string baseLabel = (isMC ? "MC_" : "") + sliceName;
+        massOpt.outputFile = "mass_fit_" + baseLabel + ".root";
+        massOpt.plotName = "fitted_" + baseLabel;
+        massOpt.plotMCName = massOpt.plotName;
+        massOpt.fitResultName = "massFit_" + baseLabel;
+        massOpt.wsName = "workspace_" + massOpt.name;
+
+        return massOpt;
+    }
+
+    std::vector<std::string> buildGaussianConstraintParameterList() const {
+        std::vector<std::string> params;
+        std::unordered_set<std::string> seen;
+
+        static const std::unordered_set<std::string> allowedPrefixes = {
+            "mean", "mean1", "mean2",
+            "sigma", "sigma1", "sigma2",
+            "sigmaL", "sigmaL1", "sigmaL2",
+            "sigmaR", "sigmaR1", "sigmaR2",
+            "alpha", "alphaL", "alphaR",
+            "n", "nL", "nR",
+            "fraction", "width",
+            "m", "lambda"
+        };
+
+        for (const auto& entry : massParamFixedInfo_.fixedFlags) {
+            if (!entry.second) continue;
+            std::string key = entry.first;
+            auto pos = key.find('_');
+            if (pos != std::string::npos && pos > 0) {
+                key = key.substr(0, pos);
+            }
+            if (key.empty()) continue;
+            if (!allowedPrefixes.empty() && allowedPrefixes.find(key) == allowedPrefixes.end()) {
+                continue; // Skip background-specific parameters
+            }
+            std::string fullName = key + "_signal";
+            if (seen.insert(fullName).second) {
+                params.push_back(fullName);
+            }
+        }
+
+        // If nothing was marked as fixed, fall back to defaults (ensuring uniqueness)
+        if (params.empty()) {
+            for (const auto& def : defaultConstraintParams_) {
+                if (def.empty()) continue;
+                if (seen.insert(def).second) {
+                    params.push_back(def);
+                }
+            }
+        }
+
+        return params;
+    }
+
+    std::tuple<double, double, double, double> computeGaussianConstraintSidebandEdges() const {
+        double inner = std::min(gaussianConstraintInnerWidth_, gaussianConstraintOuterWidth_);
+        double outer = std::max(gaussianConstraintInnerWidth_, gaussianConstraintOuterWidth_);
+        double center = gaussianConstraintMassCenter_;
+        return std::make_tuple(
+            center - outer,  // Lower sideband minimum
+            center - inner,  // Lower sideband maximum
+            center + inner,  // Upper sideband minimum
+            center + outer   // Upper sideband maximum
+        );
     }
     
     // Data slicing helper
@@ -2446,12 +2832,96 @@ private:
             dataYieldHist_->SetBinError(histBin, yieldError);
         }
     }
+
+    template<typename T>
+    static auto safeGetMeanImpl(const T& params, int) -> decltype(params.mean, double()) { return params.mean; }
+    template<typename T>
+    static double safeGetMeanImpl(const T&, long) { return std::numeric_limits<double>::quiet_NaN(); }
+    template<typename T>
+    static double safeGetMean(const T& params) { return safeGetMeanImpl(params, 0); }
+
+    template<typename T>
+    static auto safeGetSigmaImpl(const T& params, int) -> decltype(params.sigma, double()) { return params.sigma; }
+    template<typename T>
+    static double safeGetSigmaImpl(const T&, long) { return std::numeric_limits<double>::quiet_NaN(); }
+    template<typename T>
+    static double safeGetSigma(const T& params) { return safeGetSigmaImpl(params, 0); }
+
+    template<typename T>
+    static auto safeGetSigmaLImpl(const T& params, int) -> decltype(params.sigmaL, double()) { return params.sigmaL; }
+    template<typename T>
+    static double safeGetSigmaLImpl(const T&, long) { return std::numeric_limits<double>::quiet_NaN(); }
+    template<typename T>
+    static double safeGetSigmaL(const T& params) { return safeGetSigmaLImpl(params, 0); }
+
+    template<typename T>
+    static auto safeGetLambdaImpl(const T& params, int) -> decltype(params.lambda, double()) { return params.lambda; }
+    template<typename T>
+    static double safeGetLambdaImpl(const T&, long) { return std::numeric_limits<double>::quiet_NaN(); }
+    template<typename T>
+    static double safeGetLambda(const T& params) { return safeGetLambdaImpl(params, 0); }
 private:
     // Optional JSON-based parameter source for mass fits
     std::unique_ptr<JSONParameterLoader> jsonLoader_;
     bool useJSONParams_ = false;
     ParameterFixedInfo massParamFixedInfo_;
+    double gaussianConstraintMassCenter_ = deltaM_PDG;
+    double gaussianConstraintInnerWidth_ = 0.002;   // inner half-width around the pole mass (GeV)
+    double gaussianConstraintOuterWidth_ = 0.004;   // outer half-width around the pole mass (GeV)
+    double gaussianConstraintSignalScale_ = 2.0;
+    double gaussianConstraintBackgroundScale_ = 2.0;
+    std::vector<std::string> defaultConstraintParams_ = {
+        "mean_signal",
+        // "nL_signal",
+        // "nR_signal",
+    };
 };
+inline bool DCAFitter::GenerateTemplatesWithScale(double scale,
+                                                  std::unique_ptr<TH1D>& promptOut,
+                                                  std::unique_ptr<TH1D>& nonPromptOut) const {
+    if (!ws_) {
+        std::cerr << "[DCAFitter] Workspace is not available. Cannot generate scaled templates." << std::endl;
+        return false;
+    }
+    if (dcaBins_.size() < 2) {
+        std::cerr << "[DCAFitter] DCA binning is not configured." << std::endl;
+        return false;
+    }
+
+    const char* dcaName = dcaVar_ ? dcaVar_->GetName() : opt_.dcaVar.c_str();
+    RooDataSet* promptDataSetWS = dynamic_cast<RooDataSet*>(ws_->data("promptDataSet"));
+    RooDataSet* nonPromptDataSetWS = dynamic_cast<RooDataSet*>(ws_->data("nonPromptDataSet"));
+    if (!promptDataSetWS || !nonPromptDataSetWS) {
+        std::cerr << "[DCAFitter] Prompt/non-prompt datasets not found in workspace."
+                  << " Please run createTemplatesFromMC() beforehand." << std::endl;
+        return false;
+    }
+
+    auto makeHist = [&](RooDataSet* ds, const std::string& name) -> std::unique_ptr<TH1D> {
+        auto hist = std::make_unique<TH1D>(name.c_str(), name.c_str(),
+                                           static_cast<int>(dcaBins_.size()) - 1,
+                                           dcaBins_.data());
+        hist->Sumw2();
+        const int nEntries = ds->numEntries();
+        for (int i = 0; i < nEntries; ++i) {
+            const RooArgSet* row = ds->get(i);
+            if (!row) continue;
+            double val = row->getRealValue(dcaName, 0.0);
+            double scaled = scale * val;
+            if (scaled < dcaBins_.front() || scaled >= dcaBins_.back()) {
+                continue;
+            }
+            double weight = ds->isWeighted() ? ds->weight() : 1.0;
+            hist->Fill(scaled, weight);
+        }
+        return hist;
+    };
+
+    promptOut = makeHist(promptDataSetWS, Form("promptScaled_%0.2f", scale));
+    nonPromptOut = makeHist(nonPromptDataSetWS, Form("nonPromptScaled_%0.2f", scale));
+    return true;
+}
+
 inline void DCAFitter::plotSignalAndSidebandDCAFromHist(const std::string& plotName) {
     std::cout << "Using existing histograms to plot DCA distribution for signal and sideband regions..." << std::endl;
     RooRealVar* dca = ws_->var(opt_.dcaVar.c_str()); 
@@ -2652,27 +3122,32 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
         hTestTemplate = testTemplate_->createHistogram("hTestTemplateRaw", *dcaVar_);
     } else if (auto* tt = dynamic_cast<RooDataHist*>(ws_->data("testTemplate"))) {
         hTestTemplate = tt->createHistogram("hTestTemplateRaw", *dcaVar_);
-    } else if (enableTestComponent_ && promptTemplate_) {
-        // On-the-fly construction from prompt template to visualize test shape in templates plot
-        TH1* hTmp = promptTemplate_->createHistogram("hPromptForTest_templates", *dcaVar_);
-        if (hTmp) {
-            double sum = 0.0;
-            for (int ib = 1; ib <= hTmp->GetNbinsX(); ++ib) {
-                double y = std::max(0.0, hTmp->GetBinContent(ib));
-                double x = hTmp->GetXaxis()->GetBinCenter(ib);
-                double yn = y;
-                if (testUseExponential_) {
-                    yn *= std::exp(-testExpLambda_ * x);
-                } else {
-                    yn = std::pow(y, std::max(0.0, testComponentPower_));
+    } else if (enableTestComponent_) {
+        auto* baseTemplate = testBasePrompt_ ? promptTemplate_ : nonPromptTemplate_;
+        if (baseTemplate) {
+            const char* histName = testBasePrompt_ ? "hPromptForTest_templates" : "hNonPromptForTest_templates";
+            TH1* hTmp = baseTemplate->createHistogram(histName, *dcaVar_);
+            if (hTmp) {
+                double sum = 0.0;
+                for (int ib = 1; ib <= hTmp->GetNbinsX(); ++ib) {
+                    double y = std::max(0.0, hTmp->GetBinContent(ib));
+                    double x = hTmp->GetXaxis()->GetBinCenter(ib);
+                    double yn = y;
+                    if (testUseSlope_) {
+                        double factor = TMath::Exp(-1.0 * testSlope_ * x);
+                        if (factor < 0.0) factor = 0.0;
+                        yn *= factor;
+                    } else {
+                        yn = std::pow(y, std::max(0.0, testComponentPower_));
+                    }
+                    hTmp->SetBinContent(ib, yn);
+                    hTmp->SetBinError(ib, 0.0);
+                    sum += yn;
                 }
-                hTmp->SetBinContent(ib, yn);
-                hTmp->SetBinError(ib, 0.0);
-                sum += yn;
+                if (sum > 0) hTmp->Scale(1.0 / sum);
+                hTmp->Scale(1.0, "width"); // per-cm view, consistent with others
+                hTestTemplate = hTmp; // adopt for drawing + deletion below
             }
-            if (sum > 0) hTmp->Scale(1.0 / sum);
-            hTmp->Scale(1.0, "width"); // per-cm view, consistent with others
-            hTestTemplate = hTmp; // adopt for drawing + deletion below
         }
     }
     if (hTestTemplate) {
@@ -2777,6 +3252,132 @@ inline void DCAFitter::plotRawDataDistribution(const std::string& plotName) {
     delete hPrompt;
     delete hNonPrompt;
     delete hTestTemplate;
+}
+
+inline void DCAFitter::addFractionSummaryToLegend(TLegend* leg) const {
+    if (!leg || !ws_) return;
+
+    RooRealVar* nPromptVar = ws_->var("n_prompt");
+    RooRealVar* nNonPromptVar = ws_->var("n_nonprompt");
+    RooRealVar* nTestVar = ws_->var("n_test");
+
+    const double nP = nPromptVar ? nPromptVar->getVal() : 0.0;
+    const double nNP = nNonPromptVar ? nNonPromptVar->getVal() : 0.0;
+    const double nT = nTestVar ? nTestVar->getVal() : 0.0;
+    const double sumN = nP + nNP + nT;
+
+    if (sumN <= 0.0) return;
+
+    const double fP = nP / sumN;
+    const double fNP = nNP / sumN;
+    const double fT = nT / sumN;
+
+    TObject* dummy = nullptr;
+    leg->AddEntry(dummy, Form("Prompt Fraction = %.2f", fP), "");
+    leg->AddEntry(dummy, Form("NonPrompt Fraction = %.2f", fNP), "");
+    if (nTestVar) {
+        leg->AddEntry(dummy, Form("Test Fraction = %.2f", fT), "");
+    }
+}
+
+// --- Implementation: MassFitterV2-style DCA slice fitting loop ---
+template<typename SignalParams, typename BackgroundParams>
+inline bool DCAFitter::FitSlicesMassV2(
+    RooDataSet* fullDataset,
+    const SignalParams& /*signalParams*/,
+    const BackgroundParams& /*backgroundParams*/,
+    const std::string& sliceResultPrefix,
+    bool savePlots) {
+    try {
+        if (!fullDataset) {
+            if (errorHandler_) errorHandler_->HandleError("FitSlicesMassV2", "Null dataset");
+            return false;
+        }
+
+        // Determine DCA binning
+        const std::vector<double>& edges = !dcaBins_.empty() ? dcaBins_ : std::vector<double>{dcaMin_, dcaMax_};
+        if (edges.size() < 2) {
+            if (errorHandler_) errorHandler_->HandleError("FitSlicesMassV2", "Insufficient DCA bin edges");
+            return false;
+        }
+
+        bool allOk = true;
+        for (size_t i = 0; i + 1 < edges.size(); ++i) {
+            const double dmin = edges[i];
+            const double dmax = edges[i + 1];
+            const std::string sliceName = Form("%s_%zu_%.6g_%.6g", sliceResultPrefix.c_str(), i, dmin, dmax);
+
+            // Create a DCA slice of the dataset
+            auto sliceData = createDCASlice(fullDataset, dmin, dmax);
+            if (!sliceData || sliceData->numEntries() == 0) {
+                // Record as failed (no data)
+                BinInfo base = createBinInfoFromFitOpt(opt_, dmin, dmax);
+                DCASliceInfo sInfo(dmin, dmax, static_cast<int>(i), sliceName);
+                notifyDCASliceFit(base, sInfo, nullptr, "DCA_Mass_Slice");
+                allOk = false; // mark but continue
+                continue;
+            }
+
+            // Build a MassFitterV2 for this slice (lifetime kept in map)
+            MassFitterV2* fitter = createMassFitterV2ForSlice(sliceName);
+            fitter->SetData(sliceData.get());
+
+            // Apply any analysis cut carried by FitOpt
+            if (!opt_.cutExpr.empty()) fitter->ApplyCut(opt_.cutExpr);
+
+            // Prefer simple Fit() with internal configuration
+            bool ok = false;
+            try {
+                ok = fitter->Fit();
+            } catch (const std::exception& e) {
+                ok = false;
+                if (errorHandler_) errorHandler_->HandleError("FitSlicesMassV2::Fit", e.what());
+            }
+
+            RooFitResult* r = fitter->GetRooFitResult();
+            BinInfo base = createBinInfoFromFitOpt(opt_, dmin, dmax);
+            DCASliceInfo sInfo(dmin, dmax, static_cast<int>(i), sliceName);
+            notifyDCASliceFit(base, sInfo, r, "DCA_Mass_Slice");
+
+            if (!ok) allOk = false;
+
+            // Optional quick plot per-slice
+            if (savePlots) {
+                try {
+                    auto c = fitter->CreateCanvas();
+                    if (c) {
+                        // Annotate and save in structured output directory
+                        c->cd();
+                        TLatex tx; tx.SetNDC(); tx.SetTextFont(42);
+                        tx.SetTextSize(0.035);
+                        // Compose legend lines from FitOpt
+                        std::string l_pt   = opt_.pTLegend.empty() ? Form("%.1f < p_{T} < %.1f GeV/c", opt_.pTMin, opt_.pTMax) : opt_.pTLegend;
+                        std::string l_cos  = opt_.centLegend.empty() ? Form("%.1f < cos#theta_{HX} < %.1f", opt_.cosMin, opt_.cosMax) : opt_.centLegend;
+                        std::string l_y    = opt_.yLegend.empty() ? Form("|y| < %.1f", opt_.etaMax) : opt_.yLegend;
+                        std::string l_dca  = Form("DCA: %.6g - %.6g cm", dmin, dmax);
+                        tx.DrawLatex(0.18, 0.88, l_pt.c_str());
+                        tx.DrawLatex(0.18, 0.84, l_cos.c_str());
+                        tx.DrawLatex(0.18, 0.80, l_y.c_str());
+                        tx.DrawLatex(0.18, 0.76, l_dca.c_str());
+
+                        // Save under output directory
+                        std::string baseDir = opt_.outputPlotDir.empty() ? std::string(".") : opt_.outputPlotDir;
+                        std::string outDir = baseDir + "/mass_fits_" + name_ + "/slice_mass_distributions";
+                        gSystem->mkdir(outDir.c_str(), kTRUE);
+                        std::string outPng = outDir + "/" + sliceName + ".png";
+                        c->SaveAs(outPng.c_str());
+                    }
+                } catch (...) {
+                    // best-effort plotting, ignore errors
+                }
+            }
+        }
+
+        return allOk;
+    } catch (const std::exception& e) {
+        if (errorHandler_) errorHandler_->HandleError("FitSlicesMassV2", e.what());
+        return false;
+    }
 }
 
 #endif // DCA_FITTER_H

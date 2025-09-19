@@ -3,7 +3,6 @@
 
 #include <map>
 #include <utility>
-#include "Params.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,6 +11,8 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <algorithm>
+#include "Params.h"
 // #include <filesystem> // C++17 디렉토리 처리를 위한 헤더
 
 // 로깅 레벨 정의
@@ -96,7 +97,11 @@ struct FitStatus {
 };
 
 // Global fit status tracker
-extern std::map<BinInfo, std::vector<FitStatus>> g_fitStatusMap;
+// std::map<BinInfo, std::vector<FitStatus>> fitStatusMap();
+inline std::map<BinInfo, std::vector<FitStatus>>& fitStatusMap() {
+    static std::map<BinInfo, std::vector<FitStatus>> m;
+    return m;
+}
 
 // Function type for fit status callback
 using FitStatusCallback = std::function<void(const BinInfo&, const FitStatus&)>;
@@ -219,9 +224,6 @@ using DStarParamMap7 = std::map<ParamKey, DStarParamValue7>;
 // GLOBAL VARIABLES
 // =============================================================================
 
-// Global fit status tracker
-std::map<BinInfo, std::vector<FitStatus>> g_fitStatusMap;
-
 // Global callback function
 FitStatusCallback g_globalFitStatusCallback = nullptr;
 
@@ -233,15 +235,16 @@ DCASliceFitCallback g_dcaSliceFitCallback = nullptr;
 // =============================================================================
 
 void initializeFitStatusTracking() {
-    g_fitStatusMap.clear();
+    fitStatusMap().clear();
     std::cout << "Fit status tracking initialized." << std::endl;
 }
 
 void addFitStatus(const BinInfo& binInfo, const FitStatus& fitStatus) {
     cout << "Adding fit status for bin: " << binInfo.toString() << endl;
     cout << "Fit type: " << fitStatus.fitType << ", Status: " << fitStatus.status << endl;
-    cout << g_fitStatusMap[binInfo].size() << endl;
-    g_fitStatusMap[binInfo].push_back(fitStatus);
+    // cout << fitStatusMap()[binInfo].size() << endl;
+    cout << fitStatusMap().size() << endl;
+    fitStatusMap()[binInfo].push_back(fitStatus);
     cout << "1234 " <<endl;
     
     // Call global callback if registered
@@ -284,7 +287,7 @@ void printFailedFits() {
     int totalFits = 0;
     int failedFits = 0;
     
-    for (const auto& binEntry : g_fitStatusMap) {
+    for (const auto& binEntry : fitStatusMap()) {
         const BinInfo& binInfo = binEntry.first;
         const std::vector<FitStatus>& statusList = binEntry.second;
         
@@ -336,7 +339,7 @@ void saveFitStatusToFile(const std::string& filename) {
     
     outFile << "BinInfo,FitType,Status,ErrorMessage,Chi2NDF,NDF,AdditionalInfo" << std::endl;
     
-    for (const auto& binEntry : g_fitStatusMap) {
+    for (const auto& binEntry : fitStatusMap()) {
         const BinInfo& binInfo = binEntry.first;
         const std::vector<FitStatus>& statusList = binEntry.second;
         
@@ -359,7 +362,7 @@ std::pair<int, int> getFitStatusSummary() {
     int totalFits = 0;
     int failedFits = 0;
     
-    for (const auto& binEntry : g_fitStatusMap) {
+    for (const auto& binEntry : fitStatusMap()) {
         const std::vector<FitStatus>& statusList = binEntry.second;
         for (const auto& fitStatus : statusList) {
             totalFits++;
@@ -415,6 +418,7 @@ void notifyDCASliceFit(const BinInfo& binInfo, const DCASliceInfo& sliceInfo,
 BinInfo createBinInfoFromFitOpt(const FitOpt& opt, double dcaMin, double dcaMax) {
     return BinInfo(opt.pTMin, opt.pTMax, opt.cosMin, opt.cosMax, dcaMin, dcaMax);
 }
+
 
 FitStatus extractFitStatus(RooFitResult* fitResult, const std::string& fitType, 
                           const std::string& additionalInfo) {

@@ -1,5 +1,6 @@
 #include "../MassFitter.h"
 #include "../Opt.h"
+#include "../DStarFitOpt.h"
 #include "../Params.h"
 #include "../DataLoader.h"
 #include "../RobustParameterManager.h"
@@ -17,7 +18,7 @@ void comparison_test(const std::string& dataPath = "") {
     
     // Setup common parameters
     FitOpt opt;
-    opt.DStarDataDefault();
+    ConfigureDStarDataFitOpt(opt);
     opt.pTMin = 5.0;
     opt.pTMax = 10.0;
     opt.cosMin = -1.0;

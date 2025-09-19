@@ -1,27 +1,77 @@
 #ifndef OPT_H
 #define OPT_H
 #include <string>
-#include <memory>
 #include <vector>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <stdexcept>
-#include <limits>
+#include <cmath>
 #include "Params.h"
-#include "../Tools/GlobalCuts.h"
-#include "FitStrategy.h"  // For FitMethod enum
+#include "FitCommonConfig.h"
 
-// 설정 관련 예외 클래스
-class ConfigException : public std::exception {
-private:
-    std::string message_;
-public:
-    explicit ConfigException(const std::string& msg) : message_(msg) {}
-    const char* what() const noexcept override { return message_.c_str(); }
-}; 
+// 공통 범용 유틸: 키네마틱 구간 정보
+struct KinematicBin {
+    double pTMin = 0.0;
+    double pTMax = 0.0;
+    double cosMin = -2.0;
+    double cosMax = 2.0;
+    double centralityMin = 0.0;
+    double centralityMax = 100.0;
 
-struct FitOpt {
+    KinematicBin() = default;
+    KinematicBin(double ptMin, double ptMax, double cosMinIn, double cosMaxIn,
+                 double centMinIn = 0.0, double centMaxIn = 100.0)
+        : pTMin(ptMin), pTMax(ptMax), cosMin(cosMinIn), cosMax(cosMaxIn),
+          centralityMin(centMinIn), centralityMax(centMaxIn) {}
+
+    std::string GetBinName() const;
+
+    bool HasCosRestriction(double fullCosMin = -2.0, double fullCosMax = 2.0) const {
+        return cosMin > fullCosMin || cosMax < fullCosMax;
+    }
+
+    bool HasCentralityRestriction(double fullCentMin = 0.0, double fullCentMax = 100.0) const {
+        return centralityMin > fullCentMin || centralityMax < fullCentMax;
+    }
+};
+
+namespace detail {
+inline std::string SanitizeLabel(double value, int precision = 3) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(precision) << value;
+    std::string str = oss.str();
+    while (!str.empty() && str.back() == '0') {
+        str.pop_back();
+    }
+    if (!str.empty() && str.back() == '.') {
+        str.pop_back();
+    }
+    if (str.empty()) {
+        str = "0";
+    }
+    std::replace(str.begin(), str.end(), '-', 'm');
+    std::replace(str.begin(), str.end(), '.', 'p');
+    return str;
+}
+} // namespace detail
+
+inline std::string BuildBinName(const KinematicBin& bin,
+                                const std::string& ptPrefix = "pT",
+                                const std::string& cosPrefix = "cos",
+                                const std::string& centPrefix = "cent") {
+    std::string name = ptPrefix + "_" + detail::SanitizeLabel(bin.pTMin) + "_" + detail::SanitizeLabel(bin.pTMax) +
+                       "_" + cosPrefix + "_" + detail::SanitizeLabel(bin.cosMin) + "_" + detail::SanitizeLabel(bin.cosMax);
+    if (bin.HasCentralityRestriction()) {
+        name += "_" + centPrefix + "_" + detail::SanitizeLabel(bin.centralityMin) + "_" + detail::SanitizeLabel(bin.centralityMax);
+    }
+    return name;
+}
+
+inline std::string KinematicBin::GetBinName() const {
+    return BuildBinName(*this);
+}
+
+struct FitOpt : public FitCommonSettings {
     // === Core Identity ===
     std::string name;               
     
@@ -44,6 +94,7 @@ struct FitOpt {
     std::string cosLegend;
     std::string dcaLegend;
     std::string ELabel;
+    std::string pdfName = "total_pdf";
 
     
     // === Variable Names ===
@@ -57,25 +108,25 @@ struct FitOpt {
     std::string dcaVar = "dca";
     
     // === Mass Range ===
-    double massMin = 0.139;
-    double massMax = 0.150;
+    double massMin = 0.0;
+    double massMax = 10.0;
     bool useDeltaMass = false;
     double deltaMassMin = 0.0;
     double deltaMassMax = 1.0;
     std::string deltaMassVar = "deltaMass";
     
     // === Kinematic Cuts ===
-    double pTMin = 10.0;
+    double pTMin = 0.0;
     double pTMax = 100.0;
-    double etaMin = -2.4;
-    double etaMax = 2.4;
-    double cosMin = -2.0;
-    double cosMax = 2.0;
+    double etaMin = -5.0;
+    double etaMax = 5.0;
+    double cosMin = -1.0;
+    double cosMax = 1.0;
     double centMin = 0;
     double centMax = 100;
-    double mvaMin = 0.99;
+    double mvaMin = 0.0;
     double dcaMin = 0.0;
-    double dcaMax = 0.1;
+    double dcaMax = 1.0;
     
     // === Binning (optional) ===
     std::vector<double> ptBins;
@@ -84,34 +135,44 @@ struct FitOpt {
     std::vector<double> dcaBins = {0,0.0012,0.0023,0.0039,0.0059,0.0085,0.0160,0.0281,0.0476,0.07};
     
     // === Fitting Options (unified with FitConfig) ===
-    FitMethod fitMethod = FitMethod::BinnedNLL;
-    bool useMinos = false;             
-    bool useHesse = true;            
-    bool verbose = false;             
-    bool useCUDA = true;
     bool doFit = true;
-    int numCPU = 24;
-    int histogramBins = 50;  // For binned fits
-    int maxRetries = 3;
-    std::string strategy = "Minuit";     // Minimizer type: "Minuit", "Minuit2", "GSLMultiMin"
-    std::string minimizer = "Minimizer";    // Algorithm: "Migrad", "Simplex", "Combined"
     
     // === Output Options ===
     std::string outputPlotDir = "plots/";
     std::string outputMCDir = "roots/MC/";    
     bool savePlots = true;           
     bool saveWorkspace = true;       
+    std::string outputMCFile;
+    std::string outputMCSwap0File;
+    std::string outputMCSwap1File;
+    std::string outputDCAFile;
+    std::vector<std::string> constraintParameters;
+
+    // === Advanced fitting controls (legacy FitConfig fields) ===
+    int strategyLevel = 2;               // RooFit strategy level: start with 2, then 1 -> 0 on fallback
+    double rangeMin = 0.0;
+    double rangeMax = 0.0;
+    std::string rangeName = "analysis";
+
+    double parameterExpansionFactor = 9.0;
+    double limitCheckFactor = 3.0;
+    bool enableParameterAdjustment = true;
+
+    std::vector<std::string> skipUpperLimitAdjustment {"frac", "nsig", "nbkg", "alpha", "m0", "mean"};
+    std::vector<std::string> skipLowerLimitAdjustment {"sigma", "frac", "nsig", "nbkg", "m0", "mean", "alpha"};
+    std::vector<std::string> allowUpperExpansion {"n", "p0"};
+    std::vector<std::string> allowLowerExpansion {"p0"};
 
     // === Constructors ===
-    FitOpt() : 
+    FitOpt() :
         name("default"),
-        datasetName("datasetHX"),
-        outputFile("DStar_fit.root"),
+        datasetName("dataset"),
+        outputFile("fit_output.root"),
         fitResultName("fitResult"),
-        massVar("massPion"),
+        massVar("mass"),
         plotName("fit_plot"),
         plotMCName("fit_plot_MC"),
-        wsName("workspace_default"),  // Will be updated by preset methods
+        wsName("workspace_default"),
         outputDir("results/"),
         subDir(""),
         pTLegend(""),
@@ -119,9 +180,20 @@ struct FitOpt {
         centLegend(""),
         cosLegend(""),
         dcaLegend(""),
-        ELabel("")
-    {}
-    
+        ELabel(""),
+        pdfName("total_pdf")
+    {
+        fitMethod = FitMethod::BinnedNLL;
+        useCUDA = true;
+        histogramBins = 50;
+        strategy = "Minuit";
+        minimizer = "Minimizer";
+    }
+
+    explicit FitOpt(const FitCommonSettings& settings) : FitOpt() {
+        settings.CopyCommonSettingsTo(*this);
+    }
+
     // Utility to set workspace name based on analysis type
     void SetWorkspaceName(const std::string& analysisType) {
         wsName = "workspace_" + analysisType;
@@ -130,29 +202,22 @@ struct FitOpt {
     // === Utility Methods ===
     
     // Convert to FitConfig for modern fitters
-    FitConfig ToFitConfig() const {
-        FitConfig config;
-        config.fitMethod = fitMethod;
-        config.useMinos = useMinos;
-        config.useHesse = useHesse;
-        config.useCUDA = useCUDA;
-        config.verbose = verbose;
-        config.numCPU = numCPU;
-        config.histogramBins = histogramBins;
-        config.maxRetries = maxRetries;
-        config.strategy = strategy;
-        config.minimizer = minimizer;
+    FitOpt ToFitConfig() const {
+        FitOpt config(*this);
         config.rangeMin = massMin;
         config.rangeMax = massMax;
         return config;
     }
+
+    FitCommonSettings ToCommonSettings() const {
+        FitCommonSettings common;
+        CopyCommonSettingsTo(common);
+        return common;
+    }
     
     // Generate complete cut expression
-    std::string GetCutString() const {
-        std::string cuts = ptVar + " > " + std::to_string(pTMin) + " && " + ptVar + " < " + std::to_string(pTMax);
-        if (cosMin > -2.0 || cosMax < 2.0) {
-            cuts += " && " + cosVar + " > " + std::to_string(cosMin) + " && " + cosVar + " < " + std::to_string(cosMax);
-        }
+    std::string GetCutString(bool useAbsCos = false) const {
+        std::string cuts = BuildKinematicCut(GetKinematicBin(), useAbsCos);
         if (mvaMin > 0.0) {
             cuts += " && " + mvaVar + " > " + std::to_string(mvaMin);
         }
@@ -161,11 +226,10 @@ struct FitOpt {
         }
         return cuts;
     }
-    
+
     // Generate bin name for output
     std::string GetBinName() const {
-        return "pT_" + std::to_string(int(pTMin)) + "_" + std::to_string(int(pTMax)) + 
-               "_cos_" + std::to_string(cosMin).substr(0,4) + "_" + std::to_string(cosMax).substr(0,4);
+        return BuildBinName(GetKinematicBin());
     }
     
     // === Legend Generation ===
@@ -206,31 +270,6 @@ struct FitOpt {
     
     // === Preset Configurations ===
     
-    void DStarDataDefault() {
-        name = "DStar";
-        fitMethod = FitMethod::BinnedNLL;
-        massVar = "massPion";
-        massMin = 0.140; massMax = 0.155;
-        pTMin = 10.0; pTMax = 100.0;
-        cosMin = -2.0; cosMax = 2.0;
-        mvaMin = 0.99;
-        histogramBins = 50;
-        outputDir = "results/DStar_Data/";
-        plotName = "Plot_DStar_Data";
-        wsName = "workspace_DStar";  // D* specific workspace
-        GenerateLegends();  // Auto-generate legends
-    }
-    
-    void DStarMCDefault() {
-        DStarDataDefault();
-        fitMethod = FitMethod::Extended;
-        outputDir = "results/DStar_MC/";
-        plotName = "Plot_DStar_MC";
-        wsName = "workspace_DStar";  // Keep same workspace naming
-        cutExpr = cutMCExpr;  // Use MC cuts if different
-        GenerateLegends();
-    }
-    
     // === Simple Validation ===
     bool IsValid() const {
         return (massMin < massMax) && (pTMin < pTMax) && 
@@ -264,14 +303,36 @@ struct FitOpt {
     }
     
 private:
-    // Helper for legacy filename format
-    std::string convertDotToP(double value) const {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(3) << value;
-        std::string str = oss.str();
-        std::replace(str.begin(), str.end(), '.', 'p');
-        std::replace(str.begin(), str.end(), '-', 'm');
-        return str;
+    KinematicBin GetKinematicBin() const {
+        return KinematicBin{pTMin, pTMax, cosMin, cosMax, centMin, centMax};
+    }
+
+public:
+    void ApplyKinematicBin(const KinematicBin& bin) {
+        pTMin = bin.pTMin;
+        pTMax = bin.pTMax;
+        cosMin = bin.cosMin;
+        cosMax = bin.cosMax;
+        centMin = bin.centralityMin;
+        centMax = bin.centralityMax;
+    }
+
+    std::string BuildKinematicCut(const KinematicBin& bin, bool useAbsCos = false) const {
+        std::ostringstream cuts;
+        cuts << ptVar << " > " << bin.pTMin << " && " << ptVar << " < " << bin.pTMax;
+
+        if (bin.HasCosRestriction()) {
+            std::string cosExpr = useAbsCos ? "abs(" + cosVar + ")" : cosVar;
+            cuts << " && " << cosExpr << " > " << bin.cosMin
+                 << " && " << cosExpr << " < " << bin.cosMax;
+        }
+
+        if (bin.HasCentralityRestriction()) {
+            cuts << " && " << centVar << " >= " << bin.centralityMin
+                 << " && " << centVar << " < " << bin.centralityMax;
+        }
+
+        return cuts.str();
     }
 };
 

@@ -4,6 +4,7 @@
 #include "../Helper.h"
 #include "../PlotManager.h"
 #include "../DataLoader.h"
+#include "../DStarFitOpt.h"
 void Macro(bool doFit = false,bool useCUDA=true){
     FitOpt D0opt;
     D0opt.useCUDA = useCUDA;
@@ -24,7 +25,7 @@ void Macro(bool doFit = false,bool useCUDA=true){
     // fitter.ApplyCut(D0opt.cutExpr);
     // for(auto mva : mvabin){
     // D0opt.mvaMin = mva;
-    D0opt.DStarDataDefault();
+    ConfigureDStarDataFitOpt(D0opt);
     MassFitter fitter(D0opt.name,loader.getDataSet(),D0opt.massVar,D0opt.massMin,D0opt.massMax);
     fitter.PerformFit(D0opt, true, "","", params[{0.0,0.0}].first,params[{0.0,0.0}].second);
     // fitter.PlotResult(true,D0opt.outputFile);
@@ -38,7 +39,6 @@ void Macro(bool doFit = false,bool useCUDA=true){
     
 
     
-
 
 
 

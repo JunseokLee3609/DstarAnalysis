@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <sstream>
 #if __cplusplus >= 201703L
 #include <variant>
 #endif
@@ -12,7 +13,6 @@
 #include "Params.h"
 #include "Opt.h"
 #include "FitStrategy.h"
-#include "Helper.h"  // use shared createDir/ensureOutputDir utilities
 
 /**
  * @brief PDF types available for signal and background
@@ -37,39 +37,6 @@ enum class PDFType {
     DstBkg = 16,
     DstD0  = 17,
     Phenomenological2 = 18
-};
-
-/**
- * @brief Kinematic bin configuration for D* meson analysis
- */
-struct KinematicBin {
-    double pTMin;
-    double pTMax;
-    double cosMin;
-    double cosMax;
-    int centralityMin = 0;    // Dummy for future use
-    int centralityMax = 100;  // Dummy for future use
-    
-    KinematicBin(double pt_min, double pt_max, double cos_min, double cos_max,
-                 int cent_min = 0, int cent_max = 100)
-        : pTMin(pt_min), pTMax(pt_max), cosMin(cos_min), cosMax(cos_max),
-          centralityMin(cent_min), centralityMax(cent_max) {}
-    
-    std::string GetBinName() const {
-        return "pT_" + std::to_string(pTMin) + "_" + std::to_string(pTMax) + 
-               "_cos_" + std::to_string(cosMin) + "_" + std::to_string(cosMax) +
-               "_cent_" + std::to_string(centralityMin) + "_" + std::to_string(centralityMax);
-    }
-    
-    std::string GetCutString() const {
-        std::string cut = "pT > " + std::to_string(pTMin) + " && pT < " + std::to_string(pTMax);
-        if (cosMin > -2.0 || cosMax < 2.0) {
-            cut += " && cosThetaHX > " + std::to_string(cosMin) + " && cosThetaHX < " + std::to_string(cosMax);
-        }
-        // Future: add centrality cut when needed
-        // cut += " && centrality >= " + std::to_string(centralityMin) + " && centrality < " + std::to_string(centralityMax);
-        return cut;
-    }
 };
 
 /**
@@ -245,12 +212,109 @@ private:
     }
 };
 
+inline void ConfigureDStarDataFitOpt(FitOpt& opt) {
+    const double pTMin = opt.pTMin;
+    const double pTMax = opt.pTMax;
+    const double cosMin = opt.cosMin;
+    const double cosMax = opt.cosMax;
+
+    opt.name = "DStar";
+    opt.fitMethod = FitMethod::BinnedNLL;
+    opt.massVar = "massPion";
+    opt.massMin = 0.140;
+    opt.massMax = 0.155;
+    opt.pTMin = pTMin <= 0.0 ? 10.0 : pTMin;
+    opt.pTMax = pTMax <= 0.0 ? 100.0 : pTMax;
+    if (cosMin == 0.0 && cosMax == 0.0) {
+        opt.cosMin = -2.0;
+        opt.cosMax = 2.0;
+    } else {
+        opt.cosMin = cosMin;
+        opt.cosMax = cosMax;
+    }
+    opt.mvaMin = 0.99;
+    opt.histogramBins = 50;
+    opt.outputDir = "results/DStar_Data/";
+    opt.plotName = "Plot_DStar_Data";
+    opt.plotMCName = "Plot_DStar_Data_MC";
+    opt.wsName = "workspace_DStar";
+    opt.outputFile = "DStar_fit.root";
+    opt.cutExpr.clear();
+    opt.cutMCExpr.clear();
+    opt.subDir.clear();
+    opt.pdfName = "total_pdf";
+    opt.GenerateLegends();
+}
+
+inline void ConfigureDStarMCFitOpt(FitOpt& opt) {
+    const double pTMin = opt.pTMin;
+    const double pTMax = opt.pTMax;
+    const double cosMin = opt.cosMin;
+    const double cosMax = opt.cosMax;
+
+    ConfigureDStarDataFitOpt(opt);
+
+    opt.pTMin = pTMin;
+    opt.pTMax = pTMax;
+    opt.cosMin = cosMin;
+    opt.cosMax = cosMax;
+    opt.fitMethod = FitMethod::Extended;
+    opt.outputDir = "results/DStar_MC/";
+    opt.plotName = "Plot_DStar_MC";
+    opt.plotMCName = "Plot_DStar_MC";
+    opt.wsName = "workspace_DStar";
+    if (!opt.cutMCExpr.empty()) {
+        opt.cutExpr = opt.cutMCExpr;
+    }
+    opt.GenerateLegends();
+}
+
+inline void ConfigureDStarMCAbsFitOpt(FitOpt& opt) {
+    const double pTMin = opt.pTMin;
+    const double pTMax = opt.pTMax;
+    const double cosMin = opt.cosMin;
+    const double cosMax = opt.cosMax;
+
+    ConfigureDStarMCFitOpt(opt);
+
+    opt.pTMin = pTMin;
+    opt.pTMax = pTMax;
+    opt.cosMin = cosMin;
+    opt.cosMax = cosMax;
+
+    opt.dcaVar = "dca3D";
+    opt.dcaMin = 0.0;
+    opt.dcaMax = 0.07;
+
+    std::ostringstream cut;
+    cut << "y<1 && y>-1"
+        << " && abs(" << opt.cosVar << ") < " << cosMax
+        << " && abs(" << opt.cosVar << ") >= " << cosMin
+        << " && " << opt.ptVar << " < " << pTMax
+        << " && " << opt.ptVar << " >= " << pTMin;
+
+    opt.cutExpr = cut.str();
+    opt.cutMCExpr = opt.cutExpr + " && matchGEN==1";
+    opt.pdfName = "total_pdf";
+
+    const std::string binLabel = opt.GetBinName();
+    opt.plotName = "Plot_" + opt.name + "_" + binLabel + ".pdf";
+    opt.plotMCName = "PlotMC_" + opt.name + "_" + binLabel + ".pdf";
+    opt.outputFile = opt.name + "_" + binLabel + ".root";
+    opt.outputMCFile = "MC_" + opt.name + "_" + binLabel + ".root";
+    opt.outputMCSwap0File = "MC_Swap0_" + opt.name + "_" + binLabel + ".root";
+    opt.outputMCSwap1File = "MC_Swap1_" + opt.name + "_" + binLabel + ".root";
+    opt.outputDCAFile = "DCA_" + opt.name + "_" + binLabel + ".root";
+    opt.centLegend = Form("%0.2f < |cos#theta_{HX}| < %0.2f", cosMin, cosMax);
+    opt.GenerateLegends();
+}
+
 /**
  * @brief Main configuration class for D* meson fitting
  */
-class DStarFitConfig {
+class DStarFitOpt {
 public:
-    DStarFitConfig() {
+    DStarFitOpt() {
         SetupDefaultConfiguration();
     }
     
@@ -286,17 +350,17 @@ public:
     
     // Set parameters for specific bins
     void SetParametersForBin(const KinematicBin& bin, const DStarBinParameters& params) {
-        binParameters_[bin.GetBinName()] = params;
+        binParameters_[MakeBinKey(bin)] = params;
     }
     
     // Set fixed flags for specific bins
     void SetFixedFlagsForBin(const KinematicBin& bin, const std::map<std::string, bool>& fixedFlags) {
-        binFixedFlags_[bin.GetBinName()] = fixedFlags;
+        binFixedFlags_[MakeBinKey(bin)] = fixedFlags;
     }
     
     // Get fixed flags for a specific bin
     std::map<std::string, bool> GetFixedFlagsForBin(const KinematicBin& bin) const {
-        auto it = binFixedFlags_.find(bin.GetBinName());
+        auto it = binFixedFlags_.find(MakeBinKey(bin));
         if (it != binFixedFlags_.end()) {
             return it->second;
         }
@@ -305,7 +369,7 @@ public:
     
     // Get parameters for a specific bin
     DStarBinParameters GetParametersForBin(const KinematicBin& bin) const {
-        auto it = binParameters_.find(bin.GetBinName());
+        auto it = binParameters_.find(MakeBinKey(bin));
         if (it != binParameters_.end()) {
             return it->second;
         }
@@ -361,34 +425,21 @@ public:
     // Create FitOpt for a specific bin
     FitOpt CreateFitOpt(const KinematicBin& bin) const {
         FitOpt opt;
-        
-        // Apply DStar defaults first to set proper workspace name and other settings
-        opt.DStarDataDefault();
-        
-        // Override with bin-specific kinematic range
-        opt.pTMin = bin.pTMin;
-        opt.pTMax = bin.pTMax;
-        opt.cosMin = bin.cosMin;
-        opt.cosMax = bin.cosMax;
-        // Also propagate centrality range to FitOpt
-        opt.centMin = bin.centralityMin;
-        opt.centMax = bin.centralityMax;
-        
-        // Set cuts (build kinematic + optional abs(cos) cut)
-        std::string kinCut = "pT > " + std::to_string(bin.pTMin) + " && pT < " + std::to_string(bin.pTMax);
-        if (bin.cosMin > -2.0 || bin.cosMax < 2.0) {
-            std::string cosExpr = useAbsCosCuts_ ? "abs(cosThetaHX)" : "cosThetaHX";
-            kinCut += " && " + cosExpr + " > " + std::to_string(bin.cosMin) +
-                      " && " + cosExpr + " < " + std::to_string(bin.cosMax);
-        }
-        // Add centrality cut when requested (anything different from full 0-100)
-        if (bin.centralityMin > 0 || bin.centralityMax < 100) {
-            kinCut += " && " + opt.centVar + " >= " + std::to_string(bin.centralityMin) +
-                      " && " + opt.centVar + " < " + std::to_string(bin.centralityMax);
-        }
-        opt.cutExpr = GetFullCutString() + " && " + kinCut;
-        opt.cutMCExpr = opt.cutExpr + " && matchGEN==1";  // Same cuts for MC
-        
+        ConfigureDStarDataFitOpt(opt);
+        opt.ApplyKinematicBin(bin);
+
+        auto combineCuts = [](const std::string& lhs, const std::string& rhs) {
+            if (lhs.empty()) return rhs;
+            if (rhs.empty()) return lhs;
+            return lhs + " && " + rhs;
+        };
+
+        const std::string baseCut = GetFullCutString();
+        const std::string kinCut = opt.BuildKinematicCut(bin, useAbsCosCuts_);
+        opt.cutExpr = combineCuts(baseCut, kinCut);
+
+        opt.cutMCExpr = opt.cutExpr.empty() ? "matchGEN==1" : opt.cutExpr + " && matchGEN==1";
+
         // Override with configuration-specific settings
         opt.useCUDA = useCUDA_;
         opt.doFit = doRefit_;
@@ -396,10 +447,11 @@ public:
         opt.useMinos = false;  // Usually not needed for D* fits
         opt.useHesse = true;
         opt.fitMethod = fitMethod_;  // Use configured fit method
+        opt.datasetName = datasetName_;
         
         // Set output configuration
         opt.outputDir = "results/";
-        opt.outputFile = "DStar_fit_" + bin.GetBinName();
+        opt.outputFile = "DStar_fit_" + BuildBinName(bin);
         opt.subDir = outputSubDir_;
         
         // Generate proper legends for this bin
@@ -408,22 +460,22 @@ public:
         return opt;
     }
     
-    // Create FitConfig for modern fitting framework (unified with FitOpt)
-    FitConfig CreateFitConfig() const {
-        // Create a base FitOpt and convert it to FitConfig for consistency
+    // Create FitOpt for modern fitting framework
+    FitOpt CreateFitOpt() const {
         FitOpt tempOpt;
-        tempOpt.DStarDataDefault();  // Apply base D* settings
-        
-        // Override with DStarFitConfig specific settings
+        ConfigureDStarDataFitOpt(tempOpt);
+
         tempOpt.fitMethod = fitMethod_;
         tempOpt.useCUDA = useCUDA_;
         tempOpt.verbose = verbose_;
         tempOpt.useMinos = false;
         tempOpt.useHesse = true;
         tempOpt.numCPU = 24;
-        // tempOpt.maxRetries = 3;
-        
-        return tempOpt.ToFitConfig();
+
+        tempOpt.datasetName = datasetName_;
+        tempOpt.subDir = outputSubDir_;
+
+        return tempOpt;
     }
     
     // Yield-mode preference (default: Fraction)
@@ -476,6 +528,10 @@ private:
     std::string slowPionCut_;
     std::string grandDaughterCut_;
     std::string mvaCut_;
+
+    std::string MakeBinKey(const KinematicBin& bin) const {
+        return BuildBinName(bin);
+    }
     
     void SetupDefaultConfiguration() {
         // Default centrality bin (dummy for now)
@@ -527,10 +583,12 @@ private:
     }
 };
 
+using DStarFitConfig = DStarFitOpt;
+
 /**
  * @brief Factory function to create a configured MassFitterV2 for D* analysis
  */
-inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, const DStarFitConfig& config) {
+inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, const DStarFitOpt& config) {
     auto fitOpt = config.CreateFitOpt(bin);
     auto binParams = config.GetParametersForBin(bin);
     
@@ -556,7 +614,8 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
     // No need to set configuration here - it's redundant
     
     // Apply bin-specific PDF types and parameters
-    std::cout << "[Config] Applying custom PDF configuration for bin: " << bin.GetBinName() << std::endl;
+    const std::string binLabel = BuildBinName(bin);
+    std::cout << "[Config] Applying custom PDF configuration for bin: " << binLabel << std::endl;
     std::cout << "[Config] Signal PDF: " << static_cast<int>(binParams.signalPdfType) 
               << ", Background PDF: " << static_cast<int>(binParams.backgroundPdfType) << std::endl;
     
@@ -575,63 +634,6 @@ inline std::unique_ptr<MassFitterV2> CreateDStarFitter(const KinematicBin& bin, 
 /**
  * @brief Batch fitting function for multiple kinematic bins
  */
-inline void RunDStarFitAnalysis(const DStarFitConfig& config, bool plotResults = true) {
-    auto allBins = config.GetAllKinematicBins();
-    
-    std::cout << "Starting D* fit analysis for " << allBins.size() << " kinematic bins..." << std::endl;
-    
-    for (const auto& bin : allBins) {
-        std::cout << "\nFitting bin: " << bin.GetBinName() << std::endl;
-        std::cout << "pT range: [" << bin.pTMin << ", " << bin.pTMax << "]" << std::endl;
-        std::cout << "cos(θ) range: [" << bin.cosMin << ", " << bin.cosMax << "]" << std::endl;
-        std::cout << "Centrality range: [" << bin.centralityMin << ", " << bin.centralityMax << "] (dummy)" << std::endl;
-        
-        try {
-            // Create fitter for this bin
-            auto fitter = CreateDStarFitter(bin, config);
-            auto fitOpt = config.CreateFitOpt(bin);
-            auto binParams = config.GetParametersForBin(bin);
-            
-            // Load data
-            // Note: In practice, you would load the actual dataset here
-            std::cout << "Loading data from: " << config.GetDataFilePath() << std::endl;
-            
-            // Perform fit (placeholder - would need actual data loading)
-            /*
-            DataLoader loader(config.GetDataFilePath());
-            loader.loadRooDataSet(config.GetDatasetName());
-            auto dataset = loader.getDataSet();
-            
-            if (dataset) {
-                bool success = fitter->PerformFit(fitOpt, dataset, 
-                                                  binParams.signalParams, 
-                                                  binParams.backgroundParams,
-                                                  bin.GetBinName());
-                
-                if (success) {
-                    std::cout << "Fit successful for bin " << bin.GetBinName() << std::endl;
-                    fitter->PrintSummary(bin.GetBinName());
-                    
-                    if (plotResults) {
-                        PlotOptions plotOpt;
-                        plotOpt.title = "D* Fit - " + bin.GetBinName();
-                        fitter->CreateCanvas(bin.GetBinName(), plotOpt);
-                    }
-                    
-                    // Save results
-                    fitter->SaveResult(bin.GetBinName(), fitOpt.outputDir, fitOpt.outputFile + ".root");
-                } else {
-                    std::cerr << "Fit failed for bin " << bin.GetBinName() << std::endl;
-                }
-            }
-            */
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Error fitting bin " << bin.GetBinName() << ": " << e.what() << std::endl;
-        }
-    }
-    
-    std::cout << "\nD* fit analysis completed." << std::endl;
-}
+
 
 #endif // DSTAR_FIT_CONFIG_H

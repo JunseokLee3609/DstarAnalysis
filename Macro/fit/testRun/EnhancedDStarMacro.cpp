@@ -1,5 +1,6 @@
 #include "../MassFitter.h"
 #include "../Opt.h"
+#include "../DStarFitOpt.h"
 #include "../Params.h"
 #include "../Helper.h"
 #include "../PlotManager.h"
@@ -98,7 +99,7 @@ void EnhancedDStarMacro(bool doReFit = false, bool plotFit = true, bool useCUDA 
             opt.cosMin = cosbin.first;
             opt.cosMax = cosbin.second;
             
-            opt.DStarMCAbsDefault();
+            ConfigureDStarMCAbsFitOpt(opt);
             opt.outputDir = opt.outputDir + subDir;
             opt.outputMCDir = opt.outputMCDir + subDir;
             opt.outputPlotDir = opt.outputPlotDir + subDir;

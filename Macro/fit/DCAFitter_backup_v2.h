@@ -68,12 +68,12 @@ using std::endl;
 // -----------------------------------------------------------------------------
 // Shim classes to ensure this header builds even when a full ConfigManager or
 // ErrorHandler class is not available in the project.
-// - ConfigManager: provides GetConfiguration returning default FitConfig
+// - ConfigManager: provides GetConfiguration returning default FitOpt
 // - DCAErrorHandler: provides HandleError(context, message) using ConsoleErrorHandler
 // -----------------------------------------------------------------------------
 class ConfigManager {
 public:
-    FitConfig GetConfiguration(const std::string&) const { return FitConfig(); }
+    FitOpt GetConfiguration(const std::string&) const { return FitOpt(); }
 };
 
 class DCAErrorHandler {
@@ -278,8 +278,8 @@ public:
             massFitter->SetData(dataSlice);
             
             // Setup configuration for mass fitting
-            FitConfig massFitConfig = createMassFitConfig(sliceName);
-            massFitter->SetConfiguration(massFitConfig);
+            FitOpt massFitOpt = createMassFitOpt(sliceName);
+            massFitter->SetConfiguration(massFitOpt);
             
             // Perform template-based fit
             bool fitSuccess = false;
@@ -329,7 +329,7 @@ public:
             }
             
             // Create global configuration
-            FitConfig globalConfig = configManager_->GetConfiguration("DCAFitting");
+            FitOpt globalConfig = configManager_->GetConfiguration("DCAFitting");
             
             bool allFitsSuccessful = true;
             sliceFitResults_.clear();
@@ -828,10 +828,10 @@ public:
                         auto* massFitter = createMassFitterV2ForSlice(sliceName);
                         
                         // Setup configuration
-                        FitConfig massFitConfig = createMassFitConfig(sliceName);
+                        FitOpt massFitOpt = createMassFitOpt(sliceName);
                         gSystem->mkdir(opt_.outputDir.c_str(), kTRUE);
                         
-                        massFitter->SetConfiguration(massFitConfig); 
+                        massFitter->SetConfiguration(massFitOpt); 
                         // Set data for fitting
                         massFitter->SetData(dcaSliceData);
                         
@@ -2204,8 +2204,8 @@ private:
         return sliceFitters_[sliceName].get();
     }
     
-    FitConfig createMassFitConfig(const std::string& sliceName) const {
-        // Use FitOpt -> FitConfig conversion for core settings
+    FitOpt createMassFitOpt(const std::string& sliceName) const {
+        // Use FitOpt -> FitOpt conversion for core settings
         return opt_.ToFitConfig();
     }
     

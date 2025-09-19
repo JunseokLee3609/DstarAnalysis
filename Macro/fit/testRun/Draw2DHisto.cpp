@@ -1,5 +1,6 @@
 #include "../MassFitter.h"
 #include "../Opt.h"
+#include "../DStarFitConfig.h"
 #include "../Params.h"
 #include "../Helper.h"
 #include "../PlotManager.h"
@@ -118,7 +119,7 @@ void Draw2DHisto(){
             opt.pTMax = ptbin.second;
             opt.cosMin = cosbin.first;
             opt.cosMax = cosbin.second;
-            opt.DStarMCDefault(); // 기본 옵션 설정
+            ConfigureDStarMCFitOpt(opt); // 기본 옵션 설정
             
             // 파일 경로 생성
             std::string fullPath = opt.outputDir;

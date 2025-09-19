@@ -1,4 +1,4 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h"
 #include "../FitStrategy.h"
 
@@ -17,17 +17,16 @@ void testBinnedFitConnection() {
     // Test 1: BinnedNLL should select BinnedFitStrategy
     std::cout << "\n--- Test 1: FitMethod::BinnedNLL ---" << std::endl;
     {
-        DStarFitConfig config1;
+        DStarFitOpt config1;
         config1.SetFitMethod(FitMethod::BinnedNLL);
         config1.AddPtBin(10, 100);
         config1.AddCosBin(-2, 2);
         
         auto fitter1 = CreateDStarFitter(config1.GetAllKinematicBins()[0], config1);
-        auto fitConfig1 = config1.CreateFitConfig();
+        auto fitConfig1 = config1.CreateFitOpt();
         
         // Verify the mapping function works
-        auto strategyType1 = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::BinnedNLL);
-        auto strategy1 = FitStrategyFactory::CreateStrategy(strategyType1);
+        auto strategy1 = FitStrategyFactory::CreateStrategy(FitMethod::BinnedNLL);
         
         std::cout << "FitMethod: BinnedNLL" << std::endl;
         std::cout << "Selected Strategy: " << strategy1->GetName() << std::endl;
@@ -38,8 +37,7 @@ void testBinnedFitConnection() {
     // Test 2: NLL should select BasicFitStrategy
     std::cout << "\n--- Test 2: FitMethod::NLL ---" << std::endl;
     {
-        auto strategyType2 = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::NLL);
-        auto strategy2 = FitStrategyFactory::CreateStrategy(strategyType2);
+        auto strategy2 = FitStrategyFactory::CreateStrategy(FitMethod::NLL);
         
         std::cout << "FitMethod: NLL" << std::endl;
         std::cout << "Selected Strategy: " << strategy2->GetName() << std::endl;
@@ -50,8 +48,7 @@ void testBinnedFitConnection() {
     // Test 3: Extended should select BasicFitStrategy (no robust widening)
     std::cout << "\n--- Test 3: FitMethod::Extended ---" << std::endl;
     {
-        auto strategyType3 = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::Extended);
-        auto strategy3 = FitStrategyFactory::CreateStrategy(strategyType3);
+        auto strategy3 = FitStrategyFactory::CreateStrategy(FitMethod::Extended);
         
         std::cout << "FitMethod: Extended" << std::endl;
         std::cout << "Selected Strategy: " << strategy3->GetName() << std::endl;
@@ -62,8 +59,7 @@ void testBinnedFitConnection() {
     // Test 3b: Robust should select RobustFitStrategy
     std::cout << "\n--- Test 3b: FitMethod::Robust ---" << std::endl;
     {
-        auto strategyType3b = FitStrategyFactory::GetStrategyTypeFromFitMethod(FitMethod::Robust);
-        auto strategy3b = FitStrategyFactory::CreateStrategy(strategyType3b);
+        auto strategy3b = FitStrategyFactory::CreateStrategy(FitMethod::Robust);
         
         std::cout << "FitMethod: Robust" << std::endl;
         std::cout << "Selected Strategy: " << strategy3b->GetName() << std::endl;
@@ -96,19 +92,19 @@ void testBinnedFitConnection() {
     // Test 5: Complete workflow test with DStarAnalysisV2 configuration
     std::cout << "\n--- Test 5: DStarAnalysisV2 Configuration Test ---" << std::endl;
     {
-        DStarFitConfig config;
+        DStarFitOpt config;
         config.SetFitMethod(FitMethod::BinnedNLL);  // This should now properly connect!
         config.AddPtBin(10, 100);
         config.AddCosBin(-2, 2);
         
         auto bin = config.GetAllKinematicBins()[0];
         auto fitter = CreateDStarFitter(bin, config);
-        auto fitConfig = config.CreateFitConfig();
+        auto fitConfig = config.CreateFitOpt();
         
         std::cout << "DStarAnalysisV2 Configuration:" << std::endl;
         std::cout << "  - config.SetFitMethod(FitMethod::BinnedNLL)" << std::endl;
         std::cout << "  - Expected strategy selection in PerformFit(): BinnedFitStrategy" << std::endl;
-        std::cout << "  - FitConfig.fitMethod: " << (int)fitConfig.fitMethod << " (2=BinnedNLL)" << std::endl;
+        std::cout << "  - FitOpt.fitMethod: " << (int)fitConfig.fitMethod << " (2=BinnedNLL)" << std::endl;
         std::cout << "✅ Test 5 PASSED - Configuration properly set" << std::endl;
     }
     

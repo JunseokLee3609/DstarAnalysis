@@ -33,4 +33,4 @@ echo "[Condor DStarV2] pT=[${pTMin}, ${pTMax}], cos=[${cosMin}, ${cosMax}], cent
 # Execute ROOT macro with C++17 standard explicitly set
 #root -l -b -q "DStarAnalysisV2forpp.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified_pp_v2.json\",false)"
 # root -l -b -q "DStarAnalysisV2forpp.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified_pp_v2.json\")"
-root -l -b -q "DStarAnalysisV2forpp.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/test_pp_v1.json\")"
+root -l -b -q "DStarAnalysisV2forpp.cpp(true,true,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_DBCrystalBall_Phenomenological2.json\")"

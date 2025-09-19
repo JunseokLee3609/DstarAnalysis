@@ -1,11 +1,11 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h"
 #include "../DataLoader.h"
 
 void testBinnedFit() {
     std::cout << "=== Testing Binned Fit ===" << std::endl;
     
-    DStarFitConfig config;
+    DStarFitOpt config;
     config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetDatasetName("datasetHX");
     config.SetFitMethod(FitMethod::BinnedNLL);

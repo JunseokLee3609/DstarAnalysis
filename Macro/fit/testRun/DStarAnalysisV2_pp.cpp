@@ -1,4 +1,4 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h"
 #include "../DataLoader.h"
 // #include "../PlotManager.h"  // Disabled - has compilation issues
@@ -184,7 +184,7 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
 }
 
 // Function to print all parameters in the config
-void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& title = "") {
+void PrintAllConfigParameters(const DStarFitOpt& config, const std::string& title = "") {
     if (!title.empty()) {
         std::cout << "\n" << std::string(80, '=') << std::endl;
         std::cout << "📋 " << title << std::endl;
@@ -206,7 +206,7 @@ void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& t
 }
 
 // Function to compare parameters before and after JSON loading
-void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig& configAfter, 
+void CompareParameters(const DStarFitOpt& configBefore, const DStarFitOpt& configAfter, 
                       const std::string& binName = "") {
     std::cout << "\n" << std::string(80, '=') << std::endl;
     std::cout << "🔍 PARAMETER COMPARISON" << std::endl;
@@ -355,7 +355,7 @@ void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig&
 }
 
 // Simplified function to load parameters from JSON file using improved utilities
-void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile) {
+void LoadParametersFromJSON(DStarFitOpt& config, const std::string& jsonFile) {
     JSONParameterLoader jsonLoader;
     jsonLoader.loadFromFile(jsonFile);
     
@@ -400,7 +400,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     std::cout << "Using new modular framework with MassFitterV2" << std::endl;
     
     // Create main configuration
-    DStarFitConfig config;
+    DStarFitOpt config;
     // Enable auto-tuning: switching yield mode adjusts fit method and model
     config.SetYieldModeAutoTuning(true);
     
@@ -464,7 +464,7 @@ void DStarAnalysisV2_pp(bool doReFit = false, bool plotFit = true, bool useCUDA 
     }
         
     // Store copy of config before JSON loading for comparison  
-    DStarFitConfig configBeforeJSON = config;
+    DStarFitOpt configBeforeJSON = config;
     
     // ===== SINGLE BIN ANALYSIS =====
     std::cout << "\n🎯 Single Bin Analysis Mode" << std::endl;

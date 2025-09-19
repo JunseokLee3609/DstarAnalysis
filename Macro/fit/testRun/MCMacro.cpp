@@ -4,6 +4,7 @@
 #include "../Helper.h"
 #include "../PlotManager.h"
 #include "../DataLoader.h"
+#include "../DStarFitConfig.h"
 // #include "../ParameterManager.h"
 
 using ParamKey = std::pair<double, double>;
@@ -170,7 +171,7 @@ void MCMacro(bool doFit = false,bool useCUDA=true, float pTMin=4, float pTMax=10
             D0opt.pTMax = ptbin.second;
             D0opt.cosMin = cosbin.first;
             D0opt.cosMax = cosbin.second;
-            D0opt.DStarMCDefault();
+            ConfigureDStarMCFitOpt(D0opt);
             
     
     MassFitter fitter(D0opt.name,D0opt.massVar,D0opt.massMin,D0opt.massMax);
@@ -196,7 +197,6 @@ void MCMacro(bool doFit = false,bool useCUDA=true, float pTMin=4, float pTMax=10
     }
 
     
-
 
 
 

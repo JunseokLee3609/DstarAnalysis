@@ -5,6 +5,7 @@
 #include "DStarFitConfig.h"
 #include <map>
 #include <string>
+#include <iostream>
 
 // Structure to hold parameter fixed flags information
 struct ParameterFixedInfo {
@@ -502,6 +503,74 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
     fixedInfo.printFixedFlags();
     
     return std::make_pair(binParams, fixedInfo);
+}
+
+inline void LoadParametersFromJSONToConfig(DStarFitConfig& config,
+                                           const std::string& jsonFile,
+                                           bool ignoreCentralityInMatching = true,
+                                           const KinematicBin* ensureExactBin = nullptr) {
+    JSONParameterLoader jsonLoader;
+    jsonLoader.setIgnoreCentralityInMatching(ignoreCentralityInMatching);
+    jsonLoader.loadFromFile(jsonFile);
+
+    std::cout << "[JSON Loader] Loading parameters from: " << jsonFile << std::endl;
+
+    auto configBins = config.GetAllKinematicBins();
+    size_t successCount = 0;
+
+    for (const auto& bin : configBins) {
+        BinIdentifier binId;
+        binId.ptMin = bin.pTMin;
+        binId.ptMax = bin.pTMax;
+        binId.cosMin = bin.cosMin;
+        binId.cosMax = bin.cosMax;
+        binId.centralityMin = bin.centralityMin;
+        binId.centralityMax = bin.centralityMax;
+
+        std::cout << "[JSON Loader] Loading parameters for bin: " << bin.GetBinName() << std::endl;
+
+        try {
+            auto loaded = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
+            DStarBinParameters binParams = loaded.first;
+            ParameterFixedInfo fixedInfo = loaded.second;
+
+            config.SetParametersForBin(bin, binParams);
+            config.SetFixedFlagsForBin(bin, fixedInfo.fixedFlags);
+
+            std::cout << "[JSON Loader] ✅ Successfully loaded parameters and fixed flags for bin: "
+                      << bin.GetBinName() << std::endl;
+            ++successCount;
+        } catch (const std::exception& e) {
+            std::cout << "[JSON Loader] ❌ Failed to load parameters for bin " << bin.GetBinName()
+                      << ": " << e.what() << ". Using defaults." << std::endl;
+        }
+    }
+
+    if (ensureExactBin) {
+        try {
+            BinIdentifier binId;
+            binId.ptMin = ensureExactBin->pTMin;
+            binId.ptMax = ensureExactBin->pTMax;
+            binId.cosMin = ensureExactBin->cosMin;
+            binId.cosMax = ensureExactBin->cosMax;
+            binId.centralityMin = ensureExactBin->centralityMin;
+            binId.centralityMax = ensureExactBin->centralityMax;
+
+            auto loaded = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
+            config.SetParametersForBin(*ensureExactBin, loaded.first);
+            config.SetFixedFlagsForBin(*ensureExactBin, loaded.second.fixedFlags);
+
+            std::cout << "[JSON Loader] ✅ Populated parameters for EXACT current bin key: "
+                      << ensureExactBin->GetBinName() << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << "[JSON Loader] ⚠️  Could not set exact current bin key: "
+                      << e.what() << std::endl;
+        }
+    }
+
+    if (successCount == 0) {
+        std::cout << "[JSON Loader] ⚠️  No bins were updated from JSON file." << std::endl;
+    }
 }
 
 // Backward compatibility function - calls the new function and discards fixed info

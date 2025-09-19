@@ -1,4 +1,4 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h" 
 #include "../DataLoader.h"
 

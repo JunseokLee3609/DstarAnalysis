@@ -1,4 +1,4 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h"
 #include "../DataLoader.h"
 // #include "../PlotManager.h"  // Disabled - has compilation issues
@@ -52,7 +52,7 @@ void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& param
 }
 
 // Function to print all parameters in the config
-void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& title = "") {
+void PrintAllConfigParameters(const DStarFitOpt& config, const std::string& title = "") {
     if (!title.empty()) {
         std::cout << "\n" << std::string(80, '=') << std::endl;
         std::cout << "📋 " << title << std::endl;
@@ -74,7 +74,7 @@ void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& t
 }
 
 // Function to compare parameters before and after JSON loading
-void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig& configAfter, 
+void CompareParameters(const DStarFitOpt& configBefore, const DStarFitOpt& configAfter, 
                       const std::string& binName = "") {
     std::cout << "\n" << std::string(80, '=') << std::endl;
     std::cout << "🔍 PARAMETER COMPARISON" << std::endl;
@@ -179,7 +179,7 @@ void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig&
 }
 
 // Simplified function to load parameters from JSON file using improved utilities
-void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile) {
+void LoadParametersFromJSON(DStarFitOpt& config, const std::string& jsonFile) {
     JSONParameterLoader jsonLoader;
     jsonLoader.loadFromFile(jsonFile);
     
@@ -225,7 +225,7 @@ void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = tru
     std::cout << "Using new modular framework with MassFitterV2" << std::endl;
     
     // Create main configuration
-    DStarFitConfig config;
+    DStarFitOpt config;
     // Enable auto-tuning: switching yield mode adjusts fit method and model
     config.SetYieldModeAutoTuning(false);
     
@@ -288,7 +288,7 @@ void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = tru
     }
         
     // Store copy of config before JSON loading for comparison  
-    DStarFitConfig configBeforeJSON = config;
+    DStarFitOpt configBeforeJSON = config;
     
     // ===== SINGLE BIN ANALYSIS =====
     std::cout << "\n🎯 Single Bin Analysis Mode" << std::endl;
@@ -411,6 +411,12 @@ void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = tru
         // Get bin-specific parameters
         auto binParams = config.GetParametersForBin(bin);
         auto fitOpt = config.CreateFitOpt(bin);
+
+        if (fitOpt.cutMCExpr.empty()) {
+            fitOpt.cutMCExpr = fitOpt.cutExpr.empty()
+                                   ? std::string("matchGEN==1")
+                                   : fitOpt.cutExpr + " && matchGEN==1";
+        }
         
         std::cout << "Cut expression: " << fitOpt.cutExpr << std::endl;
         std::cout << "Expected signal ratio: " << binParams.nsig_ratio << std::endl;
@@ -619,6 +625,17 @@ void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = tru
                     DCAFitter dcaFitter(dcaOpt, "DCAFitter", dcaOpt.massVar,
                                          dcaOpt.dcaMin, dcaOpt.dcaMax, 100);
 
+                    if (!parameterFile.empty()) {
+                        const auto dotPos = parameterFile.find_last_of('.');
+                        if (dotPos != std::string::npos) {
+                            std::string ext = parameterFile.substr(dotPos + 1);
+                            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                            if (ext == "json") {
+                                dcaFitter.setMassParamJSON(parameterFile);
+                            }
+                        }
+                    }
+
                     // Prefer MC mass-fit result workspace (reduced by pt/cos/cent)
                     {
                         std::string mcOutDirDC = fitOpt.outputDir + fitOpt.subDir + "/MC";
@@ -641,7 +658,11 @@ void DStarAnalysisV2(bool doReFit = false, bool doDCA = true, bool plotFit = tru
 
                     // Apply same kinematic and selection cuts
                     dcaFitter.setMCCuts(dcaOpt.cutMCExpr);
-                    dcaFitter.setDataCuts(dcaOpt.cutExpr);
+                    const std::string dataCutsForFit =
+                        (isMC && !dcaOpt.cutMCExpr.empty())
+                            ? dcaOpt.cutMCExpr
+                            : dcaOpt.cutExpr;
+                    dcaFitter.setDataCuts(dataCutsForFit);
 
                     // Output setup (save DCA ROOTs under dedicated folder)
                     std::string dcaRootDir = fitOpt.outputDir + fitOpt.subDir + "/Data/dcaroot";

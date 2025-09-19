@@ -1,5 +1,6 @@
 #include "../MassFitter.h"
 #include "../Opt.h"
+#include "../DStarFitOpt.h"
 #include "../Params.h"
 #include "../PlotManager.h"
 #include "../DataLoader.h"
@@ -53,7 +54,7 @@ void ComprehensiveDStarAnalysis(bool doReFit = false, bool plotFit = true, bool 
     opt.ptVar = "pT";
     opt.cosVar = "cos";
     
-    opt.DStarMCAbsDefault();
+    ConfigureDStarMCAbsFitOpt(opt);
     
     // Set kinematic ranges
     opt.pTMin = pTMin;

@@ -42,7 +42,7 @@ public:
 class IFitStrategy {
 public:
     virtual ~IFitStrategy() = default;
-    virtual std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) = 0;
+    virtual std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitOpt& config) = 0;
     virtual std::string GetName() const = 0;
 };
 
@@ -170,7 +170,7 @@ private:
 // Mock Fit Strategy
 class MockFitStrategy : public IFitStrategy {
 public:
-    std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitConfig& config) override {
+    std::unique_ptr<RooFitResult> Execute(RooAbsPdf* pdf, RooDataSet* data, const FitOpt& config) override {
         executeCallCount_++;
         lastConfig_ = config;
         
@@ -191,13 +191,13 @@ public:
     // Test helpers
     void SetShouldFail(bool shouldFail) { shouldFail_ = shouldFail; }
     int GetExecuteCallCount() const { return executeCallCount_; }
-    const FitConfig& GetLastConfig() const { return lastConfig_; }
+    const FitOpt& GetLastConfig() const { return lastConfig_; }
     void ResetCallCount() { executeCallCount_ = 0; }
     
 private:
     bool shouldFail_ = false;
     int executeCallCount_ = 0;
-    FitConfig lastConfig_;
+    FitOpt lastConfig_;
 };
 
 // Mock Result Manager
@@ -456,7 +456,7 @@ namespace IntegrationTestUtils {
                 RooArgList(*signalPdf, *backgroundPdf), RooArgList(*nsig, *nbkg));
             
             // Perform fit
-            FitConfig config;
+            FitOpt config;
             auto fitResult = fitStrategy->Execute(totalPdf.get(), dataset, config);
             
             // Store results

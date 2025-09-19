@@ -10,6 +10,8 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+#include <limits>
+#include <cmath>
 
 // Simple JSON parser for parameter loading
 class SimpleJSON {
@@ -52,6 +54,12 @@ struct BinIdentifier {
     double ptMin, ptMax;
     double cosMin, cosMax;
     double centralityMin, centralityMax;
+    double dcaMin = std::numeric_limits<double>::quiet_NaN();
+    double dcaMax = std::numeric_limits<double>::quiet_NaN();
+    
+    bool hasDcaRange() const {
+        return !std::isnan(dcaMin) && !std::isnan(dcaMax);
+    }
     
     std::string getBinKey() const {
         std::ostringstream oss;
@@ -64,7 +72,36 @@ struct BinIdentifier {
     // Find matching bin from JSON bins using range matching
     // If ignoreCentrality is true, first try exact match; if not found, fallback to matching only pt/cos
     std::string findMatchingBinKey(const SimpleJSON& json, bool ignoreCentrality) const {
+        auto buildDcaCompositeKey = [&](const std::string& baseKey) -> std::string {
+            if (!hasDcaRange()) {
+                return baseKey;
+            }
+            const std::string dcaPrefix = "dstar_parameters.bins." + baseKey + ".dca_bins";
+            auto dcaKeys = json.getKeys(dcaPrefix);
+            std::set<std::string> unique;
+            for (const auto& fullKey : dcaKeys) {
+                auto pos = fullKey.find(".dca_bins.");
+                if (pos == std::string::npos) continue;
+                size_t start = pos + std::string(".dca_bins.").size();
+                size_t end = fullKey.find('.', start);
+                if (end != std::string::npos) {
+                    unique.insert(fullKey.substr(start, end - start));
+                }
+            }
+            for (const auto& dcaKey : unique) {
+                std::string dcaInfoPrefix = dcaPrefix + "." + dcaKey;
+                double dMin = json.getDouble(dcaInfoPrefix + ".dca_min", std::numeric_limits<double>::quiet_NaN());
+                double dMax = json.getDouble(dcaInfoPrefix + ".dca_max", std::numeric_limits<double>::quiet_NaN());
+                if (std::isnan(dMin) || std::isnan(dMax)) continue;
+                if (std::abs(dMin - dcaMin) < 1e-6 && std::abs(dMax - dcaMax) < 1e-6) {
+                    return baseKey + ".dca_bins." + dcaKey;
+                }
+            }
+            return baseKey;
+        };
+
         auto keys = json.getKeys("dstar_parameters.bins");
+        std::string matchedKey = "";
         // Exact match attempt
         for (const auto& key : keys) {
             if (key.find("dstar_parameters.bins.") == 0 && key.find(".bin_info.pt_min") != std::string::npos) {
@@ -82,7 +119,10 @@ struct BinIdentifier {
                     if (std::abs(pt_min - ptMin) < 0.001 && std::abs(pt_max - ptMax) < 0.001 &&
                         std::abs(cos_min - cosMin) < 0.001 && std::abs(cos_max - cosMax) < 0.001 &&
                         std::abs(cent_min - centralityMin) < 0.001 && std::abs(cent_max - centralityMax) < 0.001) {
-                        return binKey;
+                        matchedKey = buildDcaCompositeKey(binKey);
+                        if (!matchedKey.empty()) {
+                            return matchedKey;
+                        }
                     }
                 }
             }
@@ -118,6 +158,9 @@ struct BinIdentifier {
                     }
                 }
             }
+        }
+        if (!bestKey.empty()) {
+            return buildDcaCompositeKey(bestKey);
         }
         return bestKey;
     }
@@ -355,62 +398,64 @@ inline void JSONParameterLoader::loadFromFile(const std::string& filename) {
     }
     
     // Load parameters for each bin
+    auto loadParametersInto = [&](const std::string& prefix,
+                                  const std::string& namePrefix,
+                                  std::map<std::string, FitParameter>& target)
+    {
+        auto paramKeys = json_.getKeys(prefix);
+        for (const auto& key : paramKeys) {
+            if (key.find(".value") == std::string::npos) continue;
+            std::string paramBase = key.substr(0, key.find(".value"));
+            std::string paramName = paramBase.substr(paramBase.find_last_of('.') + 1);
+            if (!namePrefix.empty()) {
+                paramName = namePrefix + paramName;
+            }
+
+            FitParameter param;
+            param.value = json_.getDouble(paramBase + ".value", 0.0);
+            param.min = json_.getDouble(paramBase + ".min", -999.0);
+            param.max = json_.getDouble(paramBase + ".max", 999.0);
+            param.isFixed = json_.getBool(paramBase + ".fixed", false);
+
+            target[paramName] = param;
+        }
+    };
+
     for (const auto& binKey : binKeys) {
         std::string binPrefix = "dstar_parameters.bins." + binKey;
         std::cout << "[JSONParameterLoader] Loading bin: " << binKey << std::endl;
-        
-        // Load signal parameters
-        std::string signalPrefix = binPrefix + ".signal_pdf.parameters";
-        auto signalKeys = json_.getKeys(signalPrefix);
-        for (const auto& key : signalKeys) {
-            if (key.find(".value") != std::string::npos) {
-                std::string paramBase = key.substr(0, key.find(".value"));
-                std::string paramName = "signal_" + paramBase.substr(paramBase.find_last_of('.') + 1);
-                
-                FitParameter param;
-                param.value = json_.getDouble(paramBase + ".value", 0.0);
-                param.min = json_.getDouble(paramBase + ".min", -999.0);
-                param.max = json_.getDouble(paramBase + ".max", 999.0);
-                param.isFixed = json_.getBool(paramBase + ".fixed", false);
-                
-                binParameters_[binKey][paramName] = param;
+
+        // Load signal, background, and yield parameters for the base bin
+        loadParametersInto(binPrefix + ".signal_pdf.parameters", "signal_", binParameters_[binKey]);
+        loadParametersInto(binPrefix + ".background_pdf.parameters", "background_", binParameters_[binKey]);
+        loadParametersInto(binPrefix + ".yields", "", binParameters_[binKey]);
+
+        // Load any DCA-bin specific overrides
+        const std::string dcaPrefix = binPrefix + ".dca_bins";
+        auto dcaKeysRaw = json_.getKeys(dcaPrefix);
+        std::set<std::string> dcaKeys;
+        for (const auto& key : dcaKeysRaw) {
+            auto pos = key.find(".dca_bins.");
+            if (pos == std::string::npos) continue;
+            size_t start = pos + std::string(".dca_bins.").size();
+            size_t end = key.find('.', start);
+            if (end != std::string::npos) {
+                dcaKeys.insert(key.substr(start, end - start));
             }
         }
-        
-        // Load background parameters
-        std::string bgPrefix = binPrefix + ".background_pdf.parameters";
-        auto bgKeys = json_.getKeys(bgPrefix);
-        for (const auto& key : bgKeys) {
-            if (key.find(".value") != std::string::npos) {
-                std::string paramBase = key.substr(0, key.find(".value"));
-                std::string paramName = "background_" + paramBase.substr(paramBase.find_last_of('.') + 1);
-                
-                FitParameter param;
-                param.value = json_.getDouble(paramBase + ".value", 0.0);
-                param.min = json_.getDouble(paramBase + ".min", -999.0);
-                param.max = json_.getDouble(paramBase + ".max", 999.0);
-                param.isFixed = json_.getBool(paramBase + ".fixed", false);
-                
-                binParameters_[binKey][paramName] = param;
-            }
-        }
-        
-        // Load yield parameters
-        std::string yieldPrefix = binPrefix + ".yields";
-        auto yieldKeys = json_.getKeys(yieldPrefix);
-        for (const auto& key : yieldKeys) {
-            if (key.find(".value") != std::string::npos) {
-                std::string paramBase = key.substr(0, key.find(".value"));
-                std::string paramName = paramBase.substr(paramBase.find_last_of('.') + 1);
-                
-                FitParameter param;
-                param.value = json_.getDouble(paramBase + ".value", 0.0);
-                param.min = json_.getDouble(paramBase + ".min", -999.0);
-                param.max = json_.getDouble(paramBase + ".max", 999.0);
-                param.isFixed = json_.getBool(paramBase + ".fixed", false);
-                
-                binParameters_[binKey][paramName] = param;
-            }
+
+        for (const auto& dcaKey : dcaKeys) {
+            std::string compositeKey = binKey + ".dca_bins." + dcaKey;
+            std::string dcaBase = dcaPrefix + "." + dcaKey;
+
+            double dcaMinVal = json_.getDouble(dcaBase + ".dca_min", std::numeric_limits<double>::quiet_NaN());
+            double dcaMaxVal = json_.getDouble(dcaBase + ".dca_max", std::numeric_limits<double>::quiet_NaN());
+            std::cout << "[JSONParameterLoader]  └─ DCA bin: " << compositeKey
+                      << " (" << dcaMinVal << ", " << dcaMaxVal << ")" << std::endl;
+
+            loadParametersInto(dcaBase + ".signal_pdf.parameters", "signal_", binParameters_[compositeKey]);
+            loadParametersInto(dcaBase + ".background_pdf.parameters", "background_", binParameters_[compositeKey]);
+            loadParametersInto(dcaBase + ".yields", "", binParameters_[compositeKey]);
         }
     }
     

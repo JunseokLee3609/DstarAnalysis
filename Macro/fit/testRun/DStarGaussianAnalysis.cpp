@@ -1,4 +1,4 @@
-#include "../DStarFitConfig.h"
+#include "../DStarFitOpt.h"
 #include "../MassFitterV2.h"
 #include "../DataLoader.h"
 #include "../EnhancedPlotManager.h"
@@ -11,7 +11,7 @@ void DStarGaussianAnalysis(bool doReFit = true, bool plotFit = true, bool useCUD
                            int centralityMin = 0, int centralityMax = 100, bool isMC = false,
                            const std::string& parameterFile = "") {
     // 1) Configure analysis
-    DStarFitConfig config;
+    DStarFitOpt config;
     config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root");
     config.SetDatasetName("datasetEP");

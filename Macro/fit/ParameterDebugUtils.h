@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <algorithm>
 #include "DStarFitConfig.h"
 
 namespace ParameterDebug {
@@ -242,6 +243,108 @@ inline void PrintAllConfigParameters(const DStarFitConfig& config, const std::st
                       << ": " << e.what() << std::endl;
         }
     }
+}
+
+inline void CompareParameters(const DStarFitConfig& configBefore,
+                              const DStarFitConfig& configAfter,
+                              const std::string& binName = "") {
+    std::cout << "\n" << std::string(80, '=') << std::endl;
+    std::cout << "🔍 PARAMETER COMPARISON" << std::endl;
+    std::cout << std::string(80, '=') << std::endl;
+
+    auto binsBefore = configBefore.GetAllKinematicBins();
+    auto binsAfter = configAfter.GetAllKinematicBins();
+
+    if (binsBefore.size() != binsAfter.size()) {
+        std::cout << "⚠️  Warning: Different number of bins! Before: " << binsBefore.size()
+                  << ", After: " << binsAfter.size() << std::endl;
+    }
+
+    const size_t compareCount = std::min(binsBefore.size(), binsAfter.size());
+    for (size_t i = 0; i < compareCount; ++i) {
+        const auto& bin = binsBefore[i];
+
+        if (!binName.empty() && bin.GetBinName().find(binName) == std::string::npos) {
+            continue;
+        }
+
+        std::cout << "\n📍 Bin: " << bin.GetBinName() << std::endl;
+
+        try {
+            auto paramsBefore = configBefore.GetParametersForBin(bin);
+            auto paramsAfter = configAfter.GetParametersForBin(bin);
+
+            bool changed = false;
+
+            if (paramsBefore.signalPdfType != paramsAfter.signalPdfType) {
+                std::cout << "  🎯 Signal PDF: " << static_cast<int>(paramsBefore.signalPdfType)
+                          << " → " << static_cast<int>(paramsAfter.signalPdfType) << std::endl;
+                changed = true;
+            }
+
+            if (paramsBefore.backgroundPdfType != paramsAfter.backgroundPdfType) {
+                std::cout << "  🔲 Background PDF: " << static_cast<int>(paramsBefore.backgroundPdfType)
+                          << " → " << static_cast<int>(paramsAfter.backgroundPdfType) << std::endl;
+                changed = true;
+            }
+
+            if (paramsBefore.nsig_ratio != paramsAfter.nsig_ratio) {
+                std::cout << "  📊 nsig_ratio: " << paramsBefore.nsig_ratio
+                          << " → " << paramsAfter.nsig_ratio << std::endl;
+                changed = true;
+            }
+
+            if (paramsBefore.nbkg_ratio != paramsAfter.nbkg_ratio) {
+                std::cout << "  📊 nbkg_ratio: " << paramsBefore.nbkg_ratio
+                          << " → " << paramsAfter.nbkg_ratio << std::endl;
+                changed = true;
+            }
+
+            if (paramsAfter.signalPdfType == PDFType::DoubleGaussian) {
+                const auto& before = paramsBefore.doubleGaussianParams;
+                const auto& after = paramsAfter.doubleGaussianParams;
+                if (before.mean != after.mean) {
+                    std::cout << "  🎯 mean: " << before.mean << " → " << after.mean << std::endl;
+                    changed = true;
+                }
+                if (before.sigma1 != after.sigma1) {
+                    std::cout << "  🎯 sigma1: " << before.sigma1 << " → " << after.sigma1 << std::endl;
+                    changed = true;
+                }
+                if (before.sigma2 != after.sigma2) {
+                    std::cout << "  🎯 sigma2: " << before.sigma2 << " → " << after.sigma2 << std::endl;
+                    changed = true;
+                }
+                if (before.fraction != after.fraction) {
+                    std::cout << "  🎯 fraction: " << before.fraction << " → " << after.fraction << std::endl;
+                    changed = true;
+                }
+            }
+
+            if (paramsAfter.backgroundPdfType == PDFType::ThresholdFunction) {
+                const auto& before = paramsBefore.thresholdFuncParams;
+                const auto& after = paramsAfter.thresholdFuncParams;
+
+                if (before.p0_init != after.p0_init) {
+                    std::cout << "  🔲 p0: " << before.p0_init << " → " << after.p0_init << std::endl;
+                    changed = true;
+                }
+                if (before.p1_init != after.p1_init) {
+                    std::cout << "  🔲 p1: " << before.p1_init << " → " << after.p1_init << std::endl;
+                    changed = true;
+                }
+            }
+
+            if (!changed) {
+                std::cout << "  ✅ No changes detected" << std::endl;
+            }
+
+        } catch (const std::exception& e) {
+            std::cout << "  ❌ Error comparing parameters: " << e.what() << std::endl;
+        }
+    }
+
+    std::cout << std::string(80, '=') << std::endl;
 }
 
 } // namespace ParameterDebug

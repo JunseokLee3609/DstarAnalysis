@@ -1,243 +1,77 @@
+// #include "DStarAnalysisV2forpp.h"
+// #include "../DStarFitOpt.h"
 #include "../DStarFitConfig.h"
 #include "../MassFitterV2.h"
+#include "../Helper.h"
 #include "../DataLoader.h"
 // #include "../PlotManager.h"  // Disabled - has compilation issues
 #include "../EnhancedPlotManager.h"  // Use our enhanced plotter instead
 #include "../SimpleParameterLoader.h"  // External parameter loading
 #include "../JSONParameterUtils.h"     // JSON parameter utilities (includes JSONParameterLoader)
+#include "../ParameterDebugUtils.h"     // Parameter diagnostics helpers
 #include "../../Tools/ConfigManagerPP.h"
-#include "../ParameterDebugUtils.h"     // Centralized parameter printing utilities
 #include "../DCAFitter.h"               // DCA template fitter
 #include <fstream>
 #include <algorithm>
 #include <cctype>
 
-// ===== PARAMETER PRINTING UTILITY FUNCTIONS =====
-
-// Template function to get PDF type names
+// Utility to print PDF type names in diagnostics
 template<typename T> std::string GetPDFTypeName() { return "Unknown"; }
 
-// Signal PDF type names
-template<> std::string GetPDFTypeName<PDFParams::GaussianParams>() { return "Gaussian"; }
-template<> std::string GetPDFTypeName<PDFParams::DoubleGaussianParams>() { return "DoubleGaussian"; }
-template<> std::string GetPDFTypeName<PDFParams::CrystalBallParams>() { return "CrystalBall"; }
-template<> std::string GetPDFTypeName<PDFParams::DBCrystalBallParams>() { return "DBCrystalBall"; }
-template<> std::string GetPDFTypeName<PDFParams::VoigtianParams>() { return "Voigtian"; }
-template<> std::string GetPDFTypeName<PDFParams::BreitWignerParams>() { return "BreitWigner"; }
+template<> inline std::string GetPDFTypeName<PDFParams::GaussianParams>() { return "Gaussian"; }
+template<> inline std::string GetPDFTypeName<PDFParams::DoubleGaussianParams>() { return "DoubleGaussian"; }
+template<> inline std::string GetPDFTypeName<PDFParams::CrystalBallParams>() { return "CrystalBall"; }
+template<> inline std::string GetPDFTypeName<PDFParams::DBCrystalBallParams>() { return "DBCrystalBall"; }
+template<> inline std::string GetPDFTypeName<PDFParams::DoubleDBCrystalBallParams>() { return "DoubleDBCrystalBall"; }
+template<> inline std::string GetPDFTypeName<PDFParams::VoigtianParams>() { return "Voigtian"; }
+template<> inline std::string GetPDFTypeName<PDFParams::BreitWignerParams>() { return "BreitWigner"; }
 
-// Background PDF type names
-template<> std::string GetPDFTypeName<PDFParams::ExponentialBkgParams>() { return "Exponential"; }
-template<> std::string GetPDFTypeName<PDFParams::ChebychevBkgParams>() { return "Chebychev"; }
-template<> std::string GetPDFTypeName<PDFParams::PhenomenologicalParams>() { return "Phenomenological"; }
-template<> std::string GetPDFTypeName<PDFParams::Phenomenological2Params>() { return "Phenomenological2"; }
-template<> std::string GetPDFTypeName<PDFParams::PolynomialBkgParams>() { return "Polynomial"; }
-template<> std::string GetPDFTypeName<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
-template<> std::string GetPDFTypeName<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
-template<> std::string GetPDFTypeName<PDFParams::DstBkgParams>() { return "DstBg"; }
-template<> std::string GetPDFTypeName<PDFParams::DstD0Params>() { return "DstD0Bg"; }
+template<> inline std::string GetPDFTypeName<PDFParams::ExponentialBkgParams>() { return "Exponential"; }
+template<> inline std::string GetPDFTypeName<PDFParams::ChebychevBkgParams>() { return "Chebychev"; }
+template<> inline std::string GetPDFTypeName<PDFParams::PhenomenologicalParams>() { return "Phenomenological"; }
+template<> inline std::string GetPDFTypeName<PDFParams::Phenomenological2Params>() { return "Phenomenological2"; }
+template<> inline std::string GetPDFTypeName<PDFParams::PolynomialBkgParams>() { return "Polynomial"; }
+template<> inline std::string GetPDFTypeName<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
+template<> inline std::string GetPDFTypeName<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
+template<> inline std::string GetPDFTypeName<PDFParams::DstBkgParams>() { return "DstBg"; }
+template<> inline std::string GetPDFTypeName<PDFParams::DstD0Params>() { return "DstD0Bg"; }
 
-
-/**
- * @brief Modern D* meson analysis using the new modular framework
- * 
- * This macro demonstrates how to use the improved MassFitterV2 with 
- * configurable kinematic bins and centrality support (dummy for now).
- */
-
-// ===== PARAMETER DEBUGGING FUNCTIONS =====
-
-// Function to print PDF parameters for debugging
-void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& params, const std::string& title = "") {
-    // Thin wrapper to centralized utility for consistency
+namespace {
+inline void PrintBinParameters(const KinematicBin& bin,
+                               const DStarBinParameters& params,
+                               const std::string& title = "") {
     ParameterDebug::PrintBinParameters(bin, params, title);
 }
-
-// Function to print all parameters in the config
-void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& title = "") {
-    if (!title.empty()) {
-        std::cout << "\n" << std::string(80, '=') << std::endl;
-        std::cout << "📋 " << title << std::endl;
-        std::cout << std::string(80, '=') << std::endl;
-    }
-    
-    auto allBins = config.GetAllKinematicBins();
-    std::cout << "Total bins: " << allBins.size() << std::endl;
-    
-    for (const auto& bin : allBins) {
-        try {
-            auto params = config.GetParametersForBin(bin);
-            ParameterDebug::PrintBinParameters(bin, params);
-        } catch (const std::exception& e) {
-            std::cout << "❌ Error getting parameters for bin " << bin.GetBinName() 
-                      << ": " << e.what() << std::endl;
-        }
-    }
 }
 
-// Function to compare parameters before and after JSON loading
-void CompareParameters(const DStarFitConfig& configBefore, const DStarFitConfig& configAfter, 
-                      const std::string& binName = "") {
-    std::cout << "\n" << std::string(80, '=') << std::endl;
-    std::cout << "🔍 PARAMETER COMPARISON" << std::endl;
-    std::cout << std::string(80, '=') << std::endl;
-    
-    auto binsBefore = configBefore.GetAllKinematicBins();
-    auto binsAfter = configAfter.GetAllKinematicBins();
-    
-    if (binsBefore.size() != binsAfter.size()) {
-        std::cout << "⚠️  Warning: Different number of bins! Before: " << binsBefore.size() 
-                  << ", After: " << binsAfter.size() << std::endl;
-    }
-    
-    for (size_t i = 0; i < std::min(binsBefore.size(), binsAfter.size()); ++i) {
-        const auto& bin = binsBefore[i];
-        
-        if (!binName.empty() && bin.GetBinName().find(binName) == std::string::npos) {
-            continue;
-        }
-        
-        std::cout << "\n📍 Bin: " << bin.GetBinName() << std::endl;
-        
-        try {
-            auto paramsBefore = configBefore.GetParametersForBin(bin);
-            auto paramsAfter = configAfter.GetParametersForBin(bin);
-            
-            bool changed = false;
-            
-            // Compare PDF types
-            if (paramsBefore.signalPdfType != paramsAfter.signalPdfType) {
-                std::cout << "  🎯 Signal PDF: " << static_cast<int>(paramsBefore.signalPdfType) 
-                          << " → " << static_cast<int>(paramsAfter.signalPdfType) << std::endl;
-                changed = true;
-            }
-            
-            if (paramsBefore.backgroundPdfType != paramsAfter.backgroundPdfType) {
-                std::cout << "  🔲 Background PDF: " << static_cast<int>(paramsBefore.backgroundPdfType) 
-                          << " → " << static_cast<int>(paramsAfter.backgroundPdfType) << std::endl;
-                changed = true;
-            }
-            
-            // Compare yield ratios
-            if (paramsBefore.nsig_ratio != paramsAfter.nsig_ratio) {
-                std::cout << "  📊 nsig_ratio: " << paramsBefore.nsig_ratio 
-                          << " → " << paramsAfter.nsig_ratio << std::endl;
-                changed = true;
-            }
-            
-            if (paramsBefore.nbkg_ratio != paramsAfter.nbkg_ratio) {
-                std::cout << "  📊 nbkg_ratio: " << paramsBefore.nbkg_ratio 
-                          << " → " << paramsAfter.nbkg_ratio << std::endl;
-                changed = true;
-            }
-            
-            // Compare signal parameters (example for DoubleGaussian)
-            if (paramsAfter.signalPdfType == PDFType::DoubleGaussian) {
-                const auto& before = paramsBefore.doubleGaussianParams;
-                const auto& after = paramsAfter.doubleGaussianParams;
-                if (before.mean != after.mean) {
-                    std::cout << "  🎯 mean: " << before.mean << " → " << after.mean << std::endl;
-                    changed = true;
-                }
-                if (before.sigma1 != after.sigma1) {
-                    std::cout << "  🎯 sigma1: " << before.sigma1 << " → " << after.sigma1 << std::endl;
-                    changed = true;
-                }
-                if (before.sigma2 != after.sigma2) {
-                    std::cout << "  🎯 sigma2: " << before.sigma2 << " → " << after.sigma2 << std::endl;
-                    changed = true;
-                }
-                if (before.fraction != after.fraction) {
-                    std::cout << "  🎯 fraction: " << before.fraction << " → " << after.fraction << std::endl;
-                    changed = true;
-                }
-            }
-            
-            // Compare background parameters (example for ThresholdFunction)
-            if (paramsAfter.backgroundPdfType == PDFType::ThresholdFunction) {
-                const auto& before = paramsBefore.thresholdFuncParams;
-                const auto& after = paramsAfter.thresholdFuncParams;
-                
-                if (before.p0_init != after.p0_init) {
-                    std::cout << "  🔲 p0: " << before.p0_init << " → " << after.p0_init << std::endl;
-                    changed = true;
-                }
-                if (before.p1_init != after.p1_init) {
-                    std::cout << "  🔲 p1: " << before.p1_init << " → " << after.p1_init << std::endl;
-                    changed = true;
-                }
-            }
-            
-            if (!changed) {
-                std::cout << "  ✅ No changes detected" << std::endl;
-            }
-            
-        } catch (const std::exception& e) {
-            std::cout << "  ❌ Error comparing parameters: " << e.what() << std::endl;
-        }
-    }
-    
-    std::cout << std::string(80, '=') << std::endl;
-}
-
-// Simplified function to load parameters from JSON file using improved utilities
-void LoadParametersFromJSON(DStarFitConfig& config, const std::string& jsonFile) {
-    JSONParameterLoader jsonLoader;
-    // pp analysis: ignore centrality when matching JSON bins
-    jsonLoader.setIgnoreCentralityInMatching(true);
-    jsonLoader.loadFromFile(jsonFile);
-    
-    std::cout << "[JSON Loader] Loading parameters from: " << jsonFile << std::endl;
-    
-    auto configBins = config.GetAllKinematicBins();
-    
-    for (const auto& bin : configBins) {
-        // Use improved bin identifier for automatic matching
-        BinIdentifier binId;
-        binId.ptMin = bin.pTMin;
-        binId.ptMax = bin.pTMax;
-        binId.cosMin = bin.cosMin;
-        binId.cosMax = bin.cosMax;
-        binId.centralityMin = bin.centralityMin;
-        binId.centralityMax = bin.centralityMax;
-        
-        std::cout << "[JSON Loader] Loading parameters for bin: " << bin.GetBinName() << std::endl;
-        
-        try {
-            // Use utility function for automatic parameter and fixed flags loading (C++14-compatible)
-            auto loaded = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, binId);
-            DStarBinParameters binParams = loaded.first;
-            ParameterFixedInfo fixedInfo = loaded.second;
-
-            // Apply parameters and fixed flags to config
-            config.SetParametersForBin(bin, binParams);
-            config.SetFixedFlagsForBin(bin, fixedInfo.fixedFlags);
-
-            std::cout << "[JSON Loader] ✅ Successfully loaded parameters and fixed flags for bin: " << bin.GetBinName() << std::endl;
-        } catch (const std::exception& e) {
-            std::cout << "[JSON Loader] ❌ Failed to load parameters for bin " << bin.GetBinName() 
-                      << ": " << e.what() << ". Using defaults." << std::endl;
-        }
-    }
-}
 void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit = true, bool useCUDA = true,
                      float pTMin = 10, float pTMax = 100, float cosMin = -2, float cosMax = 2,
                      int centralityMin = 0, int centralityMax = 100, 
-                     const std::string& parameterFile = "", bool isMC = false) {
+                     const std::string& parameterFile = "", bool isMC = false,
+                     bool usePrecomputedDcaYield = false,
+                     const std::string& dcaYieldHistFileOverride = std::string(),
+                     const std::string& dcaYieldHistName = "dataYieldHist") {
     
     std::cout << "=== D* Meson Analysis V2 ===" << std::endl;
     std::cout << "Using new modular framework with MassFitterV2" << std::endl;
     
     // Create main configuration
-    DStarFitConfig config;
+    DStarFitOpt config;
     // Enable auto-tuning: switching yield mode adjusts fit method and model
     config.SetYieldModeAutoTuning(false);
     // Use fraction-based yields (nsig=fsig*Ntot, nbkg=(1-fsig)*Ntot) to stabilize total yield
     config.SetUseIndependentYields(true);
     
     // Configure file paths for pp (no centrality)
-    //config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_noPreselectionCut_ppRef_Aug01_v1.root");
+    // config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_noPreselectionCut_ppRef_Aug01_v1.root");
     config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_pp_12Sep25_v1.root");
-    config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_np_pp_08Sep25_v1.root");
+    // config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_pp_Prompt_16Sep25_v1.root");
+    // config.SetDataFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_ppPU_Prompt_19Sep25_v1.root");
+    
+    // config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_np_pp_08Sep25_v1.root");
+    // config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_ppPU_Prompt_19Sep25_v1.root");
+    // config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_pp_16Sep25_v1.root");
+    config.SetMCFilePath("/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_ppPU_np_16Sep25_v1.root");
     config.SetDatasetName("datasetHX");
     // Use a pp-specific output subdirectory
     config.SetOutputSubDir(SelectionCuts::SUB_DIR);
@@ -280,27 +114,7 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
             
             if (extension == "json") {
                 std::cout << "Using JSON parameter loader..." << std::endl;
-                LoadParametersFromJSON(config, parameterFile);
-                // Ensure the exact key for currentBin is populated (pp uses arbitrary cent ranges)
-                try {
-                    JSONParameterLoader directLoader;
-                    directLoader.setIgnoreCentralityInMatching(true);
-                    directLoader.loadFromFile(parameterFile);
-                    BinIdentifier bid;
-                    bid.ptMin = currentBin.pTMin;
-                    bid.ptMax = currentBin.pTMax;
-                    bid.cosMin = currentBin.cosMin;
-                    bid.cosMax = currentBin.cosMax;
-                    bid.centralityMin = currentBin.centralityMin;
-                    bid.centralityMax = currentBin.centralityMax;
-                    auto loaded = LoadBinParametersFromJSONWithFixedInfo(directLoader, bid);
-                    config.SetParametersForBin(currentBin, loaded.first);
-                    config.SetFixedFlagsForBin(currentBin, loaded.second.fixedFlags);
-                    std::cout << "[JSON Loader] Populated parameters for EXACT current bin key: "
-                              << currentBin.GetBinName() << std::endl;
-                } catch (const std::exception& e2) {
-                    std::cout << "[JSON Loader] Could not set exact current bin key: " << e2.what() << std::endl;
-                }
+                LoadParametersFromJSONToConfig(config, parameterFile, true, &currentBin);
             } else {
                 std::cout << "Using legacy parameter loader..." << std::endl;
                 ParameterLoaderUtils::LoadParametersToConfig(config, parameterFile);
@@ -316,7 +130,7 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     }
         
     // Store copy of config before JSON loading for comparison  
-    DStarFitConfig configBeforeJSON = config;
+    DStarFitOpt configBeforeJSON = config;
     
     // ===== SINGLE BIN ANALYSIS =====
     std::cout << "\n🎯 Single Bin Analysis Mode" << std::endl;
@@ -439,6 +253,12 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
         // Get bin-specific parameters
         auto binParams = config.GetParametersForBin(bin);
         auto fitOpt = config.CreateFitOpt(bin);
+
+        if (fitOpt.cutMCExpr.empty()) {
+            fitOpt.cutMCExpr = fitOpt.cutExpr.empty()
+                                   ? std::string("matchGEN==1")
+                                   : fitOpt.cutExpr + " && matchGEN==1";
+        }
         
         // In pp reference analysis, Centrality is not a dataset variable.
         // Ensure the cut expression does NOT include a centrality cut even if the bin name carries cent ranges.
@@ -761,19 +581,27 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
 
                     // Prepare DCA-specific fit options (use D0 mass for sideband-driven templates)
                     FitOpt dcaOpt = fitOpt;
-                    dcaOpt.massVar = "massDaugther1";   // D0 mass variable in the dataset
-                    dcaOpt.massMin = 1.75;
-                    dcaOpt.massMax = 2.00;
                     // Ensure DCA variable name matches dataset/workspace branch
                     dcaOpt.dcaVar = "dca3D";
 
                     // Instantiate DCAFitter with kinematic/cut context from FitOpt
                     DCAFitter dcaFitter(dcaOpt, "DCAFitter", dcaOpt.massVar,
                                          dcaOpt.dcaMin, dcaOpt.dcaMax, 100);
+
+                    if (!parameterFile.empty()) {
+                        const auto dotPos = parameterFile.find_last_of('.');
+                        if (dotPos != std::string::npos) {
+                            std::string ext = parameterFile.substr(dotPos + 1);
+                            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                            if (ext == "json") {
+                                dcaFitter.setMassParamJSON(parameterFile);
+                            }
+                        }
+                    }
                     // Enable test hist PDF component and use exponential shaping: y_new = y_old * exp(-lambda * x)
-                    dcaFitter.EnableTestComponent(true);
-                    dcaFitter.UseTestBaseNonPrompt();              // base = non-prompt
-                    dcaFitter.UseTestExponential(0.00);              // lambda = 2.0
+                    // dcaFitter.EnableTestComponent(true);
+                    // dcaFitter.UseTestBaseNonPrompt();              // base = non-prompt
+                    // dcaFitter.UseTestExponential(50.00);              // lambda = 2.0
                     std::cout << "[DStarAnalysisV2forpp][DCA] EnableTestComponent=true, base=nonprompt, exp lambda=2.0" << std::endl;
 
                     // Prefer MC mass-fit result workspace (reduced by pt/cos/cent)
@@ -798,7 +626,30 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
 
                     // Apply same kinematic and selection cuts
                     dcaFitter.setMCCuts(dcaOpt.cutMCExpr);
-                    dcaFitter.setDataCuts(dcaOpt.cutExpr);
+                    const std::string dataCutsForFit =
+                        (isMC && !dcaOpt.cutMCExpr.empty())
+                            ? dcaOpt.cutMCExpr
+                            : dcaOpt.cutExpr;
+                    dcaFitter.setDataCuts(dataCutsForFit);
+
+                    // Configure mass-fit yield histogram handling
+                    std::string dcaYieldDir = fitOpt.outputDir + fitOpt.subDir + "/Data/dcahist";
+                    createDir(dcaYieldDir);
+                    std::string defaultYieldFile = dcaYieldDir + "/DStar_DCA_Yield_" + bin.GetBinName() + ".root";
+                    std::string yieldFile = dcaYieldHistFileOverride.empty() ? defaultYieldFile : dcaYieldHistFileOverride;
+                    std::string yieldHistName = dcaYieldHistName.empty() ? "dataYieldHist" : dcaYieldHistName;
+
+                    if (usePrecomputedDcaYield) {
+                        dcaFitter.EnableMassFits(false);
+                        dcaFitter.setDataYieldHistInput(yieldFile, yieldHistName);
+                        std::cout << "[ DCA ] Using precomputed mass-fit yield histogram: "
+                                  << yieldFile << " (hist=" << yieldHistName << ")" << std::endl;
+                    } else {
+                        dcaFitter.EnableMassFits(true);
+                        dcaFitter.setDataYieldHistOutput(yieldFile, yieldHistName);
+                        std::cout << "[ DCA ] Mass-fit yields will be saved to: "
+                                  << yieldFile << " (hist=" << yieldHistName << ")" << std::endl;
+                    }
 
                     // Output setup (save DCA ROOTs under dedicated folder)
                     std::string dcaRootDir = fitOpt.outputDir + fitOpt.subDir + "/Data/dcaroot";
@@ -814,8 +665,7 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
                         std::string plotPrefix = dcaPlotDir + "/DCA_" + bin.GetBinName();
                         dcaFitter.plotRawDataDistribution(plotPrefix + "_templates");
 
-                        if (dcaFitter.loadDataFromResult() && dcaFitter.buildModelwSideband()) {
-                        // if (dcaFitter.loadDataFromResult() && dcaFitter.buildModel()) {
+                        if (dcaFitter.loadDataFromResult() && dcaFitter.buildModel()) {
                             RooFitResult* dcaFitResult = dcaFitter.performFit(true);
                             if (dcaFitResult) {
                                 dcaFitter.plotResults(dcaFitResult, plotPrefix + "_fit");
@@ -854,3 +704,29 @@ void DStarAnalysisV2forpp(bool doReFit = false, bool doDCA = true, bool plotFit 
     std::cout << "Results saved in: results/" << config.GetOutputSubDir() << std::endl;
     std::cout << std::string(60, '=') << std::endl;
 }
+
+#ifdef __CLING__
+void DStarAnalysisV2forpp_macro(bool doReFit = false, bool doDCA = true, bool plotFit = true, bool useCUDA = true,
+                                float pTMin = 10, float pTMax = 100, float cosMin = -2, float cosMax = 2,
+                                int centralityMin = 0, int centralityMax = 100,
+                                const char* parameterFile = "",
+                                bool isMC = false,
+                                bool usePrecomputedDcaYield = false,
+                                const char* dcaYieldHistFileOverride = "",
+                                const char* dcaYieldHistName = "dataYieldHist") {
+    const std::string paramFileStr = parameterFile ? std::string(parameterFile) : std::string();
+    const std::string dcaFileStr = dcaYieldHistFileOverride ? std::string(dcaYieldHistFileOverride) : std::string();
+    const std::string dcaHistNameStr = dcaYieldHistName ? std::string(dcaYieldHistName) : std::string("dataYieldHist");
+
+    DStarAnalysisV2forpp(doReFit, doDCA, plotFit, useCUDA,
+                         pTMin, pTMax, cosMin, cosMax,
+                         centralityMin, centralityMax,
+                         paramFileStr, isMC,
+                         usePrecomputedDcaYield,
+                         dcaFileStr, dcaHistNameStr);
+}
+
+void DStarAnalysisV2forpp_macro() {
+    DStarAnalysisV2forpp();
+}
+#endif
