@@ -85,66 +85,18 @@ private:
 class FitStrategyFactory {
 public:
     static std::unique_ptr<FitStrategy> CreateStrategy(FitMethod method);
-
-    struct ExecutionResult {
-        std::unique_ptr<FitStrategy> strategy;
-        std::unique_ptr<RooFitResult> result;
-    };
-
-    static ExecutionResult Execute(FitMethod method,
-                                   RooAbsPdf* pdf,
-                                   RooDataSet* data,
-                                   const FitOpt& config,
-                                   RooRealVar* massVar = nullptr);
-
-    static ExecutionResult Execute(FitMethod method,
-                                   RooAbsPdf* pdf,
-                                   RooDataSet* data,
-                                   const FitCommonSettings& common,
-                                   RooRealVar* massVar = nullptr) {
-        FitOpt cfg(common);
-        return Execute(method, pdf, data, cfg, massVar);
-    }
-
-    static ExecutionResult ExecuteGaussianConstraintFromFile(
-        RooAbsPdf* pdf,
-        RooDataSet* data,
-        RooRealVar* massVar,
-        const FitOpt& config,
-        const std::string& mcResultFile,
-        const std::vector<std::string>& paramsToConstrain,
-        const std::string& resultObjName = "fitResult",
-        double sigmaScale = 1.0);
-
-    static ExecutionResult ExecuteSidebandPrefitBackgroundConstraint(
-        RooAbsPdf* totalPdf,
-        RooAbsPdf* backgroundPdf,
-        RooDataSet* data,
-        RooRealVar* massVar,
-        const FitOpt& config,
-        double sbLoMin, double sbLoMax,
-        double sbHiMin, double sbHiMax,
-        double sigmaScale);
-
-    static ExecutionResult ExecuteGaussianConstraintWithSB(
-        RooAbsPdf* totalPdf,
-        RooAbsPdf* signalPdf,
-        RooAbsPdf* backgroundPdf,
-        RooDataSet* data,
-        RooRealVar* massVar,
-        const FitOpt& config,
-        RooDataSet* mcDataset,
-        const std::vector<std::string>& signalParamsToConstrain,
-        double sbLoMin, double sbLoMax,
-        double sbHiMin, double sbHiMax,
-        double sigmaScaleSignal,
-        double sigmaScaleBkg);
+    // Create strategy, then call Execute on it from caller.
     static std::unique_ptr<FitStrategy> CreateConstraintStrategy(const std::string& mcFilePath, 
                                                                 const std::vector<std::string>& constraintParams);
     static std::unique_ptr<FitStrategy> CreateGaussianConstraintStrategy(
         RooDataSet* mcDataset,
         RooAbsPdf* mcSignalPdf,
         const std::vector<std::string>& paramNames,
+        double sigmaScale = 1.0);
+    static std::unique_ptr<FitStrategy> CreateGaussianConstraintFromFileStrategy(
+        const std::string& mcResultFile,
+        const std::vector<std::string>& paramsToConstrain,
+        const std::string& resultObjName = "fitResult",
         double sigmaScale = 1.0);
     // Combined: Gaussian constraints from MC (signal) + sideband prefit constraints (background)
     static std::unique_ptr<FitStrategy> CreateGaussianConstraintWithSBStrategy(
@@ -156,6 +108,11 @@ public:
         double sbHiMin, double sbHiMax,
         double sigmaScaleSignal = 1.0,
         double sigmaScaleBkg = 2.0);
+    static std::unique_ptr<FitStrategy> CreateSidebandPrefitBackgroundConstraintStrategy(
+        RooAbsPdf* backgroundPdf,
+        double sbLoMin, double sbLoMax,
+        double sbHiMin, double sbHiMax,
+        double sigmaScale);
 };
 
 // Implementation
@@ -1038,9 +995,9 @@ public:
         for (int lvl = config.strategyLevel; lvl >= 0; --lvl) {
             FitOpt tryCfg = config; tryCfg.strategyLevel = lvl;
             result = runFitWithOpts(tryCfg);
+            result->Print("v");
             if (!result || result->status() == 0) break;
         }
-        result->Print("v");
         return result;
     }
 
@@ -1106,6 +1063,7 @@ inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateStrategy(FitMethod
         case FitMethod::Robust:
             return std::make_unique<RobustFitStrategy>();
         case FitMethod::NLL:
+            return std::make_unique<BasicFitStrategy>();
         case FitMethod::Extended:
         case FitMethod::GaussianConstraint:
         case FitMethod::GaussianConstraintWithSB:
@@ -1115,81 +1073,23 @@ inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateStrategy(FitMethod
     return std::make_unique<BasicFitStrategy>();
 }
 
-inline FitStrategyFactory::ExecutionResult FitStrategyFactory::Execute(
-    FitMethod method,
-    RooAbsPdf* pdf,
-    RooDataSet* data,
-    const FitOpt& config,
-    RooRealVar* massVar) {
-    ExecutionResult exec;
-    exec.strategy = CreateStrategy(method);
-    if (exec.strategy) {
-        exec.result = exec.strategy->Execute(pdf, data, config, massVar);
-    }
-    return exec;
-}
+// Execute(FitMethod, ...) removed in favor of: CreateStrategy(method) + strategy->Execute(...)
 
-inline FitStrategyFactory::ExecutionResult FitStrategyFactory::ExecuteGaussianConstraintFromFile(
-    RooAbsPdf* pdf,
-    RooDataSet* data,
-    RooRealVar* massVar,
-    const FitOpt& config,
+// New creators for file-based GC and SB-prefit background constraints
+inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateGaussianConstraintFromFileStrategy(
     const std::string& mcResultFile,
     const std::vector<std::string>& paramsToConstrain,
     const std::string& resultObjName,
     double sigmaScale) {
-    ExecutionResult exec;
-    exec.strategy = std::make_unique<GaussianConstraintFromFileStrategy>(mcResultFile, paramsToConstrain, resultObjName, sigmaScale);
-    if (exec.strategy) {
-        exec.result = exec.strategy->Execute(pdf, data, config, massVar);
-    }
-    return exec;
+    return std::make_unique<GaussianConstraintFromFileStrategy>(mcResultFile, paramsToConstrain, resultObjName, sigmaScale);
 }
 
-inline FitStrategyFactory::ExecutionResult FitStrategyFactory::ExecuteSidebandPrefitBackgroundConstraint(
-    RooAbsPdf* totalPdf,
+inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateSidebandPrefitBackgroundConstraintStrategy(
     RooAbsPdf* backgroundPdf,
-    RooDataSet* data,
-    RooRealVar* massVar,
-    const FitOpt& config,
     double sbLoMin, double sbLoMax,
     double sbHiMin, double sbHiMax,
     double sigmaScale) {
-    ExecutionResult exec;
-    exec.strategy = std::make_unique<SidebandPrefitBackgroundConstraintStrategy>(backgroundPdf, sbLoMin, sbLoMax, sbHiMin, sbHiMax, sigmaScale);
-    if (exec.strategy) {
-        exec.result = exec.strategy->Execute(totalPdf, data, config, massVar);
-    }
-    return exec;
-}
-
-inline FitStrategyFactory::ExecutionResult FitStrategyFactory::ExecuteGaussianConstraintWithSB(
-    RooAbsPdf* totalPdf,
-    RooAbsPdf* signalPdf,
-    RooAbsPdf* backgroundPdf,
-    RooDataSet* data,
-    RooRealVar* massVar,
-    const FitOpt& config,
-    RooDataSet* mcDataset,
-    const std::vector<std::string>& signalParamsToConstrain,
-    double sbLoMin, double sbLoMax,
-    double sbHiMin, double sbHiMax,
-    double sigmaScaleSignal,
-    double sigmaScaleBkg) {
-    ExecutionResult exec;
-    exec.strategy = CreateGaussianConstraintWithSBStrategy(
-        mcDataset,
-        signalPdf,
-        backgroundPdf,
-        signalParamsToConstrain,
-        sbLoMin, sbLoMax,
-        sbHiMin, sbHiMax,
-        sigmaScaleSignal,
-        sigmaScaleBkg);
-    if (exec.strategy) {
-        exec.result = exec.strategy->Execute(totalPdf, data, config, massVar);
-    }
-    return exec;
+    return std::make_unique<SidebandPrefitBackgroundConstraintStrategy>(backgroundPdf, sbLoMin, sbLoMax, sbHiMin, sbHiMax, sigmaScale);
 }
 
 inline std::unique_ptr<FitStrategy> FitStrategyFactory::CreateConstraintStrategy(const std::string& mcFilePath, 

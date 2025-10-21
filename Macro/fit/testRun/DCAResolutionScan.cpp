@@ -4,6 +4,7 @@
 #include "TLatex.h"
 #include "TLegend.h"
 #include "TCanvas.h"
+#include "TPad.h"
 #include "TGraph.h"
 #include "TMultiGraph.h"
 #include "TLine.h"
@@ -19,6 +20,7 @@
 #include "RooAddPdf.h"
 #include "RooFitResult.h"
 #include "RooChi2Var.h"
+#include "RooBinning.h"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -63,12 +65,6 @@ std::unique_ptr<TH1D> LoadDataYieldHistogram(const std::string& filePath,
     return clone;
 }
 
-void StyleComponentHistogram(TH1D* hist, int color, int fillStyle) {
-    hist->SetLineColor(color);
-    hist->SetFillColor(color);
-    hist->SetFillStyle(fillStyle);
-}
-
 }
 
 void DCAResolutionScan(double ptMin, double ptMax,
@@ -103,8 +99,8 @@ void DCAResolutionScan(double ptMin, double ptMax,
     // Define single bin to analyse
     config.AddPtBin(ptMin, ptMax);
     config.AddCosBin(cosMin, cosMax);
-    config.AddCentralityBin(centralityMin, centralityMax);
-    KinematicBin bin(ptMin, ptMax, cosMin, cosMax, centralityMin, centralityMax);
+    // config.AddCentralityBin(centralityMin, centralityMax);
+    KinematicBin bin(ptMin, ptMax, cosMin, cosMax);
 
     FitOpt fitOpt = config.CreateFitOpt(bin);
     fitOpt.GenerateLegends();
@@ -197,13 +193,144 @@ void DCAResolutionScan(double ptMin, double ptMax,
         }
     }
 
+    auto cloneHist = [](const TH1D* src, const std::string& name) -> std::unique_ptr<TH1D> {
+        if (!src) {
+            return nullptr;
+        }
+        auto cloned = std::unique_ptr<TH1D>(static_cast<TH1D*>(src->Clone(name.c_str())));
+        if (cloned) {
+            cloned->SetDirectory(nullptr);
+        }
+        return cloned;
+    };
+
+    auto formatScaleTag = [](double value) {
+        std::string tag = Form("%.3f", value);
+        std::replace(tag.begin(), tag.end(), '.', 'p');
+        if (!tag.empty() && tag.front() == '-') {
+            tag.front() = 'm';
+        }
+        return tag;
+    };
+
+    auto saveFitPlot = [&](const std::string& baseName,
+                           double scaleValue,
+                           double chi2Value,
+                           int ndfValue,
+                           double promptFracPct,
+                           double nonPromptFracPct,
+                           RooPlot* frame,
+                           TH1D* ratioHist) {
+        if (!frame || !ratioHist) {
+            return;
+        }
+
+        static int plotCounter = 0;
+        ++plotCounter;
+        std::string padMainName = Form("padMain_%d", plotCounter);
+        std::string padRatioName = Form("padRatio_%d", plotCounter);
+
+        auto canvas = std::make_unique<TCanvas>((baseName + "_c").c_str(), "", 800, 900);
+
+        TPad* padMain = new TPad(padMainName.c_str(), padMainName.c_str(), 0, 0.30, 1, 1);
+        padMain->SetBottomMargin(0.02);
+        padMain->SetLeftMargin(0.15);
+        padMain->SetRightMargin(0.05);
+        padMain->SetTopMargin(0.08);
+        padMain->SetLogy();
+        padMain->Draw();
+
+        TPad* padRatio = new TPad(padRatioName.c_str(), padRatioName.c_str(), 0, 0.0, 1, 0.30);
+        padRatio->SetTopMargin(0.05);
+        padRatio->SetBottomMargin(0.35);
+        padRatio->SetLeftMargin(0.15);
+        padRatio->SetRightMargin(0.05);
+        padRatio->Draw();
+
+        padMain->cd();
+        frame->Draw();
+
+        TLegend leg(0.65, 0.65, 0.92, 0.88);
+        leg.SetBorderSize(0);
+        leg.SetFillStyle(0);
+        leg.SetTextSize(0.035);
+
+        if (auto dataObj = frame->findObject("data_yield_hist")) {
+            leg.AddEntry(dataObj, "Data yield", "lep");
+        }
+        if (auto totalObj = frame->findObject("model_total")) {
+            leg.AddEntry(totalObj, "Total fit", "l");
+        }
+        if (auto promptObj = frame->findObject("mc_prompt_comp")) {
+            leg.AddEntry(promptObj, Form("Prompt (%.0f%%)", promptFracPct), "f");
+        }
+        if (auto nonPromptObj = frame->findObject("mc_nonprompt_comp")) {
+            leg.AddEntry(nonPromptObj, Form("Non-prompt (%.0f%%)", nonPromptFracPct), "f");
+        }
+        leg.Draw();
+
+        TLatex latex;
+        latex.SetNDC();
+        latex.SetTextFont(42);
+        latex.SetTextSize(0.045);
+        latex.DrawLatex(0.15, 0.94, "#bf{CMS} #it{Internal}");
+        latex.SetTextSize(0.04);
+        latex.DrawLatex(0.65, 0.56, Form("%0.1f < p_{T} < %0.1f GeV/c", ptMin, ptMax));
+        latex.DrawLatex(0.65, 0.52, Form("%0.2f < cos#theta_{HX} < %0.2f", cosMin, cosMax));
+        latex.DrawLatex(0.65, 0.48, Form("Scale = %.3f", scaleValue));
+        if (ndfValue > 0 && std::isfinite(chi2Value)) {
+            latex.DrawLatex(0.65, 0.44, Form("#chi^{2}/NDF = %.2f / %d", chi2Value, ndfValue));
+        }
+
+        padRatio->cd();
+        ratioHist->SetTitle("");
+        ratioHist->SetMarkerStyle(20);
+        ratioHist->SetMarkerSize(1.0);
+        ratioHist->SetMarkerColor(kBlack);
+        ratioHist->SetLineColor(kBlack);
+        ratioHist->GetYaxis()->SetTitle("Data / Fit");
+        ratioHist->GetYaxis()->SetTitleSize(0.12);
+        ratioHist->GetYaxis()->SetLabelSize(0.11);
+        ratioHist->GetYaxis()->SetTitleOffset(0.5);
+        ratioHist->GetYaxis()->SetNdivisions(505);
+        ratioHist->GetXaxis()->SetTitle("D^{0} DCA (cm)");
+        ratioHist->GetXaxis()->SetTitleSize(0.12);
+        ratioHist->GetXaxis()->SetLabelSize(0.11);
+        ratioHist->GetXaxis()->SetTitleOffset(1.0);
+        ratioHist->SetMinimum(0.0);
+        ratioHist->SetMaximum(2.0);
+        ratioHist->Draw("E1");
+        if (!dcaBins.empty()) {
+            TLine ratioLine(dcaBins.front(), 1.0, dcaBins.back(), 1.0);
+            ratioLine.SetLineColor(kRed);
+            ratioLine.SetLineStyle(2);
+            ratioLine.Draw();
+        }
+
+        canvas->cd();
+        canvas->SaveAs((baseName + ".png").c_str());
+        canvas->SaveAs((baseName + ".pdf").c_str());
+    };
+
+    double bestChi2Ndf = std::numeric_limits<double>::infinity();
+    double bestScale = 0.0;
+    double bestChi2 = std::numeric_limits<double>::quiet_NaN();
+    int bestNdf = 0;
+    double bestPromptFraction = std::numeric_limits<double>::quiet_NaN();
+    double bestNonPromptFraction = std::numeric_limits<double>::quiet_NaN();
+    bool haveBestPlot = false;
+    std::unique_ptr<TH1D> bestPromptFit;
+    std::unique_ptr<TH1D> bestNonPromptFit;
+    std::unique_ptr<TH1D> bestTotalFit;
+    std::unique_ptr<TH1D> bestRatioHist;
+    std::unique_ptr<TH1D> bestDataHist;
+    std::unique_ptr<RooPlot> bestMainFrame;
+
     for (double scale : scanScales) {
         double recordedChi2 = std::numeric_limits<double>::quiet_NaN();
         int recordedNdf = 0;
         double recordedPromptFraction = std::numeric_limits<double>::quiet_NaN();
         double recordedPromptError = 0.0;
-        bool success = false;
-
         std::unique_ptr<TH1D> hPrompt;
         std::unique_ptr<TH1D> hNonPrompt;
         if (!dcaFitter.GenerateTemplatesWithScale(scale, hPrompt, hNonPrompt)) {
@@ -233,27 +360,32 @@ void DCAResolutionScan(double ptMin, double ptMax,
             if (!fitRes) {
                 std::cerr << "[DCAResolutionScan] Fit failed at scale " << scale << std::endl;
             } else {
-                success = true;
                 RooChi2Var chi2Var("chi2Var", "chi2Var", model, dataDH);
                 recordedChi2 = chi2Var.getVal();
                 recordedNdf = static_cast<int>(dataHist->GetNbinsX()) - fitRes->floatParsFinal().getSize();
 
                 auto hPromptFit = std::unique_ptr<TH1D>(static_cast<TH1D*>(hPrompt->Clone("hPromptFit")));
                 auto hNonPromptFit = std::unique_ptr<TH1D>(static_cast<TH1D*>(hNonPrompt->Clone("hNonPromptFit")));
+                const char* widthOpt = "width";
                 if (hPromptFit->Integral() > 0) {
                     hPromptFit->Scale(nPrompt.getVal() / hPromptFit->Integral());
+                    hPromptFit->Scale(1.0, widthOpt);
                 }
                 if (hNonPromptFit->Integral() > 0) {
                     hNonPromptFit->Scale(nNonPrompt.getVal() / hNonPromptFit->Integral());
+                    hNonPromptFit->Scale(1.0, widthOpt);
                 }
                 auto hTotalFit = std::unique_ptr<TH1D>(static_cast<TH1D*>(hPromptFit->Clone("hTotalFit")));
                 hTotalFit->Add(hNonPromptFit.get());
 
-                auto hRatio = std::unique_ptr<TH1D>(static_cast<TH1D*>(dataHist->Clone("hRatio")));
+                auto scaledDataHist = std::unique_ptr<TH1D>(static_cast<TH1D*>(dataHist->Clone("hDataScaled")));
+                scaledDataHist->Scale(1.0, widthOpt);
+
+                auto hRatio = std::unique_ptr<TH1D>(static_cast<TH1D*>(scaledDataHist->Clone("hRatio")));
                 for (int ib = 1; ib <= hRatio->GetNbinsX(); ++ib) {
                     double fitVal = hTotalFit->GetBinContent(ib);
-                    double dataVal = dataHist->GetBinContent(ib);
-                    double dataErr = dataHist->GetBinError(ib);
+                    double dataVal = scaledDataHist->GetBinContent(ib);
+                    double dataErr = scaledDataHist->GetBinError(ib);
                     if (fitVal > 0) {
                         hRatio->SetBinContent(ib, dataVal / fitVal);
                         hRatio->SetBinError(ib, (dataVal > 0) ? dataErr / fitVal : 0.0);
@@ -265,6 +397,8 @@ void DCAResolutionScan(double ptMin, double ptMax,
 
                 double totalYield = nPrompt.getVal() + nNonPrompt.getVal();
                 double promptFraction = (totalYield > 0) ? nPrompt.getVal() / totalYield : 0.0;
+                double recordedNonPromptFraction = (totalYield > 0)
+                    ? 100.0 * nNonPrompt.getVal() / totalYield : 0.0;
                 recordedPromptFraction = promptFraction * 100.0;
                 if (totalYield > 0) {
                     double denom = totalYield;
@@ -276,84 +410,54 @@ void DCAResolutionScan(double ptMin, double ptMax,
                                       + (dfdNonPrompt * errNonPrompt) * (dfdNonPrompt * errNonPrompt);
                     recordedPromptError = std::sqrt(std::max(0.0, variance)) * 100.0;
                 }
+                double chi2ndfCandidate = (recordedNdf > 0)
+                    ? recordedChi2 / recordedNdf : std::numeric_limits<double>::quiet_NaN();
+                if (makePerScalePlots && std::isfinite(chi2ndfCandidate)
+                    && chi2ndfCandidate < bestChi2Ndf) {
+                    bestChi2Ndf = chi2ndfCandidate;
+                    bestScale = scale;
+                    bestChi2 = recordedChi2;
+                    bestNdf = recordedNdf;
+                    bestPromptFraction = recordedPromptFraction;
+                    bestNonPromptFraction = recordedNonPromptFraction;
+                    haveBestPlot = true;
+                    bestPromptFit = cloneHist(hPromptFit.get(), "bestPromptFit");
+                    bestNonPromptFit = cloneHist(hNonPromptFit.get(), "bestNonPromptFit");
+                    bestTotalFit = cloneHist(hTotalFit.get(), "bestTotalFit");
+                    bestRatioHist = cloneHist(hRatio.get(), "bestRatioHist");
+                    bestDataHist = cloneHist(scaledDataHist.get(), "bestDataHist");
 
-                if (makePerScalePlots) {
-                    std::string canvasName = Form("%s/scale_%0.2f", outputBase.c_str(), scale);
-                    auto canvas = std::make_unique<TCanvas>((canvasName + "_c").c_str(), "", 800, 800);
-                    canvas->Divide(1, 2);
-                    TPad* pad1 = static_cast<TPad*>(canvas->cd(1));
-                    pad1->SetPad(0, 0.32, 1, 1);
-                    pad1->SetLogy();
-                    pad1->SetBottomMargin(0.02);
-                    pad1->SetLeftMargin(0.15);
-                    pad1->SetRightMargin(0.05);
+                    auto frame = std::unique_ptr<RooPlot>(dca.frame(Bins(static_cast<int>(dcaBins.size()) - 1), RooFit::Title("")));
+                    frame->SetName("dca_resolution_frame");
+                    frame->SetTitle("");
+                    
 
-                    dataHist->SetMarkerStyle(20);
-                    dataHist->SetMarkerSize(1.0);
-                    dataHist->SetTitle("");
-                    dataHist->GetYaxis()->SetTitle("Yield / bin");
-                    dataHist->GetYaxis()->SetTitleOffset(1.4);
-                    dataHist->GetXaxis()->SetLabelSize(0);
-                    dataHist->Draw("E1");
+                    RooBinning customBinning(static_cast<int>(dcaBins.size()) - 1, dcaBins.data());
 
-                    StyleComponentHistogram(hPromptFit.get(), kRed + 1, 3354);
-                    StyleComponentHistogram(hNonPromptFit.get(), kBlue + 1, 3345);
-                    hPromptFit->Draw("HIST SAME");
-                    hNonPromptFit->Draw("HIST SAME");
+                    dataDH.plotOn(frame.get(), RooFit::Binning(customBinning),
+                                  RooFit::Name("data_yield_hist"),
+                                  RooFit::DataError(RooAbsData::SumW2));
 
-                    hTotalFit->SetLineColor(kRed);
-                    hTotalFit->SetLineWidth(2);
-                    hTotalFit->SetFillStyle(0);
-                    hTotalFit->Draw("HIST SAME");
+                    model.plotOn(frame.get(), RooFit::Name("model_total"), RooFit::LineColor(kRed + 1));
+                    model.plotOn(frame.get(), RooFit::Components(nonPromptPdf), RooFit::Name("mc_nonprompt_comp"),
+                                 RooFit::FillStyle(3354), RooFit::FillColor(kBlue - 9),
+                                 RooFit::LineColor(kBlue + 1), RooFit::DrawOption("F"));
+                    model.plotOn(frame.get(), RooFit::Components(promptPdf), RooFit::Name("mc_prompt_comp"),
+                                 RooFit::FillStyle(3345), RooFit::FillColor(kRed - 9),
+                                 RooFit::LineColor(kRed + 1), RooFit::DrawOption("F"));
+                    model.plotOn(frame.get(), RooFit::Name("model_total"), RooFit::LineColor(kRed + 1));
 
-                    TLegend leg(0.55, 0.60, 0.92, 0.88);
-                    leg.SetBorderSize(0);
-                    leg.SetFillStyle(0);
-                    leg.SetTextSize(0.035);
-                    leg.AddEntry(dataHist.get(), "Data yield", "lep");
-                    leg.AddEntry(hTotalFit.get(), "Total fit", "l");
-                    leg.AddEntry(hPromptFit.get(), Form("Prompt (%.0f%%)", recordedPromptFraction), "f");
-                    leg.AddEntry(hNonPromptFit.get(), Form("Non-prompt (%.0f%%)",
-                                     (totalYield > 0) ? 100.0 * nNonPrompt.getVal() / totalYield : 0.0), "f");
-                    leg.Draw();
+                    double frameBinWidth = dcaBins.size() > 1 ? (dcaBins[1] - dcaBins[0]) : 0.0;
+                    if (!bestDataHist->IsZombie() && bestDataHist->GetNbinsX() > 0) {
+                        frameBinWidth = bestDataHist->GetBinWidth(1);
+                    }
+                    frame->GetYaxis()->SetTitle(Form("Yield / (%.3f cm)", frameBinWidth));
+                    frame->GetYaxis()->SetTitleOffset(1.4);
+                    frame->GetXaxis()->SetLabelSize(0.0);
+                    frame->SetMinimum(1);
+                    frame->SetMaximum(frame->GetMaximum() * 1.8);
 
-                    TLatex latex;
-                    latex.SetNDC();
-                    latex.SetTextFont(42);
-                    latex.SetTextSize(0.045);
-                    latex.DrawLatex(0.18, 0.92, "#bf{CMS} #it{Internal}");
-                    latex.SetTextSize(0.04);
-                    latex.DrawLatex(0.18, 0.86, Form("%0.1f < p_{T} < %0.1f GeV/c", ptMin, ptMax));
-                    latex.DrawLatex(0.18, 0.81, Form("%0.2f < cos#theta_{HX} < %0.2f", cosMin, cosMax));
-                    latex.DrawLatex(0.18, 0.76, Form("Scale = %.2f", scale));
-                    latex.DrawLatex(0.18, 0.71, Form("#chi^{2}/NDF = %.2f / %d", recordedChi2, recordedNdf));
-
-                    canvas->cd(2);
-                    TPad* pad2 = static_cast<TPad*>(gPad);
-                    pad2->SetPad(0, 0.0, 1, 0.32);
-                    pad2->SetTopMargin(0.05);
-                    pad2->SetBottomMargin(0.35);
-                    pad2->SetLeftMargin(0.15);
-                    pad2->SetRightMargin(0.05);
-                    pad2->SetGridy();
-
-                    hRatio->SetTitle("");
-                    hRatio->GetYaxis()->SetTitle("Data / Fit");
-                    hRatio->GetYaxis()->SetTitleSize(0.10);
-                    hRatio->GetYaxis()->SetLabelSize(0.09);
-                    hRatio->GetYaxis()->SetTitleOffset(0.5);
-                    hRatio->GetXaxis()->SetTitle("D^{0} DCA (cm)");
-                    hRatio->GetXaxis()->SetTitleSize(0.12);
-                    hRatio->GetXaxis()->SetLabelSize(0.11);
-                    hRatio->SetMarkerStyle(20);
-                    hRatio->Draw("E1");
-                    TLine line(dcaBins.front(), 1.0, dcaBins.back(), 1.0);
-                    line.SetLineColor(kRed);
-                    line.SetLineStyle(2);
-                    line.Draw();
-
-                    canvas->SaveAs((canvasName + ".png").c_str());
-                    canvas->SaveAs((canvasName + ".pdf").c_str());
+                    bestMainFrame.reset(static_cast<RooPlot*>(frame->Clone()));
                 }
             }
         }
@@ -363,6 +467,90 @@ void DCAResolutionScan(double ptMin, double ptMax,
         ndfValues.push_back(recordedNdf);
         promptFractions.push_back(recordedPromptFraction);
         promptFractionErrors.push_back(recordedPromptError);
+    }
+
+    if (makePerScalePlots && haveBestPlot && bestPromptFit && bestNonPromptFit
+        && bestTotalFit && bestRatioHist && bestDataHist && bestMainFrame) {
+        std::string canvasName = Form("%s/scale_bestfit", outputBase.c_str());
+        auto canvas = std::make_unique<TCanvas>((canvasName + "_c").c_str(), "", 800, 900);
+
+        TPad* padMain = new TPad("padMain", "padMain", 0, 0.30, 1, 1);
+        padMain->SetBottomMargin(0.02);
+        padMain->SetLeftMargin(0.15);
+        padMain->SetRightMargin(0.05);
+        padMain->SetTopMargin(0.08);
+        padMain->SetLogy();
+        padMain->Draw();
+
+        TPad* padRatio = new TPad("padRatio", "padRatio", 0, 0.0, 1, 0.30);
+        padRatio->SetTopMargin(0.05);
+        padRatio->SetBottomMargin(0.35);
+        padRatio->SetLeftMargin(0.15);
+        padRatio->SetRightMargin(0.05);
+        padRatio->Draw();
+
+        padMain->cd();
+
+        bestMainFrame->Draw();
+
+        TLegend leg(0.65, 0.65, 0.92, 0.88);
+        leg.SetBorderSize(0);
+        leg.SetFillStyle(0);
+        leg.SetTextSize(0.035);
+
+        if (auto dataObj = bestMainFrame->findObject("data_yield_hist")) {
+            leg.AddEntry(dataObj, "Data yield", "lep");
+        }
+        if (auto totalObj = bestMainFrame->findObject("model_total")) {
+            leg.AddEntry(totalObj, "Total fit", "l");
+        }
+        if (auto promptObj = bestMainFrame->findObject("mc_prompt_comp")) {
+            leg.AddEntry(promptObj, Form("Prompt (%.0f%%)", bestPromptFraction), "f");
+        }
+        if (auto nonPromptObj = bestMainFrame->findObject("mc_nonprompt_comp")) {
+            leg.AddEntry(nonPromptObj, Form("Non-prompt (%.0f%%)", bestNonPromptFraction), "f");
+        }
+        leg.Draw();
+
+        TLatex latex;
+        latex.SetNDC();
+        latex.SetTextFont(42);
+        latex.SetTextSize(0.045);
+        latex.DrawLatex(0.15, 0.94, "#bf{CMS} #it{Internal}");
+        latex.SetTextSize(0.04);
+        latex.DrawLatex(0.65, 0.56, Form("%0.1f < p_{T} < %0.1f GeV/c", ptMin, ptMax));
+        latex.DrawLatex(0.65, 0.52, Form("%0.2f < cos#theta_{HX} < %0.2f", cosMin, cosMax));
+        latex.DrawLatex(0.65, 0.48, Form("Scale = %.2f", bestScale));
+        latex.DrawLatex(0.65, 0.44, Form("#chi^{2}/NDF = %.2f / %d", bestChi2, bestNdf));
+
+        padRatio->cd();
+        bestRatioHist->SetTitle("");
+        bestRatioHist->SetMarkerStyle(20);
+        bestRatioHist->SetMarkerSize(1.0);
+        bestRatioHist->SetMarkerColor(kBlack);
+        bestRatioHist->SetLineColor(kBlack);
+        bestRatioHist->GetYaxis()->SetTitle("Data / Fit");
+        bestRatioHist->GetYaxis()->SetTitleSize(0.12);
+        bestRatioHist->GetYaxis()->SetLabelSize(0.11);
+        bestRatioHist->GetYaxis()->SetTitleOffset(0.5);
+        bestRatioHist->GetYaxis()->SetNdivisions(505);
+        bestRatioHist->GetXaxis()->SetTitle("D^{0} DCA (cm)");
+        bestRatioHist->GetXaxis()->SetTitleSize(0.12);
+        bestRatioHist->GetXaxis()->SetLabelSize(0.11);
+        bestRatioHist->GetXaxis()->SetTitleOffset(1.0);
+        bestRatioHist->SetMinimum(0.0);
+        bestRatioHist->SetMaximum(2.0);
+        bestRatioHist->Draw("E1");
+        TLine ratioLine(dcaBins.front(), 1.0, dcaBins.back(), 1.0);
+        ratioLine.SetLineColor(kRed);
+        ratioLine.SetLineStyle(2);
+        ratioLine.Draw();
+
+        canvas->cd();
+        canvas->SaveAs((canvasName + ".png").c_str());
+        canvas->SaveAs((canvasName + ".pdf").c_str());
+    } else if (makePerScalePlots && !haveBestPlot) {
+        std::cerr << "[DCAResolutionScan] Warning: no successful fit to plot." << std::endl;
     }
 
     if (!scales.empty()) {
@@ -502,9 +690,8 @@ void DCAResolutionScanPromptFractionVsCos(double ptMin, double ptMax,
 
     config.AddPtBin(ptMin, ptMax);
     config.AddCosBin(workingCosBins.front().first, workingCosBins.front().second);
-    config.AddCentralityBin(centralityMin, centralityMax);
-    KinematicBin firstBin(ptMin, ptMax, workingCosBins.front().first, workingCosBins.front().second,
-                          centralityMin, centralityMax);
+    // config.AddCentralityBin(centralityMin, centralityMax);
+    KinematicBin firstBin(ptMin, ptMax, workingCosBins.front().first, workingCosBins.front().second);
 
     FitOpt fitOpt = config.CreateFitOpt(firstBin);
     fitOpt.GenerateLegends();

@@ -205,13 +205,10 @@ public:
     
     // Strategy management
     void SetFitStrategy(std::unique_ptr<FitStrategy> strategy) {
-        if (strategy) {
-            std::cout << "[MassFitterV2] Setting fit strategy to: " << strategy->GetName() << std::endl;
-            LogOperation("SetFitStrategy", "Changed to " + strategy->GetName());
-        }
+        if (strategy) { LogOperation("SetFitStrategy", "Changed to " + strategy->GetName()); }
         fitStrategy_ = std::move(strategy);
     }
-    void SetFitStrategy(const std::string& strategyName);
+    // Automation-first: FitStrategy is determined by FitMethod via FitStrategyFactory
     FitStrategy* GetFitStrategy() const { return fitStrategy_.get(); }
     std::vector<std::string> GetAvailableStrategies() const;
     
@@ -241,6 +238,11 @@ public:
     void UseFractionCoefficientModel(bool enable = true) {
         useCoeffFractionModel_ = enable;
         LogOperation("UseFractionCoefficientModel", std::string("set to ") + (enable ? "ON" : "OFF"));
+    }
+    void ConfigureYieldRatios(double nsigRatio, double nsigMinRatio, double nsigMaxRatio,
+                              double nbkgRatio, double nbkgMinRatio, double nbkgMaxRatio) {
+        InitializeYieldVariables(nsigRatio, nsigMinRatio, nsigMaxRatio,
+                                 nbkgRatio, nbkgMinRatio, nbkgMaxRatio);
     }
     
     // Statistical utilities
@@ -344,6 +346,22 @@ private:
 
     // Flag to switch to coefficient-based fraction model in Fraction yield mode
     bool useCoeffFractionModel_ = false;
+
+    // Helper to de-duplicate result storing and bookkeeping
+    void StoreFitOutcome(const std::string& resultName,
+                         std::unique_ptr<RooFitResult> fitResult,
+                         const std::string& label,
+                         const std::string& workspacePrefix = "workspace_");
+
+    // Apply config range consistently to active mass variable
+    void ApplyConfigRangeToMassVar(const FitOpt& cfg) {
+        if (!activeMassVar_) return;
+        if (!cfg.rangeName.empty()) {
+            activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
+        }
+        activeMassVar_->setMin(cfg.rangeMin);
+        activeMassVar_->setMax(cfg.rangeMax);
+    }
 };
 
     // Implementation of template methods
@@ -451,13 +469,8 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         // Create fit configuration
         FitOpt config = options.ToFitConfig();
         // Ensure mass variable uses the same named range and bounds as the config
+        ApplyConfigRangeToMassVar(config);
         if (activeMassVar_) {
-            if (!config.rangeName.empty()) {
-                activeMassVar_->setRange(config.rangeName.c_str(), config.rangeMin, config.rangeMax);
-            }
-            activeMassVar_->setMin(config.rangeMin);
-            activeMassVar_->setMax(config.rangeMax);
-            // Debug: confirm the fit range
             std::cout << "[FitRange] rangeName='" << config.rangeName << "', ["
                       << config.rangeMin << ", " << config.rangeMax << "]" << std::endl;
             std::cout << "[FitRange] var '" << activeMassVar_->GetName() << "' bounds: ["
@@ -465,19 +478,17 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         }
         
         // Select appropriate strategy and execute fit based on FitMethod
-        auto execution = FitStrategyFactory::Execute(config.fitMethod, totalPdf_.get(), activeDataset_, config, activeMassVar_);
-        fitStrategy_ = std::move(execution.strategy);
+        auto created = FitStrategyFactory::CreateStrategy(config.fitMethod);
+        fitStrategy_ = std::move(created);
         const char* methodName = FitMethodName(config.fitMethod);
 
         if (!fitStrategy_) {
             throw FitException("PerformFit", -1, "Failed to create fit strategy for method: " + std::string(methodName));
         }
 
-        LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + std::string(" for ") + methodName + " method");
-        std::cout << "[MassFitterV2] Using fit strategy: " << fitStrategy_->GetName()
-                  << " (from " << methodName << " method)" << std::endl;
+        LogOperation("FitStrategy", std::string("Selected ") + fitStrategy_->GetName() + " for " + methodName + " method");
         
-        auto fitResult = std::move(execution.result);
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, config, activeMassVar_);
         
         if (!fitResult) {
             ErrorHandlerManager::Instance().LogError("Fit execution returned null result", "PerformFit");
@@ -485,26 +496,9 @@ bool MassFitterV2::PerformFit(const FitOpt& options, RooDataSet* dataset,
         }
         fitResult->Print("v");
         
-        // Create and populate workspace
-        auto workspace = std::make_unique<RooWorkspace>(("workspace_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-        
-        // Store results
+        // Store results (centralized)
         std::string finalResultName = resultName.empty() ? GenerateResultName() : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult), 
-                                   std::move(workspace), "StandardFit");
-        
-        // Store yields (supports RooFormulaVar via propagated errors)
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
-        
-        // Calculate quality metrics
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "StandardFit", "workspace_");
         
         // Log successful completion
         LogOperation("PerformFit", "Fit completed successfully: " + finalResultName);
@@ -530,6 +524,11 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
             LOG_AND_THROW(DataException, "Invalid MC dataset provided", "PerformMCFit");
         }
         
+        // Clear any stale combined/ background PDFs from previous data fits
+        // to avoid accidental usage in MC-specific post-processing (e.g., chi2).
+        totalPdf_.reset();
+        backgroundPdf_.reset();
+
         // Set data and apply MC cuts
         SetData(mcDataset);
         if (!options.cutMCExpr.empty()) {
@@ -549,29 +548,20 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
         config.fitMethod = FitMethod::NLL;   // Always use NLL for MC fits
         config.useMinos = false;             // MC fits typically don't need Minos
         // Align mass variable range with configuration
-        if (activeMassVar_) {
-            if (!config.rangeName.empty()) {
-                activeMassVar_->setRange(config.rangeName.c_str(), config.rangeMin, config.rangeMax);
-            }
-            activeMassVar_->setMin(config.rangeMin);
-            activeMassVar_->setMax(config.rangeMax);
-        }
+        ApplyConfigRangeToMassVar(config);
         
         // Select appropriate strategy based on FitMethod for MC and execute
-        auto mcExecution = FitStrategyFactory::Execute(config.fitMethod, signalPdf_.get(), activeDataset_, config, activeMassVar_);
-        auto mcStrategy = std::move(mcExecution.strategy);
+        auto mcStrategy = FitStrategyFactory::CreateStrategy(config.fitMethod);
         const char* mcMethodName = FitMethodName(config.fitMethod);
 
         if (!mcStrategy) {
             throw FitException("PerformMCFit", -1, "Failed to create MC fit strategy for method: " + std::string(mcMethodName));
         }
 
-        LogOperation("FitStrategy", "Auto-selected " + mcStrategy->GetName() + std::string(" for MC ") + mcMethodName + " method");
-        std::cout << "[MassFitterV2] Using MC fit strategy: " << mcStrategy->GetName()
-                  << " (from " << mcMethodName << " method)" << std::endl;
+        LogOperation("FitStrategy", std::string("Selected ") + mcStrategy->GetName() + " for MC " + mcMethodName + " method");
         
         // Perform MC fit
-        auto fitResult = std::move(mcExecution.result);
+        auto fitResult = mcStrategy->Execute(signalPdf_.get(), activeDataset_, config, activeMassVar_);
         
         if (!fitResult) {
             ErrorHandlerManager::Instance().LogError("MC fit execution returned null result", "PerformMCFit");
@@ -579,20 +569,11 @@ bool MassFitterV2::PerformMCFit(const FitOpt& options, RooDataSet* mcDataset,
         }
         fitResult->Print("v");
         
-        // Create MC workspace
-        auto workspace = std::make_unique<RooWorkspace>(("mcWorkspace_" + name_).c_str());
-        workspace->import(*signalPdf_);
-        workspace->import(*activeDataset_);
-        
-        // Store MC results
+        // Store MC results (centralized)
         std::string finalResultName = resultName.empty() ? GenerateResultName() + "_MC" : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult),
-                                   std::move(workspace), "MCFit");
-        
-        // Store signal yield for MC (supports both formula and real var)
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
+        cout << "123" << endl;
+        StoreFitOutcome(finalResultName, std::move(fitResult), "MCFit", "mcWorkspace_");
+        cout << "456" << endl;
         
         LogOperation("PerformMCFit", "MC fit completed successfully: " + finalResultName);
         ErrorHandlerManager::Instance().LogInfo("MC fit completed successfully: " + finalResultName, "MassFitterV2");
@@ -619,16 +600,7 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         Validator::ValidateNotNull(mcDataset, "mcDataset");
         
         // Align mass variable range with configuration
-        {
-            FitOpt baseCfg = options.ToFitConfig();
-            if (activeMassVar_) {
-                if (!baseCfg.rangeName.empty()) {
-                    activeMassVar_->setRange(baseCfg.rangeName.c_str(), baseCfg.rangeMin, baseCfg.rangeMax);
-                }
-                activeMassVar_->setMin(baseCfg.rangeMin);
-                activeMassVar_->setMax(baseCfg.rangeMax);
-            }
-        }
+        { FitOpt baseCfg = options.ToFitConfig(); ApplyConfigRangeToMassVar(baseCfg); }
 
         // First perform MC fit to establish constraints
         std::string mcResultName = resultName + "_constraint_mc";
@@ -683,19 +655,9 @@ bool MassFitterV2::PerformConstraintFit(const FitOpt& options, RooDataSet* datas
         workspace->import(*signalPdf_);
         workspace->import(*backgroundPdf_);
         
-        // Store constraint fit results
+        // Store constraint fit results (centralized)
         std::string finalResultName = resultName.empty() ? GenerateResultName() + "_constraint" : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult),
-                                   std::move(workspace), "ConstraintFit");
-        
-        // Store yields with error propagation
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
-        
-        // Calculate quality metrics
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "ConstraintFit", "constraintWorkspace_");
         
         LogOperation("PerformConstraintFit", "Constraint fit completed successfully: " + finalResultName);
         ErrorHandlerManager::Instance().LogInfo("Constraint fit completed successfully: " + finalResultName, "MassFitterV2");
@@ -1052,29 +1014,15 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMC(const FitOpt& options, Roo
         // Create strategy and execute constrained fit
         auto strategy = FitStrategyFactory::CreateGaussianConstraintStrategy(mcForConstraints, signalPdf_.get(), paramsToConstrain, 1.0);
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
-            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
-        }
+        ApplyConfigRangeToMassVar(cfg);
         auto fitResult = strategy->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             LOG_AND_THROW(MassFitterException, "Gaussian constrained fit returned null result", "PerformGaussianConstraintFitWithMC");
         }
 
-        // Store results
-        auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
+        // Store results (centralized)
         std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_gauss_constr")) : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "GaussianConstraintFit");
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "GaussianConstraintFit", "constraintWorkspace_");
 
         LogOperation("PerformGaussianConstraintFitWithMC", "Completed successfully: " + finalResultName);
         return true;
@@ -1195,35 +1143,20 @@ bool MassFitterV2::PerformFixedParameterFitWithMC(const FitOpt& options, RooData
 
         // 4) Fit data with fixed parameters
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
-            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
-        }
+        ApplyConfigRangeToMassVar(cfg);
 
         // Choose strategy based on method (FixedFromMC maps to Basic)
-        auto fixedExecution = FitStrategyFactory::Execute(cfg.fitMethod, totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
-        fitStrategy_ = std::move(fixedExecution.strategy);
+        fitStrategy_ = FitStrategyFactory::CreateStrategy(cfg.fitMethod);
         if (!fitStrategy_) {
             throw FitException("PerformFixedParameterFitWithMC", -1, "Failed to create fit strategy for FixedFromMC");
         }
-        auto fitResult = std::move(fixedExecution.result);
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             throw FitException("PerformFixedParameterFitWithMC", -1, "FixedFromMC data fit returned null result");
         }
 
-        auto workspace = std::make_unique<RooWorkspace>(("fixedFromMC_ws_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
         std::string finalName = resultName.empty() ? (GenerateResultName() + std::string("_fixed_from_mc")) : resultName;
-        resultManager_->StoreResult(finalName, std::move(fitResult), std::move(workspace), "FixedFromMC");
-        std::map<std::string, RooAbsReal*> yexprs;
-        if (nsig_) yexprs["nsig"] = nsig_.get();
-        if (nbkg_) yexprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalName, yexprs);
-        resultManager_->CalculateChiSquare(finalName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalName, std::move(fitResult), "FixedFromMC", "fixedFromMC_ws_");
 
         LogOperation("PerformFixedParameterFitWithMC", "Completed: " + finalName);
         return true;
@@ -1274,33 +1207,18 @@ bool MassFitterV2::PerformFixedParameterFitWithMCFile(const FitOpt& options, Roo
 
         // Fit data
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
-            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
-        }
-        auto fixedFileExecution = FitStrategyFactory::Execute(cfg.fitMethod, totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
-        fitStrategy_ = std::move(fixedFileExecution.strategy);
+        ApplyConfigRangeToMassVar(cfg);
+        fitStrategy_ = FitStrategyFactory::CreateStrategy(cfg.fitMethod);
         if (!fitStrategy_) {
             throw FitException("PerformFixedParameterFitWithMCFile", -1, "Failed to create fit strategy for FixedFromMC file mode");
         }
-        auto fitResult = std::move(fixedFileExecution.result);
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             throw FitException("PerformFixedParameterFitWithMCFile", -1, "FixedFromMC (file) data fit returned null result");
         }
 
-        auto workspace = std::make_unique<RooWorkspace>(("fixedFromMCFile_ws_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
         std::string finalName = resultName.empty() ? (GenerateResultName() + std::string("_fixed_from_mcfile")) : resultName;
-        resultManager_->StoreResult(finalName, std::move(fitResult), std::move(workspace), "FixedFromMCFile");
-        std::map<std::string, RooAbsReal*> yexprs;
-        if (nsig_) yexprs["nsig"] = nsig_.get();
-        if (nbkg_) yexprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalName, yexprs);
-        resultManager_->CalculateChiSquare(finalName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalName, std::move(fitResult), "FixedFromMCFile", "fixedFromMCFile_ws_");
 
         LogOperation("PerformFixedParameterFitWithMCFile", "Completed: " + finalName);
         return true;
@@ -1337,46 +1255,25 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMCFile(const FitOpt& options,
         }
 
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            if (!cfg.rangeName.empty()) activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
-            activeMassVar_->setMin(cfg.rangeMin); activeMassVar_->setMax(cfg.rangeMax);
-        }
-        auto exec = FitStrategyFactory::ExecuteGaussianConstraintFromFile(
-            totalPdf_.get(),
-            activeDataset_,
-            activeMassVar_,
-            cfg,
+        ApplyConfigRangeToMassVar(cfg);
+        auto strategy = FitStrategyFactory::CreateGaussianConstraintFromFileStrategy(
             mcResultFile,
             paramsToConstrain,
             "fitResult",
             1.0);
-
-        fitStrategy_ = std::move(exec.strategy);
+        fitStrategy_ = std::move(strategy);
         if (!fitStrategy_) {
             LOG_AND_THROW(MassFitterException, "Failed to create GaussianConstraintFromFile strategy", "PerformGaussianConstraintFitWithMCFile");
         }
-
-        LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + std::string(" for ") + FitMethodName(cfg.fitMethod) + " method (GC-File)");
-
-        auto fitResult = std::move(exec.result);
+        LogOperation("FitStrategy", "Selected " + fitStrategy_->GetName() + " (GC-File)");
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             LOG_AND_THROW(MassFitterException, "Gaussian constrained (file) fit returned null result", "PerformGaussianConstraintFitWithMCFile");
         }
 
         // Store results as usual
-        auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
         std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_gauss_constr")) : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "GaussianConstraintFit");
-        std::map<std::string, RooAbsReal*> yieldExprs2;
-        if (nsig_) yieldExprs2["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs2["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs2);
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "GaussianConstraintFit", "constraintWorkspace_");
 
         LogOperation("PerformGaussianConstraintFitWithMCFile", "Completed successfully: " + finalResultName);
         return true;
@@ -1415,46 +1312,22 @@ bool MassFitterV2::PerformSidebandPrefitBackgroundConstraintFit(
         }
 
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            activeMassVar_->setMin(cfg.rangeMin);
-            activeMassVar_->setMax(cfg.rangeMax);
-        }
+        ApplyConfigRangeToMassVar(cfg);
 
-        auto exec = FitStrategyFactory::ExecuteSidebandPrefitBackgroundConstraint(
-            totalPdf_.get(),
-            backgroundPdf_.get(),
-            activeDataset_,
-            activeMassVar_,
-            cfg,
-            sbLoMin, sbLoMax,
-            sbHiMin, sbHiMax,
-            sigmaScale);
-
-        fitStrategy_ = std::move(exec.strategy);
+        auto sbStrategy = FitStrategyFactory::CreateSidebandPrefitBackgroundConstraintStrategy(
+            backgroundPdf_.get(), sbLoMin, sbLoMax, sbHiMin, sbHiMax, sigmaScale);
+        fitStrategy_ = std::move(sbStrategy);
         if (!fitStrategy_) {
             LOG_AND_THROW(MassFitterException, "Failed to create SidebandPrefitBackgroundConstraint strategy", "SBPrefitBkg");
         }
-
-        LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + std::string(" for ") + FitMethodName(cfg.fitMethod) + " method (SBPrefit)");
-
-        auto fitResult = std::move(exec.result);
+        LogOperation("FitStrategy", "Selected " + fitStrategy_->GetName() + " (SBPrefit)");
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             LOG_AND_THROW(MassFitterException, "Sideband-constrained fit returned null result", "SBPrefitBkg");
         }
 
-        auto workspace = std::make_unique<RooWorkspace>(("sbConstraintWorkspace_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
         std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_sb_constr")) : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "SidebandConstraintFit");
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "SidebandConstraintFit", "sbConstraintWorkspace_");
 
         LogOperation("SBPrefitBkg", "Completed successfully: " + finalResultName);
         return true;
@@ -1492,13 +1365,7 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMCAndBkgSB(
         }
 
         FitOpt cfg = options.ToFitConfig();
-        if (activeMassVar_) {
-            if (!cfg.rangeName.empty()) {
-                activeMassVar_->setRange(cfg.rangeName.c_str(), cfg.rangeMin, cfg.rangeMax);
-            }
-            activeMassVar_->setMin(cfg.rangeMin);
-            activeMassVar_->setMax(cfg.rangeMax);
-        }
+        ApplyConfigRangeToMassVar(cfg);
 
         RooDataSet* mcForConstraints = mcDataset;
         std::unique_ptr<RooDataSet> mcReduced;
@@ -1509,45 +1376,27 @@ bool MassFitterV2::PerformGaussianConstraintFitWithMCAndBkgSB(
             }
         }
 
-        auto exec = FitStrategyFactory::ExecuteGaussianConstraintWithSB(
-            totalPdf_.get(),
+        auto gcsbStrategy = FitStrategyFactory::CreateGaussianConstraintWithSBStrategy(
+            mcForConstraints,
             signalPdf_.get(),
             backgroundPdf_.get(),
-            activeDataset_,
-            activeMassVar_,
-            cfg,
-            mcForConstraints,
             signalParamsToConstrain,
             sbLoMin, sbLoMax,
             sbHiMin, sbHiMax,
             sigmaScaleSignal,
             sigmaScaleBkg);
-
-        fitStrategy_ = std::move(exec.strategy);
+        fitStrategy_ = std::move(gcsbStrategy);
         if (!fitStrategy_) {
             LOG_AND_THROW(MassFitterException, "Failed to create GaussianConstraintWithSB strategy", "GC+SB");
         }
-
-        LogOperation("FitStrategy", "Auto-selected " + fitStrategy_->GetName() + std::string(" for ") + FitMethodName(cfg.fitMethod) + " method (GC+SB)");
-
-        auto fitResult = std::move(exec.result);
+        LogOperation("FitStrategy", "Selected " + fitStrategy_->GetName() + " (GC+SB)");
+        auto fitResult = fitStrategy_->Execute(totalPdf_.get(), activeDataset_, cfg, activeMassVar_);
         if (!fitResult) {
             LOG_AND_THROW(MassFitterException, "Combined GC+SB fit returned null result", "GC+SB");
         }
 
-        auto workspace = std::make_unique<RooWorkspace>(("constraintWorkspace_" + name_).c_str());
-        workspace->import(*totalPdf_);
-        workspace->import(*activeDataset_);
-        if (signalPdf_) workspace->import(*signalPdf_);
-        if (backgroundPdf_) workspace->import(*backgroundPdf_);
-
         std::string finalResultName = resultName.empty() ? (GenerateResultName() + std::string("_gc_sb")) : resultName;
-        resultManager_->StoreResult(finalResultName, std::move(fitResult), std::move(workspace), "GaussianConstraint+Sideband");
-        std::map<std::string, RooAbsReal*> yieldExprs;
-        if (nsig_) yieldExprs["nsig"] = nsig_.get();
-        if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
-        resultManager_->StoreYieldsFromAbsReal(finalResultName, yieldExprs);
-        resultManager_->CalculateChiSquare(finalResultName, totalPdf_.get(), activeDataset_, activeMassVar_);
+        StoreFitOutcome(finalResultName, std::move(fitResult), "GaussianConstraint+Sideband", "constraintWorkspace_");
 
         LogOperation("GC+SB", "Completed successfully: " + finalResultName);
         return true;
@@ -1611,15 +1460,12 @@ inline std::string MassFitterV2::GenerateResultName() const {
 }
 
 inline void MassFitterV2::LogOperation(const std::string& operation, const std::string& details) const {
-    std::cout << "[" << name_ << "] " << operation;
-    if (!details.empty()) {
-        std::cout << ": " << details;
-    }
-    std::cout << std::endl;
+    std::string message = details.empty() ? operation : (operation + ": " + details);
+    ErrorHandlerManager::Instance().LogInfo(message, std::string("MassFitterV2:") + name_);
 }
 
 inline void MassFitterV2::HandleFitException(const std::exception& e, const std::string& context) {
-    std::cerr << "Exception in " << context << ": " << e.what() << std::endl;
+    ErrorHandlerManager::Instance().HandleException(e, context.empty() ? std::string("MassFitterV2:") + name_ : context);
 }
 
 // Placeholder implementations for methods called by DStarAnalysisV2
@@ -1731,8 +1577,6 @@ inline std::unique_ptr<TCanvas> MassFitterV2::CreateCanvas(const std::string& re
 
 inline void MassFitterV2::SaveResult(const std::string& resultName, const std::string& filePath, 
                                      const std::string& fileName, bool saveWorkspace) {
-    std::cout << "Saving results to: " << filePath << "/" << fileName << std::endl;
-    
     if (!resultManager_) {
         std::cout << "[MassFitterV2] ResultManager not configured; cannot save results." << std::endl;
         return;
@@ -1740,9 +1584,13 @@ inline void MassFitterV2::SaveResult(const std::string& resultName, const std::s
     
     try {
         // Ensure the output directory exists (create recursively if needed)
-        createDir(filePath);
+        if (!ensureDir(filePath)) {
+            std::cerr << "[MassFitterV2] Cannot create output directory: " << filePath << std::endl;
+            return;
+        }
         // Use ResultManager to save the result
         std::string fullPath = filePath + "/" + fileName;
+        std::cout << "Saving results to: " << fullPath << std::endl;
         resultManager_->SaveResult(resultName, fullPath, saveWorkspace);
         std::cout << "[MassFitterV2] Results saved successfully: " << fullPath << std::endl;
     } catch (const std::exception& e) {
@@ -1751,8 +1599,6 @@ inline void MassFitterV2::SaveResult(const std::string& resultName, const std::s
 }
 
 inline void MassFitterV2::SaveResults(const std::string& filePath, const std::string& fileName, bool saveWorkspaces) {
-    std::cout << "Saving all results to: " << filePath << "/" << fileName << std::endl;
-    
     if (!resultManager_) {
         std::cout << "[MassFitterV2] ResultManager not configured; cannot save results." << std::endl;
         return;
@@ -1760,7 +1606,10 @@ inline void MassFitterV2::SaveResults(const std::string& filePath, const std::st
     
     try {
         // Ensure the output directory exists (create recursively if needed)
-        createDir(filePath);
+        if (!ensureDir(filePath)) {
+            std::cerr << "[MassFitterV2] Cannot create output directory: " << filePath << std::endl;
+            return;
+        }
         // Save all stored results
         auto resultNames = GetResultNames();
         if (resultNames.empty()) {
@@ -1769,6 +1618,7 @@ inline void MassFitterV2::SaveResults(const std::string& filePath, const std::st
         }
         
         std::string fullPath = filePath + "/" + fileName;
+        std::cout << "Saving all results to: " << fullPath << std::endl;
         for (const auto& resultName : resultNames) {
             resultManager_->SaveResult(resultName, fullPath, saveWorkspaces);
         }
@@ -1801,6 +1651,41 @@ inline void MassFitterV2::ExportResults(const std::string& format, const std::st
 inline void MassFitterV2::RunDiagnostics(const std::string& outputFile) const {
     std::cout << "Running diagnostics, output to: " << outputFile << std::endl;
     // Placeholder implementation
+}
+
+inline void MassFitterV2::StoreFitOutcome(const std::string& resultName,
+                                          std::unique_ptr<RooFitResult> fitResult,
+                                          const std::string& label,
+                                          const std::string& workspacePrefix) {
+    if (!resultManager_) return;
+    auto workspace = std::make_unique<RooWorkspace>((workspacePrefix + name_).c_str());
+    if (totalPdf_) workspace->import(*totalPdf_);
+    if (activeDataset_) workspace->import(*activeDataset_);
+    if (signalPdf_) workspace->import(*signalPdf_);
+    if (backgroundPdf_) workspace->import(*backgroundPdf_);
+
+    resultManager_->StoreResult(resultName, std::move(fitResult), std::move(workspace), label);
+
+    std::map<std::string, RooAbsReal*> yieldExprs;
+    if (nsig_) yieldExprs["nsig"] = nsig_.get();
+    if (nbkg_) yieldExprs["nbkg"] = nbkg_.get();
+    if (!yieldExprs.empty()) {
+        resultManager_->StoreYieldsFromAbsReal(resultName, yieldExprs);
+    }
+    // Choose appropriate PDF for chi2: for MC fits, use the signal PDF; otherwise use combined total PDF.
+    RooAbsPdf* chi2Pdf = nullptr;
+    if (label == "MCFit") {
+        chi2Pdf = signalPdf_.get();
+    } else if (totalPdf_) {
+        chi2Pdf = totalPdf_.get();
+    }
+    if (!chi2Pdf && signalPdf_) {
+        chi2Pdf = signalPdf_.get();
+    }
+    if (chi2Pdf && activeDataset_ && activeMassVar_) {
+        resultManager_->CalculateChiSquare(resultName, chi2Pdf, activeDataset_, activeMassVar_);
+        cout << "[MassFitterV2] Calculated chi-square for result: " << resultName << std::endl;
+    }
 }
 
 // inline void MassFitterV2::UseDeltaMass(bool use, double daughterMassMin, double daughterMassMax) {

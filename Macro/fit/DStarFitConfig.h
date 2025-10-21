@@ -539,7 +539,7 @@ private:
         
         // Default cuts (can be overridden)
         slowPionCut_ = "pTD2 > 0.3 && abs(EtaD2) < 2.4";
-        grandDaughterCut_ = "abs(EtaD2) < 1.2 && abs(EtaGrandD1) < 1.2 && abs(EtaGrandD2) < 1.2 && massDaugther1 > 1.82 && massDaugther1 < 1.92";
+        grandDaughterCut_ = "abs(EtaD2) < 1.2 && abs(EtaGrandD1) < 1.2 && abs(EtaGrandD2) < 1.2";
         mvaCut_ = "";
         
         // Default output subdirectory

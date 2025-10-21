@@ -1,0 +1,53 @@
+{
+  "datasets": {
+    "PP_Data": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_pp_12Sep25_v1.root",
+      "dataset_name": "datasetHX",
+      "description": "PP reference data for D* analysis"
+    },
+    "PP_MC": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_ppRef_ppPU_NoCorrection_20Sep25_v1.root",
+      "dataset_name": "datasetHX",
+      "description": "PP reference MC for D* analysis"
+    },
+    "PbPb_Data": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p99_np_PbPb_Aug25_v1.root",
+      "dataset_name": "datasetHX",
+      "description": "PbPb data for D* analysis with MVA cut 0.99"
+    },
+    "PbPb_MC": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_MC/RDS_Physics_MC_DStar_PbPb_mva0p9_PbPb_Aug22_v1.root",
+      "dataset_name": "datasetHX",
+      "description": "PbPb MC for D* analysis with MVA cut 0.9"
+    },
+    "PP_Data_v2": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_ppRef_pp_12Sep25_v2.root",
+      "dataset_name": "datasetHX",
+      "description": "PP reference data v2"
+    },
+    "PbPb_Data_mva0p95": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Data/RDS_Physics/RDS_Physics_Data_DStar_PbPb_mva0p95_np_PbPb_Aug25_v1.root",
+      "dataset_name": "datasetHX",
+      "description": "PbPb data with MVA cut 0.95"
+    },
+    "PbPb_Data_EPcostheta": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Preprocessing/Data/PbPb/RDS_Physics_Data_DStar_PbPb_EPcostheta.root",
+      "dataset_name": "datasetEP",
+      "description": "PbPb data with EP costheta analysis - Z-direction rotation followed by costheta calculation"
+    },
+    "PbPb_Data_EPtransformation": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Preprocessing/Data/PbPb/RDS_Physics_Data_DStar_PbPb_EPtransformation.root",
+      "dataset_name": "datasetEP",
+      "description": "PbPb data with EP transformation - D* daughter boosted to rest frame, event plane normal rotated to Z-axis, then daughter vector rotated accordingly"
+    },
+    "PbPb_Data_test": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Preprocessing/Data/PbPb/RDS_Physics_Data_DStar_PbPb_test.root",
+      "dataset_name": "datasetEP",
+      "description": "PbPb data test file for D* analysis"
+    }
+  },
+  "defaults": {
+    "data": "PbPb_Data",
+    "mc": "PbPb_MC"
+  }
+}

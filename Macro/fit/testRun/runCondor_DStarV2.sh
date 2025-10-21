@@ -1,12 +1,11 @@
 #!/bin/bash
 # runCondor_DStarV2.sh
 
-#set -euo pipefail
+set -euo pipefail
 
 # Source the ROOT environment if not already set
 if [ -z "${ROOTSYS:-}" ]; then
   source /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh
- # source /software/ROOT/ROOT-v6.32/root-6.32-install/bin/thisroot.sh
 fi
 
 # Move to project testRun directory for stable relative paths
@@ -31,6 +30,6 @@ echo "[Condor DStarV2] pT=[${pTMin}, ${pTMax}], cos=[${cosMin}, ${cosMax}], cent
 # export ROOT_CXXFLAGS="${ROOT_CXXFLAGS:-} -std=c++17"
 
 # Execute ROOT macro with C++17 standard explicitly set
-#root -l -b -q "DStarAnalysisV2forpp.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified_pp_v2.json\",false)"
-# root -l -b -q "DStarAnalysisV2forpp.cpp(true,false,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_grid_unified_pp_v2.json\")"
-root -l -b -q "DStarAnalysisV2forpp.cpp(true,true,true,true,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Macro/fit/parameters/dstar_parameters_DBCrystalBall_Phenomenological2.json\")"
+# For PbPb analysis, use DStarAnalysisPbPb.cpp
+# Arguments: doReFit, doDCA, plotFit, useCUDA, pTMin, pTMax, cosMin, cosMax, centMin, centMax, paramFile, isMC
+root -l -b -q "DStarAnalysisPbPb.cpp(1,1,1,1,${pTMin},${pTMax},${cosMin},${cosMax},${centMin},${centMax},\"/home/jun502s/DstarAna/DStarAnalysis/Fit/Common/Parameters/PbPb/dstar_parameters_DBCrystalBall_Phenomenological2_dca_pbpb_Oct21_v1.json\",0)"

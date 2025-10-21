@@ -93,6 +93,7 @@ struct FitOpt : public FitCommonSettings {
     std::string centLegend;
     std::string cosLegend;
     std::string dcaLegend;
+    std::string mvaLegend;
     std::string ELabel;
     std::string pdfName = "total_pdf";
 
@@ -118,8 +119,8 @@ struct FitOpt : public FitCommonSettings {
     // === Kinematic Cuts ===
     double pTMin = 0.0;
     double pTMax = 100.0;
-    double etaMin = -5.0;
-    double etaMax = 5.0;
+    double etaMin = -1.0;
+    double etaMax = 1.0;
     double cosMin = -1.0;
     double cosMax = 1.0;
     double centMin = 0;
@@ -127,6 +128,9 @@ struct FitOpt : public FitCommonSettings {
     double mvaMin = 0.0;
     double dcaMin = 0.0;
     double dcaMax = 1.0;
+    bool drawDcaLegend = true;
+    bool isPP = false;
+    bool drawMvaLegend = isPP ? false : true; // ppRef에서는 MVA 범례를 기본적으로 그리지 않음
     
     // === Binning (optional) ===
     std::vector<double> ptBins;
@@ -250,8 +254,11 @@ struct FitOpt : public FitCommonSettings {
             centLegend = "0-100%";
         }
         
-        if (mvaMin > 0.0) {
-            dcaLegend = Form("MVA > %.3f", mvaMin);
+        if (drawMvaLegend) {
+            mvaLegend = Form("MVA > %.3f", mvaMin);
+        }
+        if (!drawDcaLegend) {
+            dcaLegend.clear();
         }
         
         if (yVar == "y") {

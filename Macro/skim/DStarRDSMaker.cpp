@@ -413,7 +413,7 @@ if (saveEP) {
             // float phi_val = floatBranchMap["phi"];
 
             TVector3 DstarDau1_HX = DstarDau1Vector_Helicity(dstar, dau1);
-            float cos_val = DstarDau1_HX.CosTheta();
+            float cos_val = abs(DstarDau1_HX.CosTheta());
             
             int bin = h_effMap->FindBin(pT_val, y_val, cos_val);
             double efficiency = h_effMap->GetBinContent(bin);
@@ -486,7 +486,7 @@ void DStarRDSMaker(bool isMC = true, bool isD0=true, bool isPP=true, std::string
     // 다양한 타입의 변수 정의
     vector<VarDef> variables = {
         {"mass", VarType::FLOAT, 1.7, 2.25},
-        {"pT", VarType::FLOAT, 0.0, 50.0},
+        {"pT", VarType::FLOAT, 5.0, 50.0},
         {"eta", VarType::FLOAT, -2.5, 2.5},
        {"phi", VarType::FLOAT, -TMath::Pi(), TMath::Pi()},
 	// {"Ncoll",VarType::FLOAT,0.0,3000},

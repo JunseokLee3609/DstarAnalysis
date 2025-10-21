@@ -6,9 +6,12 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <limits>
+#include <cmath>
 #include "TFile.h"
 #include "RooRealVar.h"
 #include "RooDataSet.h"
+#include "RooAbsData.h"
 #include "RooAbsPdf.h"
 #include "RooAbsReal.h"
 #include "RooAbsArg.h"
@@ -48,13 +51,26 @@ public:
     
     // Main plotting methods
     bool DrawRawDistribution(const std::string& outputName = "");
-    bool DrawFittedModel(bool drawPull = true, const std::string& outputName = "");
+    bool DrawFittedModel(bool drawPull = true, const std::string& outputName = "", bool drawParameterPad = true);
     bool DrawComparisonPlot(const std::vector<std::string>& fileList, 
                            const std::vector<std::string>& legendLabels);
-    
+
+    // Alternate constructor for direct workspace usage
+    EnhancedPlotManager(const FitOpt& opt, RooWorkspace* workspace, RooDataSet* dataset,
+                        RooFitResult* fitResult, const std::string& outputDir,
+                        bool isPP = false, bool isDstar = true,
+                        RooRealVar* massVar = nullptr, RooAbsPdf* pdf = nullptr,
+                        bool autoGenerateLegends = true);
+
     // Utility methods
     bool IsValid() const { return isValid_; }
     void SetPlotStyle(const std::string& style = "CMS");
+    void SetCanvasSize(int width, int height, int noParamPadWidth = -1, int noParamPadHeight = -1) {
+        if (width > 0) plotStyle_.canvasWidth = width;
+        if (height > 0) plotStyle_.canvasHeight = height;
+        if (noParamPadWidth > 0) plotStyle_.canvasWidthNoParamPad = noParamPadWidth;
+        if (noParamPadHeight > 0) plotStyle_.canvasHeightNoParamPad = noParamPadHeight;
+    }
     void PrintSummary() const;
     void PrintWorkspaceContents() const;
 
@@ -75,6 +91,7 @@ private:
     RooAbsPdf* pdf_;           // Owned by workspace
     RooRealVar* var_;          // Owned by workspace
     RooFitResult* fitResult_;  // Owned by file
+    double lastChi2Ndf_;
     
     // Plotting configuration
     int colorIndex_;
@@ -84,6 +101,8 @@ private:
     struct PlotStyle {
         int canvasWidth = 1200;
         int canvasHeight = 800;
+        int canvasWidthNoParamPad = 800;
+        int canvasHeightNoParamPad = 700;
         double leftMargin = 0.12;
         double rightMargin = 0.05;
         double topMargin = 0.08;
@@ -118,7 +137,9 @@ EnhancedPlotManager::EnhancedPlotManager(const FitOpt& opt, const std::string& i
                                        const std::string& outputDir, bool isPP, bool isDstar)
     : opt_(opt), fileDir_(inputDir), filename_(outputFile), outputDir_(outputDir), 
       isDstar_(isDstar), isPP_(isPP), isValid_(false), colorIndex_(1),
-      ws_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr) {
+      ws_(nullptr), dataset_(nullptr), pdf_(nullptr), var_(nullptr), fitResult_(nullptr),
+      lastChi2Ndf_(std::numeric_limits<double>::quiet_NaN()) {
+    opt_.isPP = isPP_;
     
     std::cout << "=== Enhanced PlotManager Initialization ===" << std::endl;
     std::cout << "[PlotManager] File: " << fileDir_ << "/" << filename_ << std::endl;
@@ -158,6 +179,114 @@ EnhancedPlotManager::EnhancedPlotManager(const FitOpt& opt, const std::string& i
 
 EnhancedPlotManager::~EnhancedPlotManager() {
     CleanupMemory();
+}
+
+EnhancedPlotManager::EnhancedPlotManager(const FitOpt& opt, RooWorkspace* workspace, RooDataSet* dataset,
+                                         RooFitResult* fitResult, const std::string& outputDir,
+                                         bool isPP, bool isDstar, RooRealVar* massVar, RooAbsPdf* pdf,
+                                         bool autoGenerateLegends)
+    : opt_(opt), fileDir_(""), filename_(""), outputDir_(outputDir),
+      isDstar_(isDstar), isPP_(isPP), isValid_(false), colorIndex_(1),
+      ws_(workspace), dataset_(dataset), pdf_(pdf), var_(massVar), fitResult_(fitResult),
+      lastChi2Ndf_(std::numeric_limits<double>::quiet_NaN()) {
+
+    opt_.isPP = isPP_;
+
+    std::cout << "=== Enhanced PlotManager Direct Initialization ===" << std::endl;
+
+    if (!ws_) {
+        std::cerr << "[PlotManager] Error: Workspace pointer is null." << std::endl;
+        std::cout << "=============================================" << std::endl;
+        return;
+    }
+
+    if (!var_) {
+        var_ = dynamic_cast<RooRealVar*>(ws_->var(opt_.massVar.c_str()));
+        if (!var_) {
+            std::cerr << "[PlotManager] Error: Mass variable '" << opt_.massVar << "' not found in workspace." << std::endl;
+            std::cout << "=============================================" << std::endl;
+            return;
+        }
+    }
+
+    if (!dataset_) {
+        dataset_ = dynamic_cast<RooDataSet*>(ws_->data(opt_.datasetName.c_str()));
+        if (!dataset_) {
+            auto dataList = ws_->allData();
+            for (auto* data : dataList) {
+                if (data) {
+                    dataset_ = dynamic_cast<RooDataSet*>(data);
+                    if (dataset_) break;
+                }
+            }
+        }
+    }
+
+    if (!pdf_ && opt_.doFit) {
+        std::vector<std::string> pdfNames = {
+            "totalPdf",
+            "total_pdf",
+            "pdf",
+            "pdf_" + opt_.name,
+            opt_.name + "_pdf",
+            "mcSignal",
+            "signal",
+            "model"
+        };
+
+        for (const auto& pdfName : pdfNames) {
+            pdf_ = dynamic_cast<RooAbsPdf*>(ws_->pdf(pdfName.c_str()));
+            if (pdf_) {
+                std::cout << "[PlotManager] ✓ Found PDF: " << pdfName << std::endl;
+                break;
+            }
+        }
+
+        if (!pdf_) {
+            RooArgSet pdfs = ws_->allPdfs();
+            if (pdfs.getSize() > 0) {
+                RooFIter it = pdfs.fwdIterator();
+                if (RooAbsArg* arg = it.next()) {
+                    pdf_ = dynamic_cast<RooAbsPdf*>(arg);
+                    if (pdf_) {
+                        std::cout << "[PlotManager] Fallback: Using first available PDF: " << pdf_->GetName() << std::endl;
+                    }
+                }
+            }
+            if (!pdf_) {
+                std::cout << "[PlotManager] Warning: No PDF found. Raw plots only." << std::endl;
+            }
+        }
+    }
+
+    if (!fitResult_) {
+        fitResult_ = dynamic_cast<RooFitResult*>(ws_->obj(opt_.fitResultName.c_str()));
+        if (fitResult_) {
+            std::cout << "[PlotManager] ✓ Loaded fit result directly from workspace." << std::endl;
+        }
+    }
+
+    if (var_) {
+        var_->setRange("analysis", opt_.massMin, opt_.massMax);
+        var_->setMin(opt_.massMin);
+        var_->setMax(opt_.massMax);
+    }
+
+    SetPlotStyle("CMS");
+
+    if (autoGenerateLegends) {
+        const_cast<FitOpt&>(opt_).GenerateLegends();
+    }
+
+    if (dataset_) {
+        std::cout << "[PlotManager] Dataset entries: " << dataset_->sumEntries() << std::endl;
+    } else {
+        std::cerr << "[PlotManager] Error: Dataset pointer is null." << std::endl;
+    }
+
+    isValid_ = (dataset_ != nullptr && var_ != nullptr);
+    std::cout << "[PlotManager] Direct initialization status: " << (isValid_ ? "valid" : "invalid") << std::endl;
+    std::cout << "=============================================" << std::endl;
 }
 
 bool EnhancedPlotManager::LoadWorkspace() {
@@ -310,7 +439,9 @@ std::string EnhancedPlotManager::GetOutputFileName(const std::string& baseName, 
     if (!suffix.empty()) {
         outputName += "_" + suffix;
     }
-    outputName += ".pdf";
+    if (outputName.find_last_of('.') == std::string::npos) {
+        outputName += ".pdf";
+    }
     return outputName;
 }
 
@@ -338,7 +469,7 @@ void EnhancedPlotManager::AddLabels(TPad* pad) {
     cmsLabel->DrawLatex(0.20, 0.92, "Work in Progress");
     
     // Collision system and energy
-    std::string collisionText = isPP_ ? "pp" : "PbPb";
+    std::string collisionText = isPP_ ? "ppRef" : "PbPb";
     collisionText += ", #sqrt{s_{NN}} = 5.32 TeV";
     cmsLabel->DrawLatex(0.65, 0.92, collisionText.c_str());
     
@@ -352,8 +483,16 @@ void EnhancedPlotManager::AddLabels(TPad* pad) {
         cmsLabel->DrawLatex(0.65, yPos, opt_.cosLegend.c_str());
         yPos -= 0.05;
     }
-    if (!opt_.centLegend.empty() && !isPP_) {
+    if (!opt_.yLegend.empty()) {
+        cmsLabel->DrawLatex(0.65, yPos, opt_.yLegend.c_str());
+        yPos -= 0.05;
+    }
+    if (!isPP_ && !opt_.centLegend.empty()) {
         cmsLabel->DrawLatex(0.65, yPos, ("Centrality " + opt_.centLegend).c_str());
+        yPos -= 0.05;
+    }
+    if (opt_.drawDcaLegend && !opt_.dcaLegend.empty()) {
+        cmsLabel->DrawLatex(0.65, yPos, opt_.dcaLegend.c_str());
         yPos -= 0.05;
     }
 }
@@ -427,7 +566,11 @@ bool EnhancedPlotManager::DrawRawDistribution(const std::string& outputName) {
     AddLabels(dynamic_cast<TPad*>(gPad));
     
     // Save plot
-    createDir(Form("%s/", outputDir_.c_str()));
+    if (!ensureDir(outputDir_)) {
+        std::cerr << "[PlotManager] ERROR: Cannot create output directory: " << outputDir_ << std::endl;
+        delete canvas;
+        return false;
+    }
     std::string filename = outputName.empty() ? 
         GetOutputFileName("RawDist_" + opt_.GetBinName()) : 
         GetOutputFileName(outputName);
@@ -439,11 +582,12 @@ bool EnhancedPlotManager::DrawRawDistribution(const std::string& outputName) {
     return true;
 }
 
-bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outputName) {
+bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outputName, bool drawParameterPad) {
     // Check each component individually for better debugging
     bool hasDataset = (dataset_ != nullptr);
     bool hasPdf = (pdf_ != nullptr);
     bool hasVar = (var_ != nullptr);
+    lastChi2Ndf_ = std::numeric_limits<double>::quiet_NaN();
     
     std::cout << "[PlotManager] DrawFittedModel status check:" << std::endl;
     std::cout << "  Dataset available: " << (hasDataset ? "YES" : "NO") << std::endl;
@@ -469,29 +613,52 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
 
     std::cout << "[PlotManager] Drawing fitted model..." << std::endl;
     
-    // Canvas setup matching PlotManager_backup.h style
-    TCanvas* canvas = new TCanvas("canvas", "", 1200, 800);
-    TPad* mainPad = new TPad("mainPad", "", 0.0, 0.3, 0.7, 1.0);
-    TPad* pullPad = new TPad("pullPad", "", 0.0, 0.0, 0.7, 0.3);
-    TPad* paramPad = new TPad("paramPad", "", 0.7, 0.0, 1.0, 1.0);
+    // Canvas setup matching PlotManager_backup.h style, with optional parameter pad
+    int canvasWidth = drawParameterPad ? plotStyle_.canvasWidth : plotStyle_.canvasWidthNoParamPad;
+    int canvasHeight = drawParameterPad ? plotStyle_.canvasHeight : plotStyle_.canvasHeightNoParamPad;
+    TCanvas* canvas = new TCanvas("canvas", "", canvasWidth, canvasHeight);
 
-    // Set margins matching backup style
-    mainPad->SetBottomMargin(0.00);
+    double mainPadXmax = drawParameterPad ? 0.7 : 1.0;
+    double mainPadYmin = drawPull ? 0.3 : 0.0;
+
+    TPad* mainPad = new TPad("mainPad", "", 0.0, mainPadYmin, mainPadXmax, 1.0);
+    TPad* pullPad = nullptr;
+    if (drawPull) {
+        pullPad = new TPad("pullPad", "", 0.0, 0.0, mainPadXmax, 0.3);
+    }
+    TPad* paramPad = nullptr;
+    if (drawParameterPad) {
+        paramPad = new TPad("paramPad", "", mainPadXmax, 0.0, 1.0, 1.0);
+    }
+
+    // Set margins matching backup style while adapting to layout
+    mainPad->SetBottomMargin(drawPull ? 0.00 : 0.12);
     mainPad->SetTopMargin(0.12);
     mainPad->SetLeftMargin(0.1);
-    pullPad->SetTopMargin(0.01);
-    pullPad->SetBottomMargin(0.3);
+    mainPad->SetRightMargin(drawParameterPad ? 0.02 : plotStyle_.rightMargin);
+
+    if (pullPad) {
+        pullPad->SetTopMargin(0.01);
+        pullPad->SetBottomMargin(0.3);
+        pullPad->SetLeftMargin(0.1);
+        pullPad->SetRightMargin(drawParameterPad ? 0.02 : plotStyle_.rightMargin);
+    }
 
     mainPad->Draw();
-    if (drawPull) pullPad->Draw();
-    paramPad->Draw();
+    if (pullPad) pullPad->Draw();
+    if (paramPad) paramPad->Draw();
     
     // Main plot
     mainPad->cd();
     RooPlot* frame = var_->frame(RooFit::Bins(60), RooFit::Title(""), RooFit::Range("analysis"));
     
     // 1. Plot Data first
-    dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+    if (dataset_->isWeighted()) {
+        dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle),
+                         RooFit::MarkerSize(0.8), RooFit::DataError(RooAbsData::SumW2));
+    } else {
+        dataset_->plotOn(frame, RooFit::Name("datapoints"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+    }
 
     // 2. Identify and Plot Components with fill styles (matching backup style)
     RooAbsPdf* signalPdf = ExtractComponent("sig");
@@ -542,7 +709,12 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
                  RooFit::NormRange("analysis"), RooFit::Range("analysis"));
 
     // 4. Re-plot Data Points on top
-    dataset_->plotOn(frame, RooFit::Name("datapoints_top"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+    if (dataset_->isWeighted()) {
+        dataset_->plotOn(frame, RooFit::Name("datapoints_top"), RooFit::MarkerStyle(kFullCircle),
+                         RooFit::MarkerSize(0.8), RooFit::DataError(RooAbsData::SumW2));
+    } else {
+        dataset_->plotOn(frame, RooFit::Name("datapoints_top"), RooFit::MarkerStyle(kFullCircle), RooFit::MarkerSize(0.8));
+    }
 
     // Set axis properties matching backup style
     frame->GetYaxis()->SetTitleOffset(1.2);
@@ -597,9 +769,25 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
     // Physics labels matching backup positions
     double x_pos = 0.13;
     double y_pos = 0.80;
-    latex.DrawLatex(x_pos, y_pos, opt_.pTLegend.c_str());
-    latex.DrawLatex(x_pos, y_pos - 0.07, opt_.yLegend.c_str());
-    latex.DrawLatex(x_pos, y_pos - 0.14, opt_.centLegend.c_str());
+    std::vector<std::string> leftLabels;
+    if (!opt_.pTLegend.empty()) {
+        leftLabels.push_back(opt_.pTLegend);
+    }
+    if (!opt_.yLegend.empty()) {
+        leftLabels.push_back(opt_.yLegend);
+    }
+    if (!opt_.cosLegend.empty()) {
+        leftLabels.push_back(opt_.cosLegend);
+    }
+    if (!isPP_ && !opt_.centLegend.empty()) {
+        leftLabels.push_back(opt_.centLegend);
+    }
+    if (opt_.drawDcaLegend && !opt_.dcaLegend.empty()) {
+        leftLabels.push_back(opt_.dcaLegend);
+    }
+    for (size_t i = 0; i < leftLabels.size(); ++i) {
+        latex.DrawLatex(x_pos, y_pos - 0.07 * static_cast<double>(i), leftLabels[i].c_str());
+    }
 
     // If fraction-yield mode is detected, annotate Nsig/NBkg on the main pad
     if (IsFractionYieldMode()) {
@@ -611,11 +799,24 @@ bool EnhancedPlotManager::DrawFittedModel(bool drawPull, const std::string& outp
         DrawPullFrame(frame, pullPad);
     }
     
+    if (fitResult_ && pdf_) {
+        int nFloat = fitResult_->floatParsFinal().getSize();
+        lastChi2Ndf_ = frame->chiSquare("model", "datapoints", nFloat);
+    } else if (pdf_) {
+        lastChi2Ndf_ = frame->chiSquare("model", "datapoints");
+    }
+
     // Draw parameter pad
-    DrawParameterPad(paramPad);
+    if (drawParameterPad && paramPad) {
+        DrawParameterPad(paramPad);
+    }
     
     // Save plot
-    createDir(Form("%s/", outputDir_.c_str()));
+    if (!ensureDir(outputDir_)) {
+        std::cerr << "[PlotManager] ERROR: Cannot create output directory: " << outputDir_ << std::endl;
+        delete canvas;
+        return false;
+    }
     std::string filename = outputName.empty() ? 
         GetOutputFileName("FittedModel_" + opt_.GetBinName()) : 
         GetOutputFileName(outputName);
@@ -681,22 +882,31 @@ void EnhancedPlotManager::DrawParameterPad(TPad* paramPad) {
     TLatex latex;
     latex.SetNDC();
     latex.SetTextSize(0.03);
-    
+    float yPos = 0.9f;
+
+    if (std::isfinite(lastChi2Ndf_)) {
+        latex.DrawLatex(0.1, yPos, Form("#chi^{2}/NDF = %.2f", lastChi2Ndf_));
+        yPos -= 0.07f;
+    }
+
     if (fitResult_) {
-        latex.DrawLatex(0.1, 0.9, Form("STATUS %s : %d, %s : %d", 
+        latex.DrawLatex(0.1, yPos, Form("STATUS %s : %d, %s : %d", 
                                       fitResult_->statusLabelHistory(0), 
                                       fitResult_->statusCodeHistory(0),
                                       fitResult_->statusLabelHistory(1), 
                                       fitResult_->statusCodeHistory(1)));
+        yPos -= 0.07f;
 
         const RooArgList& params = fitResult_->floatParsFinal();
         for (int i = 0; i < params.getSize(); ++i) {
             RooRealVar* param = (RooRealVar*)params.at(i);
-            latex.DrawLatex(0.1, 0.85 - i * 0.05, 
+            if (yPos < 0.12f) break;
+            latex.DrawLatex(0.1, yPos, 
                           Form("%s = %.5f #pm %.5f", param->GetName(), param->getVal(), param->getError()));
+            yPos -= 0.05f;
         }
     } else {
-        latex.DrawLatex(0.1, 0.9, "No fit result available");
+        latex.DrawLatex(0.1, yPos, "No fit result available");
     }
 }
 

@@ -1,0 +1,173 @@
+{
+  "dstar_parameters": {
+    "global_settings": {
+      "fit_strategy": 2,
+      "use_minos": true,
+      "use_hesse": true,
+      "use_cuda": false
+    },
+    "bins": {
+      "pt_4_6_cos_-1_0_cent_0_100": {
+        "bin_info": {
+          "pt_range": [4.0, 6.0],
+          "cos_range": [-1.0, 0.0],
+          "centrality_range": [0, 100],
+          "description": "Low pT, negative cos(θ*)"
+        },
+        "signal_pdf": {
+          "type": "DoubleGaussian",
+          "parameters": {
+            "mean": {"value": 0.9999, "min": 0.1452, "max": 0.1458, "fixed": false},
+            "sigma1": {"value": 0.8888, "min": 0.0001, "max": 0.01, "fixed": false},
+            "sigma2": {"value": 0.7777, "min": 0.0001, "max": 0.01, "fixed": false},
+            "fraction": {"value": 0.1111, "min": 0.0, "max": 1.0, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "ThresholdFunction",
+          "parameters": {
+            "p0": {"value": 1.0, "min": -10.0, "max": 10.0, "fixed": false},
+            "p1": {"value": -1.0, "min": -10.0, "max": 10.0, "fixed": false},
+            "m_pi": {"value": 0.13957, "min": 0.13957, "max": 0.13957, "fixed": true}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.999, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.888, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      },
+      "pt_4_6_cos_0_1_cent_0_100": {
+        "bin_info": {
+          "pt_range": [4.0, 6.0],
+          "cos_range": [0.0, 1.0],
+          "centrality_range": [0, 100],
+          "description": "Low pT, positive cos(θ*)"
+        },
+        "signal_pdf": {
+          "type": "DoubleGaussian",
+          "parameters": {
+            "mean": {"value": 0.1456, "min": 0.1453, "max": 0.1459, "fixed": false},
+            "sigma1": {"value": 0.0006, "min": 0.0001, "max": 0.01, "fixed": false},
+            "sigma2": {"value": 0.0012, "min": 0.0001, "max": 0.01, "fixed": false},
+            "fraction": {"value": 0.65, "min": 0.0, "max": 1.0, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "ThresholdFunction",
+          "parameters": {
+            "p0": {"value": 0.8, "min": -10.0, "max": 10.0, "fixed": false},
+            "p1": {"value": -0.8, "min": -10.0, "max": 10.0, "fixed": false},
+            "m_pi": {"value": 0.13957, "min": 0.13957, "max": 0.13957, "fixed": true}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.006, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.018, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      },
+      "pt_6_10_cos_-1_0_cent_0_100": {
+        "bin_info": {
+          "pt_range": [6.0, 10.0],
+          "cos_range": [-1.0, 0.0],
+          "centrality_range": [0, 100],
+          "description": "Medium pT, negative cos(θ*)"
+        },
+        "signal_pdf": {
+          "type": "CrystalBall",
+          "parameters": {
+            "mean": {"value": 0.1454, "min": 0.1451, "max": 0.1457, "fixed": false},
+            "sigma": {"value": 0.0008, "min": 0.0001, "max": 0.01, "fixed": false},
+            "alpha": {"value": 1.5, "min": 0.1, "max": 10.0, "fixed": false},
+            "n": {"value": 2.0, "min": 0.1, "max": 20.0, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "Exponential",
+          "parameters": {
+            "tau": {"value": -5.0, "min": -50.0, "max": 0.0, "fixed": false}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.008, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.025, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      },
+      "pt_6_10_cos_0_1_cent_0_100": {
+        "bin_info": {
+          "pt_range": [6.0, 10.0],
+          "cos_range": [0.0, 1.0],
+          "centrality_range": [0, 100],
+          "description": "Medium pT, positive cos(θ*)"
+        },
+        "signal_pdf": {
+          "type": "CrystalBall",
+          "parameters": {
+            "mean": {"value": 0.1455, "min": 0.1452, "max": 0.1458, "fixed": false},
+            "sigma": {"value": 0.0007, "min": 0.0001, "max": 0.01, "fixed": false},
+            "alpha": {"value": 1.8, "min": 0.1, "max": 10.0, "fixed": false},
+            "n": {"value": 1.8, "min": 0.1, "max": 20.0, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "Exponential",
+          "parameters": {
+            "tau": {"value": -4.5, "min": -50.0, "max": 0.0, "fixed": false}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.007, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.022, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      },
+      "pt_10_100_cos_-1_1_cent_0_100": {
+        "bin_info": {
+          "pt_range": [10.0, 100.0],
+          "cos_range": [-1.0, 1.0],
+          "centrality_range": [0, 100],
+          "description": "High pT, full cos(θ*) range"
+        },
+        "signal_pdf": {
+          "type": "Gaussian",
+          "parameters": {
+            "mean": {"value": 0.1456, "min": 0.1453, "max": 0.1459, "fixed": false},
+            "sigma": {"value": 0.001, "min": 0.0001, "max": 0.01, "fixed": false}
+          }
+        },
+        "background_pdf": {
+          "type": "Chebychev",
+          "parameters": {
+            "c0": {"value": 0.1, "min": -1.0, "max": 1.0, "fixed": false},
+            "c1": {"value": -0.1, "min": -1.0, "max": 1.0, "fixed": false}
+          }
+        },
+        "yields": {
+          "nsig_ratio": {"value": 0.01, "min": 0.0001, "max": 0.05, "fixed": false},
+          "nbkg_ratio": {"value": 0.03, "min": 0.001, "max": 0.5, "fixed": false}
+        }
+      }
+    },
+    "default_parameters": {
+      "signal_pdf": {
+        "type": "DoubleGaussian",
+        "parameters": {
+          "mean": {"value": 0.1455, "min": 0.1452, "max": 0.1458, "fixed": false},
+          "sigma1": {"value": 0.0005, "min": 0.0001, "max": 0.01, "fixed": false},
+          "sigma2": {"value": 0.001, "min": 0.0001, "max": 0.01, "fixed": false},
+          "fraction": {"value": 0.7, "min": 0.0, "max": 1.0, "fixed": false}
+        }
+      },
+      "background_pdf": {
+        "type": "ThresholdFunction",
+        "parameters": {
+          "p0": {"value": 1.0, "min": -10.0, "max": 10.0, "fixed": false},
+          "p1": {"value": -1.0, "min": -10.0, "max": 10.0, "fixed": false},
+          "m_pi": {"value": 0.13957, "min": 0.13957, "max": 0.13957, "fixed": true}
+        }
+      },
+      "yields": {
+        "nsig_ratio": {"value": 0.005, "min": 0.0001, "max": 0.05, "fixed": false},
+        "nbkg_ratio": {"value": 0.02, "min": 0.001, "max": 0.5, "fixed": false}
+      }
+    }
+  }
+}

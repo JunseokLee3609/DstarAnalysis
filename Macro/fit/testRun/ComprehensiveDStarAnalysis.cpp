@@ -1,36 +1,13 @@
 #include "../MassFitter.h"
 #include "../Opt.h"
-#include "../DStarFitOpt.h"
 #include "../Params.h"
+#include "../Helper.h"
 #include "../PlotManager.h"
 #include "../DataLoader.h"
 #include "../DCAFitter.h"
 #include "../RobustParameterManager.h"
 #include "../../Tools/ConfigManager.h"
 #include "TSystem.h"
-
-// Forward declarations to avoid Helper.h dependency issues
-BinInfo createBinInfoFromFitOpt(const FitOpt& opt, double dcaMin = -999, double dcaMax = -999) {
-    return BinInfo(opt.pTMin, opt.pTMax, opt.cosMin, opt.cosMax, dcaMin, dcaMax);
-}
-
-void checkAndRecordFitStatus(RooFitResult* fitResult, const BinInfo& binInfo, 
-                            const std::string& fitType, const std::string& additionalInfo = "") {
-    if (fitResult) {
-        std::cout << "[FIT STATUS] " << fitType << " fit for pT[" << binInfo.pTMin << "-" << binInfo.pTMax 
-                  << "], cos[" << binInfo.cosMin << "-" << binInfo.cosMax << "]: status=" << fitResult->status();
-        if (!additionalInfo.empty()) std::cout << " (" << additionalInfo << ")";
-        std::cout << std::endl;
-    }
-}
-
-void printFailedFits() {
-    std::cout << "[FIT SUMMARY] Analysis completed - check individual fit status messages above." << std::endl;
-}
-
-void saveFitStatusToFile(const std::string& filename) {
-    std::cout << "[SAVE] Fit status would be saved to: " << filename << std::endl;
-}
 
 void ComprehensiveDStarAnalysis(bool doReFit = false, bool plotFit = true, bool useCUDA = true, 
                               bool useRobustFit = true, float pTMin = 4, float pTMax = 100, 
@@ -47,14 +24,7 @@ void ComprehensiveDStarAnalysis(bool doReFit = false, bool plotFit = true, bool 
     FitOpt opt;
     opt.useCUDA = useCUDA;
     opt.doFit = doReFit;
-    
-    // Set proper default values before calling DStarMCAbsDefault
-    opt.mvaMin = 0.0;  // Fix the mva value that was causing filename issues
-    opt.mvaVar = "mva";
-    opt.ptVar = "pT";
-    opt.cosVar = "cos";
-    
-    ConfigureDStarMCAbsFitOpt(opt);
+    opt.DStarMCAbsDefault();
     
     // Set kinematic ranges
     opt.pTMin = pTMin;

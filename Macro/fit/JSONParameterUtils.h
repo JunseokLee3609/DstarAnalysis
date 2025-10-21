@@ -10,6 +10,7 @@
 // Structure to hold parameter fixed flags information
 struct ParameterFixedInfo {
     std::map<std::string, bool> fixedFlags;
+    bool hasJSONConfig = false;
     
     void addFixedFlag(const std::string& paramName, bool isFixed) {
         fixedFlags[paramName] = isFixed;
@@ -28,6 +29,9 @@ struct ParameterFixedInfo {
             }
         }
     }
+
+    void setHasJSONConfig(bool value) { hasJSONConfig = value; }
+    bool HasJSONConfig() const { return hasJSONConfig; }
 };
 
 // Helper function to load bin parameters from JSON using automatic parameter matching
@@ -35,16 +39,72 @@ struct ParameterFixedInfo {
 std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithFixedInfo(const JSONParameterLoader& jsonLoader, const BinIdentifier& binId) {
     DStarBinParameters binParams;
     ParameterFixedInfo fixedInfo;
-    
+
+    bool hasJSONConfig = false;
+    bool baseLoaded = false;
+
+    if (binId.hasDcaRange()) {
+        BinIdentifier baseId = binId;
+        baseId.dcaMin = std::numeric_limits<double>::quiet_NaN();
+        baseId.dcaMax = std::numeric_limits<double>::quiet_NaN();
+
+        auto base = LoadBinParametersFromJSONWithFixedInfo(jsonLoader, baseId);
+        binParams = base.first;
+        fixedInfo = base.second;
+        hasJSONConfig = base.second.HasJSONConfig();
+        baseLoaded = true;
+    }
+
     // Get PDF types from JSON  
     std::string signalPdfType = jsonLoader.getPDFType(binId, "signal");
     std::string backgroundPdfType = jsonLoader.getPDFType(binId, "background");
+
+    if (signalPdfType.empty() && baseLoaded) {
+        switch (binParams.signalPdfType) {
+            case PDFType::Gaussian: signalPdfType = "Gaussian"; break;
+            case PDFType::DoubleGaussian: signalPdfType = "DoubleGaussian"; break;
+            case PDFType::CrystalBall: signalPdfType = "CrystalBall"; break;
+            case PDFType::DBCrystalBall: signalPdfType = "DBCrystalBall"; break;
+            case PDFType::DoubleDBCrystalBall: signalPdfType = "DoubleDBCrystalBall"; break;
+            case PDFType::Voigtian: signalPdfType = "Voigtian"; break;
+            case PDFType::BreitWigner: signalPdfType = "BreitWigner"; break;
+            default: break;
+        }
+        if (!signalPdfType.empty()) hasJSONConfig = true;
+    }
+
+    if (backgroundPdfType.empty() && baseLoaded) {
+        switch (binParams.backgroundPdfType) {
+            case PDFType::Exponential: backgroundPdfType = "Exponential"; break;
+            case PDFType::ThresholdFunction: backgroundPdfType = "ThresholdFunction"; break;
+            case PDFType::Chebychev: backgroundPdfType = "Chebychev"; break;
+            case PDFType::Phenomenological: backgroundPdfType = "Phenomenological"; break;
+            case PDFType::Phenomenological2: backgroundPdfType = "Phenomenological2"; break;
+            case PDFType::Polynomial: backgroundPdfType = "Polynomial"; break;
+            case PDFType::ExpErf: backgroundPdfType = "ExpErf"; break;
+            case PDFType::DstBkg: backgroundPdfType = "DstBkg"; break;
+            case PDFType::DstD0: backgroundPdfType = "DstD0"; break;
+            default: break;
+        }
+        if (!backgroundPdfType.empty()) hasJSONConfig = true;
+    }
     
     std::cout << "[JSON Utils] Signal PDF: " << signalPdfType 
               << ", Background PDF: " << backgroundPdfType << std::endl;
     
+    bool hasSignalConfig = !signalPdfType.empty();
+    bool hasBackgroundConfig = !backgroundPdfType.empty();
+
+    if (!hasSignalConfig) {
+        std::cout << "[JSON Utils] No signal PDF configuration found for requested bin; using defaults." << std::endl;
+    }
+    if (!hasBackgroundConfig) {
+        std::cout << "[JSON Utils] No background PDF configuration found for requested bin; using defaults." << std::endl;
+    }
+
     // Set Signal PDF parameters based on type
     if (signalPdfType == "Gaussian") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::Gaussian;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.gaussianParams.mean = param.value;
@@ -59,6 +119,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("sigma_gauss", param.isFixed);
         
     } else if (signalPdfType == "DoubleGaussian") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::DoubleGaussian;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.doubleGaussianParams.mean = param.value;
@@ -85,6 +146,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("fraction_doublegauss", param.isFixed);
         
     } else if (signalPdfType == "CrystalBall") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::CrystalBall;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.crystalBallParams.mean = param.value;
@@ -111,6 +173,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("n_cb", param.isFixed);
         
     } else if (signalPdfType == "DBCrystalBall") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::DBCrystalBall;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.dbCrystalBallParams.mean = param.value;
@@ -130,9 +193,12 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
                       << binParams.dbCrystalBallParams.sigma_min << ", "
                       << binParams.dbCrystalBallParams.sigma_max << "]" << std::endl;
         } else {
-            // Load L/R if provided and compute symmetric sigma
-            auto pL = jsonLoader.getParameter(binId, "signal_sigmaL");
-            auto pR = jsonLoader.getParameter(binId, "signal_sigmaR");
+            auto pL = jsonLoader.hasParameter(binId, "signal_sigmaL")
+                          ? jsonLoader.getParameter(binId, "signal_sigmaL")
+                          : FitParameter();
+            auto pR = jsonLoader.hasParameter(binId, "signal_sigmaR")
+                          ? jsonLoader.getParameter(binId, "signal_sigmaR")
+                          : FitParameter();
             binParams.dbCrystalBallParams.sigmaL = pL.value;
             binParams.dbCrystalBallParams.sigmaL_min = pL.min;
             binParams.dbCrystalBallParams.sigmaL_max = pL.max;
@@ -179,6 +245,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("nR_dbcb", param.isFixed);
         
     } else if (signalPdfType == "DoubleDBCrystalBall") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::DoubleDBCrystalBall;
         auto param = jsonLoader.getParameter(binId, "signal_mean1");
         binParams.doubleDBCrystalBallParams.mean1 = param.value;
@@ -258,6 +325,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("fraction_ddbcb", param.isFixed);
         
     } else if (signalPdfType == "Voigtian") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::Voigtian;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.voigtianParams.mean = param.value;
@@ -278,6 +346,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("width_voigt", param.isFixed);
         
     } else if (signalPdfType == "BreitWigner") {
+        hasJSONConfig = true;
         binParams.signalPdfType = PDFType::BreitWigner;
         auto param = jsonLoader.getParameter(binId, "signal_mean");
         binParams.breitWignerParams.mean = param.value;
@@ -294,6 +363,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
     
     // Set Background PDF parameters based on type
     if (backgroundPdfType == "ThresholdFunction") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::ThresholdFunction;
         auto param = jsonLoader.getParameter(binId, "background_p0");
         binParams.thresholdFuncParams.p0_init = param.value;
@@ -312,6 +382,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("m_pi_threshold", param.isFixed);
         
     } else if (backgroundPdfType == "Exponential") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::Exponential;
         auto param = jsonLoader.getParameter(binId, "background_lambda");
         if (!jsonLoader.hasParameter(binId, "background_lambda")) {
@@ -324,6 +395,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("lambda_exp", param.isFixed);
         
     } else if (backgroundPdfType == "Chebychev") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::Chebychev;
         auto param = jsonLoader.getParameter(binId, "background_c0");
         binParams.chebychevParams.coefficients = {param.value};
@@ -348,6 +420,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         }
         
     } else if (backgroundPdfType == "Phenomenological") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::Phenomenological;
         auto param = jsonLoader.getParameter(binId, "background_p0");
         binParams.phenomenologicalParams.p0 = param.value;
@@ -374,6 +447,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("p2_phenom", param.isFixed);
 
     } else if (backgroundPdfType == "Phenomenological2" || backgroundPdfType == "Phenomelogical2") {
+        hasJSONConfig = true;
         // Support both correct and typo spellings
         binParams.backgroundPdfType = PDFType::Phenomenological2;
         auto param = jsonLoader.getParameter(binId, "background_m");
@@ -402,6 +476,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         }
         
     } else if (backgroundPdfType == "Polynomial") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::Polynomial;
         auto param = jsonLoader.getParameter(binId, "background_c0");
         binParams.polynomialParams.coefficients = {param.value};
@@ -426,6 +501,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         }
         
     } else if (backgroundPdfType == "ExpErf") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::ExpErf;
         auto param = jsonLoader.getParameter(binId, "background_err_mu");
         binParams.expErfParams.err_mu = param.value;
@@ -446,6 +522,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         fixedInfo.addFixedFlag("m_lambda_experf", param.isFixed);
         
     } else if (backgroundPdfType == "DstBkg") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::DstBkg;
         auto param = jsonLoader.getParameter(binId, "background_p0");
         binParams.dstBkgParams.p0 = param.value;
@@ -465,6 +542,7 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
         binParams.dstBkgParams.p2_max = param.max;
         fixedInfo.addFixedFlag("p2_dstbkg", param.isFixed);
     } else if (backgroundPdfType == "DstD0") {
+        hasJSONConfig = true;
         binParams.backgroundPdfType = PDFType::DstD0;
         auto param = jsonLoader.getParameter(binId, "background_p0");
         binParams.dstD0Params.p0 = param.value;
@@ -486,18 +564,41 @@ std::pair<DStarBinParameters, ParameterFixedInfo> LoadBinParametersFromJSONWithF
     }
     
     // Load yield parameters
-    auto param = jsonLoader.getParameter(binId, "nsig_ratio");
-    binParams.nsig_ratio = param.value;
-    binParams.nsig_min_ratio = param.min;
-    binParams.nsig_max_ratio = param.max;
-    fixedInfo.addFixedFlag("nsig_ratio", param.isFixed);
-    
-    param = jsonLoader.getParameter(binId, "nbkg_ratio");
-    binParams.nbkg_ratio = param.value;
-    binParams.nbkg_min_ratio = param.min;
-    binParams.nbkg_max_ratio = param.max;
-    fixedInfo.addFixedFlag("nbkg_ratio", param.isFixed);
-    
+    if (jsonLoader.hasParameter(binId, "nsig_ratio")) {
+        auto param = jsonLoader.getParameter(binId, "nsig_ratio");
+        binParams.nsig_ratio = param.value;
+        binParams.nsig_min_ratio = param.min;
+        binParams.nsig_max_ratio = param.max;
+        fixedInfo.addFixedFlag("nsig_ratio", param.isFixed);
+        hasJSONConfig = true;
+    }
+    if (jsonLoader.hasParameter(binId, "nbkg_ratio")) {
+        auto param = jsonLoader.getParameter(binId, "nbkg_ratio");
+        binParams.nbkg_ratio = param.value;
+        binParams.nbkg_min_ratio = param.min;
+        binParams.nbkg_max_ratio = param.max;
+        fixedInfo.addFixedFlag("nbkg_ratio", param.isFixed);
+        hasJSONConfig = true;
+    }
+
+    if (!hasJSONConfig) {
+        if (hasSignalConfig || hasBackgroundConfig || jsonLoader.hasParameter(binId, "nsig_ratio") ||
+            jsonLoader.hasParameter(binId, "nbkg_ratio")) {
+            hasJSONConfig = true;
+        }
+    }
+
+    fixedInfo.setHasJSONConfig(hasJSONConfig);
+    if (!hasJSONConfig) {
+        std::ostringstream binDesc;
+        binDesc << binId.getBinKey();
+        if (binId.hasDcaRange()) {
+            binDesc << ".dca[" << binId.dcaMin << ", " << binId.dcaMax << "]";
+        }
+        std::cout << "[JSON Utils] No JSON configuration found for bin '"
+                  << binDesc.str() << "'. Using default parameters." << std::endl;
+    }
+
     // Debug print
     std::cout << "[JSON Utils] Collected fixed flags:" << std::endl;
     fixedInfo.printFixedFlags();

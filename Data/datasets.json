@@ -1,0 +1,12 @@
+{
+  "datasets": {
+    "PbPb_Data_Aug25": {
+      "file": "/home/jun502s/DstarAna/DStarAnalysis/Macro/skim/Data/FlatSample/PbPbData/0822/flatSkimForBDT_DStar_dstar_PbPb_Data_wEvtplane_mva0p99_Aug25.root",
+      "dataset_name": "skimTreeFlat",
+      "description": "PbPb data flat skim file with event plane and MVA cut 0.99 (August 25, 2025)"
+    }
+  },
+  "defaults": {
+    "data": "PbPb_Data_Aug25"
+  }
+}

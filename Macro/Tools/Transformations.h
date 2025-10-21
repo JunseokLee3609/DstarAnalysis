@@ -1,6 +1,7 @@
 /// Helping functions returning the positive muon's coordinates in a given reference frame based on the TLorentzVectors in the lab frame
 #include "TVector3.h"
 #include "TLorentzVector.h"
+#include <cmath>
 
 // Lab to Helicity
 TVector3 DstarDau1Vector_Helicity(const TLorentzVector DstarLV_Lab, const TLorentzVector DstarDau1LV_Lab) {
@@ -87,20 +88,20 @@ TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLor
     Dau1LV_DstarRestFrame.Boost(-DstarLV_Lab.BoostVector());
 
     TVector3 Dau1Vec_Boosted = Dau1LV_DstarRestFrame.Vect();
-    // TVector3 DstarVec_Lab = DstarLV_Lab.Vect();
 
-    // ******** Rotate to align with standard coordinate system ******** //
-    // First rotate around Z to align with x-axis
-    // Dau1Vec_Boosted.RotateZ(-DstarVec_Lab.Phi());
-    // Then rotate around Y to align with z-axis  
-    // Dau1Vec_Boosted.RotateY(-DstarVec_Lab.Theta());
+    TVector3 epNormalLab(-std::sin(eventPlaneAngle), std::cos(eventPlaneAngle), 0.0);
+    TLorentzVector epNormal4(0.0, epNormalLab.X(), epNormalLab.Y(), epNormalLab.Z());
+    epNormal4.Boost(-DstarLV_Lab.BoostVector());
+    TVector3 epNormalRest = epNormal4.Vect();
 
-    // ******** Rotate around z-axis by event plane angle ******** //
-    // The event plane angle defines the quantization axis in the lab frame
-    // We rotate the daughter momentum by this angle to use event plane as reference
-    Dau1Vec_Boosted.RotateZ(-eventPlaneAngle);
+    if (epNormalRest.Mag2() == 0.0) {
+        return Dau1Vec_Boosted;
+    }
 
-    return Dau1Vec_Boosted;
+    TVector3 rotatedVec(Dau1Vec_Boosted);
+    rotatedVec.RotateUz(epNormalRest.Unit());
+
+    return rotatedVec;
 }
 // TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLorentzVector DstarDau1LV_Lab, double eventPlaneAngle) {
     

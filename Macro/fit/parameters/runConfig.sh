@@ -1,0 +1,4 @@
+
+python3 GenerateJSONWithDCA.py     --output dstar_parameters_DBCrystalBall_Phenomenological2_dca_v2.json   --pt-bins 5:7 7:10 10:20 20:50     --cos-bins=-1.0:-0.8 --cos-bins=-0.8:-0.6 --cos-bins=-0.6:-0.4 --cos-bins=-0.4:-0.2 --cos-bins=-0.2:0.0 --cos-bins=0.0:0.2 --cos-bins=0.2:0.4 --cos-bins=0.4:0.6 --cos-bins=0.6:0.8 --cos-bins=0.8:1.0     --cent-bins 0:100     --dca-bins 0.0:0.0012 0.0012:0.0023 0.0023:0.0039 0.0039:0.0059 0.0059:0.0085 0.0085:0.0160 0.0160:0.0281 0.0281:0.0476 0.0476:0.07 
+# python3 GenerateJSONWithDCA.py     --output dstar_parameters_DBCrystalBall_DstD0_dca_v1.json   --background DstD0  --pt-bins 5:7 7:10 10:20 20:50     --cos-bins 0:0.2 0.2:0.4 0.4:0.6 0.6:0.8 0.8:1.0     --cent-bins 0:100     --dca-bins 0.0:0.0012 0.0012:0.0023 0.0023:0.0039 0.0039:0.0059 0.0059:0.0085 0.0085:0.0160 0.0160:0.0281 0.0281:0.0476 0.0476:0.07 
+# Wrote JSON with 20 bins to dstar_parameters_DBCrystalBall_Phenomenological2_dca.json

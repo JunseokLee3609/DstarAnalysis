@@ -1,0 +1,50 @@
+# Compiled files
+*.o
+*.so
+*.d
+*.pcm
+*.pyc
+__pycache__/
+
+# ROOT files (large data)
+*.root
+!*Template*.root
+!*template*.root
+
+# Results
+Results/
+results/
+plots/
+Plots/
+
+# Logs
+logs/
+*.log
+
+# Backup files
+*_backup.*
+*.backup
+*_old.*
+*~
+*.bak
+*.swp
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Condor
+*.out
+*.err
+*.log
+condor_*.log
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db

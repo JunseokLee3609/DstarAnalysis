@@ -1,0 +1,177 @@
+# AI Agent Context Summary
+
+This file provides the essential context for AI agents working with this repository.
+
+## 🎯 Quick Facts
+
+- **Project**: D* Meson Analysis for CMS
+- **Systems**: pp collisions, PbPb collisions
+- **Framework**: ROOT 6.24+, RooFit
+- **Language**: C++ (C++17)
+- **Location**: `/home/jun502s/DstarAna/DStarAnalysis`
+
+## ⚠️ CRITICAL FIRST STEP
+
+**ALWAYS run before any analysis**:
+```bash
+ROOT6.24
+```
+
+This is an alias that sets up ROOT environment. Without it, nothing works.
+
+## 📂 Repository Structure (Simplified)
+
+```
+DStarAnalysis/
+├── Analysis/
+│   ├── Common/          # Shared code
+│   ├── PP/              # pp analysis → DStarAnalysisPP.cpp
+│   └── PbPb/            # PbPb analysis → DStarAnalysisPbPb.cpp
+├── Preprocessing/       # Data preparation
+├── Corrections/         # Efficiency maps
+├── Tools/               # Utilities (kinematics, plotting)
+└── Data/                # Data files (organized by PP/PbPb)
+```
+
+## 🔍 Most Important Files for AI Agents
+
+1. **AI_AGENT_GUIDE.md** - Quick reference (read this first!)
+2. **ENVIRONMENT.md** - Environment setup details
+3. **REPOSITORY_STRUCTURE.md** - Complete structure documentation
+4. **Analysis/PP/DStarAnalysisPP.cpp** - PP analysis
+5. **Analysis/PbPb/DStarAnalysisPbPb.cpp** - PbPb analysis
+
+## 🚀 Common Commands
+
+### Setup and Check
+```bash
+ROOT6.24                           # Setup ROOT
+root --version                     # Verify ROOT
+bash check_environment.sh          # Check full environment
+```
+
+### Run Analysis
+```bash
+cd Analysis/PP
+root -l -b -q DStarAnalysisPP.cpp  # PP analysis (batch mode)
+
+cd Analysis/PbPb
+root -l -b -q DStarAnalysisPbPb.cpp  # PbPb analysis (batch mode)
+```
+
+### Navigate Repository
+```bash
+cd /home/jun502s/DstarAna/DStarAnalysis
+ls Analysis/Common/Core/           # Core fitting classes
+ls Corrections/Generators/PP/      # PP correction generation
+ls Data/RDS/PP/Data/               # PP data files
+```
+
+## 💡 Quick Decision Tree
+
+**User asks about pp?**
+→ `Analysis/PP/DStarAnalysisPP.cpp`
+
+**User asks about PbPb or centrality?**
+→ `Analysis/PbPb/DStarAnalysisPbPb.cpp`
+
+**User asks about fitting?**
+→ `Analysis/Common/Core/MassFitterV2.h` or `DCAFitter.h`
+
+**User asks about efficiency?**
+→ `Corrections/Generators/{PP,PbPb}/`
+
+**User asks about kinematics/helicity?**
+→ `Tools/Kinematics/Transformations.h`
+
+**User mentions ROOT error?**
+→ Check if `ROOT6.24` was run first!
+
+## 🎨 Code Patterns
+
+### Running ROOT Scripts
+```bash
+# Always use batch mode (-b) and quit after (-q)
+root -l -b -q script.cpp
+
+# With output logging
+root -l -b -q script.cpp > output.log 2>&1
+
+# With arguments
+root -l -b -q 'script.cpp(arg1, arg2)'
+```
+
+### Include Paths (from PP/PbPb analysis)
+```cpp
+#include "../../Common/Core/MassFitterV2.h"
+#include "../../Common/Config/DStarFitConfig.h"
+#include "../../../Tools/Kinematics/Transformations.h"
+```
+
+## 🔄 Typical Workflow
+
+1. Setup: `ROOT6.24`
+2. Navigate: `cd /home/jun502s/DstarAna/DStarAnalysis`
+3. Preprocess (if needed): `cd Preprocessing/Common && root -l -b -q DStarRDSMakerImproved.cpp`
+4. Analyze: `cd Analysis/PP && root -l -b -q DStarAnalysisPP.cpp`
+5. Check results: `ls ../../Results/PP/Plots/`
+
+## 🚨 Common Pitfalls
+
+1. **Forgot ROOT6.24** - Most common error!
+2. **Wrong working directory** - Use absolute paths or check `pwd`
+3. **Include paths** - Use relative paths from current file
+4. **Centrality in PP** - PbPb only!
+5. **Data file paths** - Check Data/ structure
+
+## 📚 Full Documentation
+
+- Start: `cat AI_AGENT_GUIDE.md`
+- Environment: `cat ENVIRONMENT.md`
+- Structure: `cat REPOSITORY_STRUCTURE.md`
+- Index: `cat INDEX.md`
+
+## 🔍 Search Commands
+
+```bash
+# Find PP code
+find Analysis/PP -name "*.cpp"
+
+# Find all efficiency files
+find Corrections -name "*Efficiency*"
+
+# Search for a function
+grep -r "DstarDau1Vector_Helicity" .
+
+# Find data files
+find Data/RDS -name "*.root"
+```
+
+## ✅ Environment Check
+
+```bash
+bash check_environment.sh
+```
+
+This checks:
+- ROOT availability
+- Environment variables
+- Project structure
+- Data files
+- Disk space
+
+## 🎓 Key Concepts
+
+- **PP**: proton-proton collisions (no centrality)
+- **PbPb**: lead-lead collisions (includes centrality)
+- **HX Frame**: Helicity frame (most common)
+- **CS Frame**: Collins-Soper frame
+- **EP Frame**: Event Plane frame (for flow)
+- **RDS**: RooDataSet (ROOT data format for fitting)
+- **DCA**: Distance of Closest Approach (prompt/non-prompt separation)
+
+---
+
+**Last Updated**: 2025-10-14
+**For Questions**: See documentation in repository root
+

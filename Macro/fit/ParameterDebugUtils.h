@@ -4,7 +4,11 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include "DStarFitConfig.h"
+// Optional unified logging
+#include "ErrorHandler.h"
 
 namespace ParameterDebug {
 
@@ -25,22 +29,36 @@ template<> inline std::string GetPDFTypeNameDbg<PDFParams::ExponentialBkgParams>
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::ChebychevBkgParams>() { return "Chebychev"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::PhenomenologicalParams>() { return "Phenomenological"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::PolynomialBkgParams>() { return "Polynomial"; }
+template<> inline std::string GetPDFTypeNameDbg<PDFParams::Phenomenological2Params>() { return "Phenomenological2"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::ThresholdFuncParams>() { return "ThresholdFunction"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::ExpErfBkgParams>() { return "ExpErf"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::DstBkgParams>() { return "DstBg"; }
 template<> inline std::string GetPDFTypeNameDbg<PDFParams::DstD0Params>() { return "DstD0Bg"; }
 
-inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters& params, const std::string& title = "") {
+inline void PrintBinParameters(const KinematicBin& bin,
+                               const DStarBinParameters& params,
+                               const std::string& title = "",
+                               double dcaMin = std::numeric_limits<double>::quiet_NaN(),
+                               double dcaMax = std::numeric_limits<double>::quiet_NaN()) {
     if (!title.empty()) {
         std::cout << "\n" << std::string(60, '=') << std::endl;
         std::cout << title << std::endl;
         std::cout << std::string(60, '=') << std::endl;
     }
 
-    std::cout << "📍 Bin: " << bin.GetBinName() << std::endl;
+    const bool hasDca = !std::isnan(dcaMin) && !std::isnan(dcaMax);
+
+    std::cout << "📍 Bin: " << bin.GetBinName();
+    if (hasDca) {
+        std::cout << " (DCA [" << dcaMin << ", " << dcaMax << "] cm)";
+    }
+    std::cout << std::endl;
     std::cout << "   pT: [" << bin.pTMin << ", " << bin.pTMax << "] GeV/c" << std::endl;
     std::cout << "   cos(θ*): [" << bin.cosMin << ", " << bin.cosMax << "]" << std::endl;
     std::cout << "   Centrality: [" << bin.centralityMin << ", " << bin.centralityMax << "]%" << std::endl;
+    if (hasDca) {
+        std::cout << "   DCA: [" << dcaMin << ", " << dcaMax << "] cm" << std::endl;
+    }
 
     std::cout << "\n🔍 PDF Configuration:" << std::endl;
     std::cout << "   Signal PDF: " << static_cast<int>(params.signalPdfType);
@@ -63,6 +81,7 @@ inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters
         case PDFType::Chebychev: std::cout << " (Chebychev)"; break;
         case PDFType::Phenomenological: std::cout << " (Phenomenological)"; break;
         case PDFType::Polynomial: std::cout << " (Polynomial)"; break;
+        case PDFType::Phenomenological2: std::cout << " (Phenomenological2)"; break;
         case PDFType::ExpErf: std::cout << " (ExpErf)"; break;
         case PDFType::DstBkg: std::cout << " (DstBkg)"; break;
         case PDFType::DstD0: std::cout << " (DstD0)"; break;
@@ -175,6 +194,13 @@ inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters
                       << ", p1: " << params.phenomenologicalParams.p1
                       << ", p2: " << params.phenomenologicalParams.p2 << std::endl;
             break;
+                case PDFType::Phenomenological2:
+            std::cout << "   m: " << params.phenomenological2Params.m
+                      << " [" << params.phenomenological2Params.m_min << ", " << params.phenomenological2Params.m_max << "]" << std::endl;
+            std::cout << "   lambda: " << params.phenomenological2Params.lambda
+                      << " [" << params.phenomenological2Params.lambda_min << ", " << params.phenomenological2Params.lambda_max << "]" << std::endl;
+            std::cout << "   m_pi: " << params.phenomenological2Params.m_pi_value << std::endl;
+            break;
         case PDFType::DstD0:
             std::cout << "   p0: " << params.dstD0Params.p0
                       << ", p1: " << params.dstD0Params.p1
@@ -224,6 +250,17 @@ inline void PrintBinParameters(const KinematicBin& bin, const DStarBinParameters
               << " [" << params.nbkg_min_ratio << ", " << params.nbkg_max_ratio << "]" << std::endl;
 
     std::cout << std::string(60, '-') << std::endl;
+}
+
+// Debug helpers used by DStarAnalysis when no external parameter file is provided
+inline void PrintInitialParametersBeforeLoading(const KinematicBin& bin,
+                                                const DStarBinParameters& params) {
+    ErrorHandlerManager::Instance().LogInfo("DEBUGGING: Initial Parameters (Before Loading)", "ParameterDebug");
+    PrintBinParameters(bin, params, "INITIAL PARAMETERS FOR TARGET BIN");
+}
+
+inline void PrintHardcodedFallbackNotice() {
+    ErrorHandlerManager::Instance().LogInfo("Setting hardcoded parameters for target bin...", "ParameterDebug");
 }
 
 inline void PrintAllConfigParameters(const DStarFitConfig& config, const std::string& title = "") {

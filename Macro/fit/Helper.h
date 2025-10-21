@@ -467,13 +467,43 @@ TFile* createFileInDir(const std::string& dirPath, const std::string& filePath) 
 }
 
 bool ensureDir(const std::string& dirPath) {
-    // kTRUE면 중간 경로까지 재귀적으로 생성
-    int rc = gSystem->mkdir(dirPath.c_str(), kTRUE);
+    if (dirPath.empty()) return false;
+
+    // Sanitize: remove trailing slashes except root
+    std::string path = dirPath;
+    while (path.size() > 1 && (path.back() == '/' || path.back() == '\\')) {
+        path.pop_back();
+    }
+
+    // If directory already exists, return true
+    if (void* d = gSystem->OpenDirectory(path.c_str())) {
+        gSystem->FreeDirectory(d);
+        return true;
+    }
+
+    // Try recursive creation
+    int rc = gSystem->mkdir(path.c_str(), kTRUE);
     if (rc == 0 || rc == -2) { // 0: 새로 생성, -2: 이미 존재
         return true;
     }
-    std::cerr << "Failed to create directory: " << dirPath
-              << " (rc=" << rc << ")\n";
+
+    // Fallback: create parent first then current
+    auto pos = path.find_last_of('/');
+    if (pos != std::string::npos && pos > 0) {
+        std::string parent = path.substr(0, pos);
+        if (ensureDir(parent)) {
+            rc = gSystem->mkdir(path.c_str(), /*recursive*/ false);
+            if (rc == 0 || rc == -2) return true;
+        }
+    }
+
+    // Final existence check
+    if (void* d2 = gSystem->OpenDirectory(path.c_str())) {
+        gSystem->FreeDirectory(d2);
+        return true;
+    }
+
+    std::cerr << "Failed to create directory: " << path << " (rc=" << rc << ")\n";
     return false;
 }
 
