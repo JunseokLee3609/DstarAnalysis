@@ -1,0 +1,57 @@
+# Kinematic bins configuration
+# Format: kinVarInt varName varMin varMax
+# kinVarInt: 0=pT, 1=rapidity, 2=centrality, 3=costheta
+
+# pT bins [GeV/c] - 5-20 with 1 GeV interval, 20-50 with 2 GeV interval
+0 pT 5 6
+0 pT 6 7
+0 pT 7 8
+0 pT 8 9
+0 pT 9 10
+0 pT 10 11
+0 pT 11 12
+0 pT 12 13
+0 pT 13 14
+0 pT 14 15
+0 pT 15 16
+0 pT 16 17
+0 pT 17 18
+0 pT 18 19
+0 pT 19 20
+0 pT 20 22
+0 pT 22 24
+0 pT 24 26
+0 pT 26 28
+0 pT 28 30
+0 pT 30 32
+0 pT 32 34
+0 pT 34 36
+0 pT 36 38
+0 pT 38 40
+0 pT 40 42
+0 pT 42 44
+0 pT 44 46
+0 pT 46 48
+0 pT 48 50
+
+# Rapidity bins (uncomment to use)
+# 1 y 0.0 0.3
+# 1 y 0.3 1.0
+# 1 y 1.0 1.6
+
+# Centrality bins (uncomment to use)
+# 2 centrality 0 20
+# 2 centrality 20 60
+# 2 centrality 60 100
+
+# Cos(theta) bins (uncomment to use)
+# 3 costheta -1.0 -0.8
+# 3 costheta -0.8 -0.6
+# 3 costheta -0.6 -0.4
+# 3 costheta -0.4 -0.2
+# 3 costheta -0.2 0.0
+# 3 costheta 0.0 0.2
+# 3 costheta 0.2 0.4
+# 3 costheta 0.4 0.6
+# 3 costheta 0.6 0.8
+# 3 costheta 0.8 1.0

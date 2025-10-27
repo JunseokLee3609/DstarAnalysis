@@ -1,0 +1,137 @@
+# Condor submit file for FitSingleBin.cpp batch processing
+Universe           = vanilla
+getenv             = True
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+# Output files to transfer back
+transfer_output_files = results
+
+# Executable wrapper script
+executable         = run_fit_single_bin.sh
+
+# Output/Error/Log files
+output             = logs/job_$(Cluster)_$(Process).out
+error              = logs/job_$(Cluster)_$(Process).err
+log                = logs/job_$(Cluster)_$(Process).log
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 5 6 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 6 7 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 7 8 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 8 9 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 9 10 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 10 11 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 11 12 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 12 13 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 13 14 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 14 15 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 15 16 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 16 17 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 17 18 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 18 19 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 19 20 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 20 22 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 22 24 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 24 26 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 26 28 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 28 30 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 30 32 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 32 34 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 34 36 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 36 38 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 38 40 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 40 42 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 42 44 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 44 46 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 46 48 0"
+queue
+
+transfer_input_files = run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json
+arguments = "0 48 50 0"
+queue
+

@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # Configuration
 SCRIPT="DStarAnalysisPbPb.cpp"
-PARAM_DIR="../Common/Parameters/PbPb"
+PARAM_DIR="Parameters"
 
 # Check if ROOT is setup
 if ! command -v root &> /dev/null; then
@@ -38,7 +38,7 @@ run_quick_test() {
     echo -e "${YELLOW}[Config 1] Quick Test - Single bin (Data only)${NC}"
     
     # Arguments same as PP but centrality is used
-    root -l -b -q "${SCRIPT}(1,0,1,1,7,10,0,0.2,0,10,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_DstD0_dca_pbpb_v1.json\",0)" \
+    root -l -b -q "${SCRIPT}(1,0,1,1,7,10,0,0.2,0,10,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_dca_pbpb_v1.json\",0)" \
         2>&1 | tee logs/quick_test_$(date +%Y%m%d_%H%M%S).log
     
     echo -e "${GREEN}✓ Quick test completed${NC}\n"
@@ -49,7 +49,7 @@ run_quick_test_mc() {
     echo -e "${YELLOW}[Config 1b] Quick Test - Single bin (MC only)${NC}"
     
     # Arguments same as PP but centrality is used
-    root -l -b -q "${SCRIPT}(1,0,1,1,5,7,0,0.2,0,10,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_DstD0_dca_pbpb_v1.json\",1)" \
+    root -l -b -q "${SCRIPT}(1,0,1,1,5,7,0,0.2,0,10,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json\",1)" \
         2>&1 | tee logs/quick_test_mc_$(date +%Y%m%d_%H%M%S).log
     
     echo -e "${GREEN}✓ Quick test MC completed${NC}\n"
@@ -59,7 +59,7 @@ run_quick_test_mc() {
 run_centrality_scan() {
     echo -e "${YELLOW}[Config 2] Centrality Scan${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     PT_MIN=5
     PT_MAX=10
     
@@ -91,7 +91,7 @@ run_centrality_scan() {
 run_costheta_scan() {
     echo -e "${YELLOW}[Config 3] cosTheta Scan (0-10% centrality)${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_DstD0_dca_pbpb_v3.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     PT_MIN=5
     PT_MAX=7
     CENT_MIN=0
@@ -130,7 +130,7 @@ run_costheta_scan() {
 run_pt_scan() {
     echo -e "${YELLOW}[Config 4] pT Scan (0-10% centrality)${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     CENT_MIN=0
     CENT_MAX=10
     
@@ -159,7 +159,7 @@ run_pt_scan() {
 run_mc_test() {
     echo -e "${YELLOW}[Config 5] MC Test${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     
     root -l -b -q "${SCRIPT}(0,1,1,1,5,7,0,0.2,0,10,\"${PARAM_FILE}\",0)" \
         2>&1 | tee logs/mc_test_$(date +%Y%m%d_%H%M%S).log
@@ -171,7 +171,7 @@ run_mc_test() {
 run_2d_scan() {
     echo -e "${YELLOW}[Config 6] 2D Scan (Centrality vs pT)${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     
     # Centrality bins
     CENT_BINS=("0 10" "10 30" "30 50")
@@ -213,7 +213,7 @@ run_custom() {
     COS_MAX=2
     CENT_MIN=0    # PbPb specific
     CENT_MAX=10   # PbPb specific
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PbPb.json"
     IS_MC=0
     
     echo -e "  Parameters:"

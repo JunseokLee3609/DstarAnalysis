@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # Configuration
 SCRIPT="DStarAnalysisPP.cpp"
-PARAM_DIR="../Common/Parameters/pp"
+PARAM_DIR="Parameters"
 
 # Check if ROOT is setup
 if ! command -v root &> /dev/null; then
@@ -41,7 +41,7 @@ run_quick_test() {
     # doReFit, doDCA, plotFit, useCUDA, pTMin, pTMax, cosMin, cosMax, 
     # centralityMin, centralityMax, parameterFile, isMC
     
-    root -l -b -q "${SCRIPT}(1,0,1,1,5,7,0,0.2,0,100,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json\",0)" \
+    root -l -b -q "${SCRIPT}(1,0,1,1,5,7,0,0.2,0,100,\"${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PP.json\",0)" \
         2>&1 | tee logs/quick_test_$(date +%Y%m%d_%H%M%S).log
     
     echo -e "${GREEN}✓ Quick test completed${NC}\n"
@@ -88,7 +88,7 @@ run_costheta_scan() {
 run_pt_scan() {
     echo -e "${YELLOW}[Config 3] pT Scan${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PP.json"
     
     # pT bins
     PT_BINS=(
@@ -116,7 +116,7 @@ run_pt_scan() {
 run_mc_test() {
     echo -e "${YELLOW}[Config 4] MC Test${NC}"
     
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PP.json"
     
     root -l -b -q "${SCRIPT}(0,1,1,1,5,7,0,0.2,0,100,\"${PARAM_FILE}\",1)" \
         2>&1 | tee logs/mc_test_$(date +%Y%m%d_%H%M%S).log
@@ -151,7 +151,7 @@ run_custom() {
     COS_MAX=2
     CENT_MIN=0
     CENT_MAX=100
-    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2.json"
+    PARAM_FILE="${PARAM_DIR}/dstar_parameters_DBCrystalBall_Phenomenological2_PP.json"
     IS_MC=0
     
     echo -e "  Parameters:"

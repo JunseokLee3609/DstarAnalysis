@@ -422,8 +422,10 @@ inline std::unique_ptr<RooAbsPdf> PDFFactory::CreatePhenomenological2(const PDFP
     args.add(*mPtr);
     args.add(*lPtr);
 
-    // (x - m0)^m * exp(lambda * (x - m0))
-    std::string formula = "TMath::Power((@0 - @1), @2) * TMath::Exp(@3 * (@0 - @1))";
+    // Stabilized formula with Heaviside threshold and numerical clamping:
+    // (@0>@1) * (max(@0-@1, 1e-9))^@2 * exp(@3 * max(@0-@1, 0))
+    // Enforces physical threshold at pion mass and prevents numerical instabilities
+    std::string formula = "(@0>@1) * TMath::Power(TMath::Max(@0-@1, 1e-9), @2) * TMath::Exp(@3 * TMath::Max(@0-@1, 0.0))";
     return std::make_unique<RooGenericPdf>(name.c_str(), ("Phenomenological2_" + name).c_str(), formula.c_str(), args);
 }
 

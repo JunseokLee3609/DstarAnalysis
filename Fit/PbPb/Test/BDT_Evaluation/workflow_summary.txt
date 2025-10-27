@@ -1,0 +1,38 @@
+=== WORKFLOW 확인 ===
+
+1. MC histogram generation (dataType=0, generateHistograms=1, doFit=0)
+   - Dataset에서 cascading reduction으로 히스토그램 생성
+   - 히스토그램만 저장 (fitting 없음)
+   
+2. MC fitting (dataType=0, generateHistograms=0, doFit=1)
+   - 저장된 히스토그램 로드
+   - Signal-only fit (tail parameters 추출)
+   - Fit 결과 저장 (fitresult_*.root)
+   - Plot 저장 (MC plot + param pad)
+   
+3. Data histogram generation (dataType=1, generateHistograms=1, doFit=0)
+   - Dataset에서 cascading reduction으로 히스토그램 생성
+   - 히스토그램만 저장 (fitting 없음)
+   
+4. Data fitting (dataType=1, generateHistograms=0, doFit=1)
+   - 저장된 히스토그램 로드
+   - MC fit 결과에서 fixed parameters 로드 (JSON에서 fixed=true인 것들)
+   - Signal+Background fit
+   - Plot 저장 (MC plot + MC param + Data plot + Data param, 4-pad)
+
+=== 현재 코드 구조 ===
+
+Line 400-497: Histogram generation or loading
+  - if (generateHistograms): Dataset에서 히스토그램 생성 (cascading)
+  - else: 캐시에서 히스토그램 로드
+
+Line 500-544: doFit=0이면 여기서 종료
+  - Raw histogram 저장
+  - continue (fitting 건너뜀)
+
+Line 546+: Fitting 시작
+  - JSON에서 parameters 로드
+  - MC fit 결과 로드 (Data fit인 경우)
+  - Fit 수행
+  - Plot 저장
+

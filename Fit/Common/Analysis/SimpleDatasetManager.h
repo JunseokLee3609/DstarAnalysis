@@ -1,6 +1,7 @@
 #ifndef SIMPLE_DATASET_MANAGER_HEADER_ONLY_H
 #define SIMPLE_DATASET_MANAGER_HEADER_ONLY_H
 
+#include <cstdlib>
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -32,59 +33,120 @@ private:
     std::string defaultMC_;
     std::string configFile_;
     bool loaded_;
-    
-    // Simple JSON parsing using existing SimpleJSON class
+
+    static bool FileExists(const std::string& path) {
+        std::ifstream fin(path.c_str(), std::ios::in);
+        return fin.good();
+    }
+
+    void ClearCachedData() {
+        datasets_.clear();
+        defaultData_.clear();
+        defaultMC_.clear();
+        loaded_ = false;
+    }
+
+    bool EnsureConfigPath() {
+        if (!configFile_.empty()) {
+            return true;
+        }
+        const char* envPath = std::getenv("DSTAR_DATASET_CONFIG");
+        if (envPath && *envPath) {
+            configFile_ = envPath;
+            return true;
+        }
+        return false;
+    }
+
     bool ParseDatasetsJSON(const std::string& filename) {
         SimpleJSON jsonParser;
         jsonParser.loadFromFile(filename);
-        
-        // Get all keys and find dataset entries
+
         auto allKeys = jsonParser.getKeys();
-        
+
         for (const auto& key : allKeys) {
-            // Check if this is a dataset entry (starts with "datasets." and ends with ".file")
             if (key.find("datasets.") == 0 && key.find(".file") == key.length() - 5) {
-                // Extract dataset name (e.g., "datasets.PP_Data.file" -> "PP_Data")
-                std::string datasetKey = key.substr(9); // Remove "datasets."
-                datasetKey = datasetKey.substr(0, datasetKey.length() - 5); // Remove ".file"
-                
+                std::string datasetKey = key.substr(9);
+                datasetKey = datasetKey.substr(0, datasetKey.length() - 5);
+
                 std::string fileKey = "datasets." + datasetKey + ".file";
                 std::string nameKey = "datasets." + datasetKey + ".dataset_name";
                 std::string descKey = "datasets." + datasetKey + ".description";
-                
+
                 std::string file = jsonParser.getString(fileKey, "");
                 std::string dataset_name = jsonParser.getString(nameKey, "datasetHX");
                 std::string description = jsonParser.getString(descKey, "");
-                
+
                 if (!file.empty()) {
                     datasets_[datasetKey] = DatasetInfo(file, dataset_name, description);
                 }
             }
         }
-        
-        // Parse defaults
+
         defaultData_ = jsonParser.getString("defaults.data", "");
         defaultMC_ = jsonParser.getString("defaults.mc", "");
-        
+
         return true;
     }
-    
+
 public:
-    SimpleDatasetManager(const std::string& configFile = "datasets.json") 
+    SimpleDatasetManager(const std::string& configFile = std::string(), bool autoLoad = true)
         : configFile_(configFile), loaded_(false) {
-        LoadConfig();
+        if (configFile_.empty()) {
+            const char* envPath = std::getenv("DSTAR_DATASET_CONFIG");
+            if (envPath && *envPath) {
+                configFile_ = envPath;
+            }
+        }
+        if (autoLoad) {
+            EnsureLoaded();
+        }
     }
-    
+
     ~SimpleDatasetManager() = default;
-    
-    // Load JSON configuration
+
+    void SetConfigFile(const std::string& configFile, bool loadNow = true) {
+        configFile_ = configFile;
+        ClearCachedData();
+        if (loadNow) {
+            EnsureLoaded();
+        }
+    }
+
+    bool EnsureLoaded() {
+        if (loaded_) {
+            return true;
+        }
+
+        if (!EnsureConfigPath()) {
+            std::cerr << "[SimpleDatasetManager] No dataset configuration path set. Set DSTAR_DATASET_CONFIG or call SetConfigFile()." << std::endl;
+            return false;
+        }
+
+        if (!FileExists(configFile_)) {
+            std::cerr << "[SimpleDatasetManager] Dataset configuration file not found: " << configFile_ << std::endl;
+            return false;
+        }
+
+        return LoadConfig();
+    }
+
     bool LoadConfig() {
+        if (configFile_.empty()) {
+            std::cerr << "[SimpleDatasetManager] Cannot load dataset configuration: path is empty." << std::endl;
+            return false;
+        }
+        if (!FileExists(configFile_)) {
+            std::cerr << "[SimpleDatasetManager] Dataset configuration file not found: " << configFile_ << std::endl;
+            return false;
+        }
+
+        ClearCachedData();
         loaded_ = ParseDatasetsJSON(configFile_);
         if (loaded_) {
             std::cout << "[SimpleDatasetManager] Dataset configuration loaded from: " << configFile_ << std::endl;
             std::cout << "[SimpleDatasetManager] Loaded " << datasets_.size() << " datasets." << std::endl;
-            
-            // Debug: Print all loaded datasets
+
             std::cout << "[SimpleDatasetManager] === Loaded Datasets ===" << std::endl;
             for (const auto& pair : datasets_) {
                 std::cout << "[SimpleDatasetManager]   " << pair.first << ":" << std::endl;
@@ -92,8 +154,7 @@ public:
                 std::cout << "[SimpleDatasetManager]     Dataset Name: " << pair.second.dataset_name << std::endl;
                 std::cout << "[SimpleDatasetManager]     Description: " << pair.second.description << std::endl;
             }
-            
-            // Debug: Print defaults
+
             std::cout << "[SimpleDatasetManager] === Defaults ===" << std::endl;
             std::cout << "[SimpleDatasetManager]   Default Data: " << defaultData_ << std::endl;
             std::cout << "[SimpleDatasetManager]   Default MC: " << defaultMC_ << std::endl;
@@ -103,93 +164,85 @@ public:
         }
         return loaded_;
     }
-    
-    // Get dataset by simple string key
+
     DatasetInfo GetDataset(const std::string& key) {
-        // Debug: trace dataset lookup requests
         std::cout << "[SimpleDatasetManager] GetDataset request key='" << key << "'" << std::endl;
-        if (!loaded_) {
-            std::cerr << "Config not loaded!" << std::endl;
+        if (!EnsureLoaded()) {
+            std::cerr << "[SimpleDatasetManager] Config not loaded!" << std::endl;
             return DatasetInfo{};
         }
-        
+
         auto it = datasets_.find(key);
         if (it != datasets_.end()) {
             return it->second;
-        } else {
-            std::cerr << "Dataset '" << key << "' not found!" << std::endl;
-            return DatasetInfo{};
         }
+
+        std::cerr << "[SimpleDatasetManager] Dataset '" << key << "' not found!" << std::endl;
+        return DatasetInfo{};
     }
-    
-    // Get default datasets
+
     DatasetInfo GetDefaultData() {
-        if (!loaded_ || defaultData_.empty()) {
+        if (!EnsureLoaded() || defaultData_.empty()) {
             return DatasetInfo{};
         }
         return GetDataset(defaultData_);
     }
-    
+
     DatasetInfo GetDefaultMC() {
-        if (!loaded_ || defaultMC_.empty()) {
+        if (!EnsureLoaded() || defaultMC_.empty()) {
             return DatasetInfo{};
         }
         return GetDataset(defaultMC_);
     }
-    
-    // List all available dataset keys
+
     std::vector<std::string> GetAvailableDatasets() {
+        if (!EnsureLoaded()) {
+            return {};
+        }
         std::vector<std::string> keys;
         for (const auto& pair : datasets_) {
             keys.push_back(pair.first);
         }
         return keys;
     }
-    
-    // Print all available datasets
+
     void PrintAvailableDatasets() {
-        if (!loaded_) {
+        if (!EnsureLoaded()) {
             std::cout << "Config not loaded!" << std::endl;
             return;
         }
-        
+
         std::cout << "\n=== Available Datasets ===" << std::endl;
-        
+
         for (const auto& pair : datasets_) {
             std::cout << pair.first << ": " << pair.second.file << std::endl;
             if (!pair.second.description.empty()) {
                 std::cout << "  Description: " << pair.second.description << std::endl;
             }
         }
-        
+
         std::cout << "\n=== Default Datasets ===" << std::endl;
         if (!defaultData_.empty()) {
-            auto defaultData = GetDefaultData();
+            auto defaultData = GetDataset(defaultData_);
             std::cout << "Default Data (" << defaultData_ << "): " << defaultData.file << std::endl;
         }
         if (!defaultMC_.empty()) {
-            auto defaultMC = GetDefaultMC();
+            auto defaultMC = GetDataset(defaultMC_);
             std::cout << "Default MC (" << defaultMC_ << "): " << defaultMC.file << std::endl;
         }
     }
-    
-    // Check if config is loaded
+
     bool IsLoaded() const { return loaded_; }
-    
-    // Get config file path
+
     std::string GetConfigFile() const { return configFile_; }
-    
-    // Reload config
+
     bool Reload() {
-        datasets_.clear();
-        defaultData_.clear();
-        defaultMC_.clear();
-        return LoadConfig();
+        loaded_ = false;
+        return EnsureLoaded();
     }
 };
-
 // Global instance for easy access
-SimpleDatasetManager gDatasetManager;
+SimpleDatasetManager gDatasetManager(std::string(), false);
 
 // Convenience functions - simple string-based access
 inline DatasetInfo GetDataset(const std::string& key) {
@@ -227,7 +280,7 @@ inline void ReloadDatasets() {
 inline void TestDatasetManager() {
     std::cout << "=== Testing Dataset Manager ===" << std::endl;
     
-    if (!gDatasetManager.IsLoaded()) {
+    if (!gDatasetManager.EnsureLoaded()) {
         std::cout << "Failed to load dataset configuration!" << std::endl;
         return;
     }

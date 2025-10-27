@@ -1,0 +1,318 @@
+{
+  "pT_5.0_7.0": {
+    "kinematic": {
+      "pT_min": 5.0,
+      "pT_max": 7.0
+    },
+    "signal": {
+      "mean": {
+        "value": 0.1455,
+        "min": 0.145,
+        "max": 0.146,
+        "fixed": false
+      },
+      "sigma": {
+        "value": 0.0005,
+        "min": 0.0001,
+        "max": 0.01,
+        "fixed": false
+      },
+      "alphaL": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "alphaR": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "nL": {
+        "value": 2.0,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      },
+      "nR": {
+        "value": 2.5,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      }
+    },
+    "background": {
+      "m": {
+        "value": 0.5,
+        "min": 0.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "lambda": {
+        "value": 0.1,
+        "min": -500.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "m_pi": {
+        "value": 0.13957,
+        "min": 0.13957,
+        "max": 0.13957,
+        "fixed": true
+      }
+    },
+    "background_type": "Phenomenological2",
+    "yields": {
+      "nsig_ratio": {
+        "value": 0.1,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      },
+      "nbkg_ratio": {
+        "value": 0.8,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      }
+    }
+  },
+  "pT_7.0_10.0": {
+    "kinematic": {
+      "pT_min": 7.0,
+      "pT_max": 10.0
+    },
+    "signal": {
+      "mean": {
+        "value": 0.1455,
+        "min": 0.145,
+        "max": 0.146,
+        "fixed": false
+      },
+      "sigma": {
+        "value": 0.0005,
+        "min": 0.0001,
+        "max": 0.01,
+        "fixed": false
+      },
+      "alphaL": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "alphaR": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "nL": {
+        "value": 2.0,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      },
+      "nR": {
+        "value": 2.5,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      }
+    },
+    "background": {
+      "m": {
+        "value": 0.5,
+        "min": 0.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "lambda": {
+        "value": 0.1,
+        "min": -500.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "m_pi": {
+        "value": 0.13957,
+        "min": 0.13957,
+        "max": 0.13957,
+        "fixed": true
+      }
+    },
+    "background_type": "Phenomenological2",
+    "yields": {
+      "nsig_ratio": {
+        "value": 0.1,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      },
+      "nbkg_ratio": {
+        "value": 0.8,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      }
+    }
+  },
+  "pT_10.0_15.0": {
+    "kinematic": {
+      "pT_min": 10.0,
+      "pT_max": 15.0
+    },
+    "signal": {
+      "mean": {
+        "value": 0.1455,
+        "min": 0.145,
+        "max": 0.146,
+        "fixed": false
+      },
+      "sigma": {
+        "value": 0.0005,
+        "min": 0.0001,
+        "max": 0.01,
+        "fixed": false
+      },
+      "alphaL": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "alphaR": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "nL": {
+        "value": 2.0,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      },
+      "nR": {
+        "value": 2.5,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      }
+    },
+    "background": {
+      "m": {
+        "value": 0.5,
+        "min": 0.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "lambda": {
+        "value": 0.1,
+        "min": -500.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "m_pi": {
+        "value": 0.13957,
+        "min": 0.13957,
+        "max": 0.13957,
+        "fixed": true
+      }
+    },
+    "background_type": "Phenomenological2",
+    "yields": {
+      "nsig_ratio": {
+        "value": 0.1,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      },
+      "nbkg_ratio": {
+        "value": 0.8,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      }
+    }
+  },
+  "pT_15.0_20.0": {
+    "kinematic": {
+      "pT_min": 15.0,
+      "pT_max": 20.0
+    },
+    "signal": {
+      "mean": {
+        "value": 0.1455,
+        "min": 0.145,
+        "max": 0.146,
+        "fixed": false
+      },
+      "sigma": {
+        "value": 0.0005,
+        "min": 0.0001,
+        "max": 0.01,
+        "fixed": false
+      },
+      "alphaL": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "alphaR": {
+        "value": 1.1,
+        "min": 0.1,
+        "max": 4.0,
+        "fixed": true
+      },
+      "nL": {
+        "value": 2.0,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      },
+      "nR": {
+        "value": 2.5,
+        "min": 1.0,
+        "max": 100.0,
+        "fixed": true
+      }
+    },
+    "background": {
+      "m": {
+        "value": 0.5,
+        "min": 0.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "lambda": {
+        "value": 0.1,
+        "min": -500.0,
+        "max": 2.0,
+        "fixed": true
+      },
+      "m_pi": {
+        "value": 0.13957,
+        "min": 0.13957,
+        "max": 0.13957,
+        "fixed": true
+      }
+    },
+    "background_type": "Phenomenological2",
+    "yields": {
+      "nsig_ratio": {
+        "value": 0.1,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      },
+      "nbkg_ratio": {
+        "value": 0.8,
+        "min": 0.0,
+        "max": 1.0,
+        "fixed": false
+      }
+    }
+  }
+}

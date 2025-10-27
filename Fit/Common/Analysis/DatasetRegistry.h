@@ -11,7 +11,7 @@ inline DatasetConfig GetPPDataset() {
     std::cout << "[DatasetRegistry] Getting PP Dataset..." << std::endl;
     
     // Try to get from JSON first
-    if (gDatasetManager.IsLoaded()) {
+    if (gDatasetManager.EnsureLoaded()) {
         std::cout << "[DatasetRegistry] JSON manager is loaded, trying to get from JSON..." << std::endl;
         auto ppData = GetDataset("PP_Data");
         auto ppMC = GetDataset("PP_MC");
@@ -46,7 +46,7 @@ inline DatasetConfig GetPbPbDataset() {
     std::cout << "[DatasetRegistry] Getting PbPb Dataset..." << std::endl;
     
     // Try to get from JSON first
-    if (gDatasetManager.IsLoaded()) {
+    if (gDatasetManager.EnsureLoaded()) {
         std::cout << "[DatasetRegistry] JSON manager is loaded, trying to get from JSON..." << std::endl;
         auto pbpbData = GetDataset("PbPb_Data");
         auto pbpbMC = GetDataset("PbPb_MC");
@@ -82,7 +82,7 @@ inline DatasetConfig GetCustomDataset(const std::string& datasetKey) {
     std::cout << "[DatasetRegistry] Getting custom dataset: " << datasetKey << std::endl;
     DatasetConfig cfg;
     
-    if (gDatasetManager.IsLoaded()) {
+    if (gDatasetManager.EnsureLoaded()) {
         std::cout << "[DatasetRegistry] JSON manager is loaded, trying to get custom dataset..." << std::endl;
         auto info = GetDataset(datasetKey);
         if (!info.file.empty()) {
@@ -118,7 +118,7 @@ inline DatasetConfig GetPbPbDataMVA095() {
 inline DatasetConfig GetCustomCombinedDataset(const std::string& dataKey, const std::string& mcKey) {
     DatasetConfig cfg;
     
-    if (gDatasetManager.IsLoaded()) {
+    if (gDatasetManager.EnsureLoaded()) {
         auto dataInfo = GetDataset(dataKey);
         auto mcInfo = GetDataset(mcKey);
         
