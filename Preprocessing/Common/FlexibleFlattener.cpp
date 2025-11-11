@@ -1088,7 +1088,7 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
 
     if (type == 1) {
         // MC
-        outputPath = particleType==ParticleType::D0 ? "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "MC/D0" : "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "MC/DStar";
+        outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/" + std::string(collision_type) + "MC/D0" : "./Data/FlatSample/" + std::string(collision_type) + "MC/DStar";
         outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
         if(!path.empty()) mcPath = path;
         std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
@@ -1105,7 +1105,7 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
 
     } else if (type == 0) {
         // Data
-        outputPath = particleType==ParticleType::D0 ? "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Data/D0" : "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Data/DStar";
+        outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/" + std::string(collision_type) + "Data/D0" : "./Data/FlatSample/" + std::string(collision_type) + "Data/DStar";
         outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
         if(!path.empty()) dataPath = path;
         std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
@@ -1122,7 +1122,7 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
 
     } else if (type == 2) {
         // Mix
-        outputPath = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Mix/";
+        outputPath = "./Data/FlatSample/" + std::string(collision_type) + "Mix/";
         outputPrefix = "flatSkimForBDT_DStar_" + std::string(collision_type) + "Ref_NonSwapMix";
         std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
         if(!suffix.empty()){
