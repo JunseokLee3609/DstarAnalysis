@@ -1,6 +1,115 @@
 #include <fstream>
+#include <array>
+#include <cmath>
 #include <ROOT/TThreadExecutor.hxx>
-#include "../interface/simpleDMC.h"
+#include "../../Interface/simpleDMC.h"
+#include "CandidateSelection.h"
+#include <TString.h>
+#include <TFile.h>
+#include <TH1.h>
+#include <TH2.h>
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+}
+
+class EventPlaneCalibrator {
+public:
+    bool LoadCentering(const std::string& filename);
+    bool LoadFlattening(const std::string& filename);
+
+    bool HasCentering() const { return fHasCentering; }
+    bool HasFlattening() const { return fHasFlattening; }
+    bool IsReady() const { return fHasCentering && fHasFlattening; }
+
+    double EvalRaw(double qx, double qy) const { return 0.5 * std::atan2(qy, qx); }
+    double EvalRecentered(double qx, double qy) const;
+    double EvalFlattened(double qx, double qy) const;
+
+private:
+    static double WrapToHalfPi(double ang);
+
+    bool fHasCentering = false;
+    bool fHasFlattening = false;
+    double fQxMean = 0.0;
+    double fQyMean = 0.0;
+    std::array<double, 10> fSin2i{};
+    std::array<double, 10> fCos2i{};
+};
+
+bool EventPlaneCalibrator::LoadCentering(const std::string& filename) {
+    if (filename.empty()) return false;
+    TFile* infile = TFile::Open(filename.c_str());
+    if (!infile || infile->IsZombie()) {
+        std::cerr << "Warning: failed to open centering file " << filename << std::endl;
+        return false;
+    }
+    TH2* hQ = dynamic_cast<TH2*>(infile->Get("hQxvsQyRaw_Trk"));
+    if (!hQ) {
+        std::cerr << "Warning: histogram 'hQxvsQyRaw_Trk' missing in " << filename << std::endl;
+        infile->Close();
+        delete infile;
+        return false;
+    }
+    fQxMean = hQ->GetMean(1);
+    fQyMean = hQ->GetMean(2);
+    fHasCentering = true;
+    infile->Close();
+    delete infile;
+    return true;
+}
+
+bool EventPlaneCalibrator::LoadFlattening(const std::string& filename) {
+    if (filename.empty()) return false;
+    TFile* infile = TFile::Open(filename.c_str());
+    if (!infile || infile->IsZombie()) {
+        std::cerr << "Warning: failed to open flattening file " << filename << std::endl;
+        return false;
+    }
+    bool ok = true;
+    for (int i = 1; i < 11; ++i) {
+        TH1* hSin = dynamic_cast<TH1*>(infile->Get(Form("hsin2iPsi_Trk_%d", i)));
+        TH1* hCos = dynamic_cast<TH1*>(infile->Get(Form("hcos2iPsi_Trk_%d", i)));
+        if (!hSin || !hCos) {
+            std::cerr << "Warning: missing flattening histograms for harmonic " << i << " in " << filename << std::endl;
+            ok = false;
+            break;
+        }
+        fSin2i[i - 1] = hSin->GetMean(1);
+        fCos2i[i - 1] = hCos->GetMean(1);
+    }
+    fHasFlattening = ok;
+    infile->Close();
+    delete infile;
+    return ok;
+}
+
+double EventPlaneCalibrator::EvalRecentered(double qx, double qy) const {
+    if (!fHasCentering) return EvalRaw(qx, qy);
+    const double qxRec = qx - fQxMean;
+    const double qyRec = qy - fQyMean;
+    return 0.5 * std::atan2(qyRec, qxRec);
+}
+
+double EventPlaneCalibrator::EvalFlattened(double qx, double qy) const {
+    const double psiRec = EvalRecentered(qx, qy);
+    if (!fHasFlattening) return psiRec;
+    double deltaPsi = 0.0;
+    for (int i = 1; i < 11; ++i) {
+        const double coeff = 2.0 * i * psiRec;
+        deltaPsi += (2.0 / i) * ((-1.0) * fSin2i[i - 1] * std::cos(coeff) + fCos2i[i - 1] * std::sin(coeff));
+    }
+    return WrapToHalfPi(psiRec + 0.5 * deltaPsi);
+}
+
+double EventPlaneCalibrator::WrapToHalfPi(double ang) {
+    const double halfPi = 0.5 * kPi;
+    const double range = 2.0 * halfPi;
+    double wrapped = ang;
+    while (wrapped < -halfPi) wrapped += range;
+    while (wrapped > halfPi) wrapped -= range;
+    return wrapped;
+}
 
 float findNcoll(int hiBin) {
     const int nbins = 200;
@@ -254,7 +363,12 @@ void FlexibleMix(
                 simpleDMCTreeflat* doutMC = (simpleDMCTreeflat*)doutMCPtr;
 
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
-                    if (dinMC->matchGEN[iD1] == true) {
+                    const bool isMatched = dinMC->matchGEN[iD1];
+                    if (!CandidateSelection::PassD0MC(*dinMC, iD1)) {
+                        if (!isMatched) idxMC++;
+                        continue;
+                    }
+                    if (isMatched) {
                         doutMC->isMC = true;
                         doutMC->copyDn(*dinMC, iD1);
                         tskim->Fill();
@@ -272,7 +386,12 @@ void FlexibleMix(
                 simpleDStarMCTreeflat* doutMC = (simpleDStarMCTreeflat*)doutMCPtr;
 
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize)) {
-                    if (dinMC->matchGEN[iD1] == true) {
+                    const bool isMatched = dinMC->matchGEN[iD1];
+                    if (!CandidateSelection::PassDStarMC(*dinMC, iD1)) {
+                        if (!isMatched) idxMC++;
+                        continue;
+                    }
+                    if (isMatched) {
                         doutMC->isMC = true;
                         doutMC->copyDn(*dinMC, iD1);
                         tskim->Fill();
@@ -299,6 +418,10 @@ void FlexibleMix(
                 simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
 
                 for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                    if (!CandidateSelection::PassD0Data(*dinData, iD1)) {
+                        idxData++;
+                        continue;
+                    }
                     if (idxData % dataSampleRate == 0) {
                         doutMC->isMC = false;
                         doutMC->isSwap = 0;
@@ -313,6 +436,10 @@ void FlexibleMix(
                 simpleDStarDataTreeevt* dinData = (simpleDStarDataTreeevt*)dinDataPtr;
 
                 for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
+                    if (!CandidateSelection::PassDStarData(*dinData, iD1)) {
+                        idxData++;
+                        continue;
+                    }
                     if (idxData % dataSampleRate == 0) {
                         doutMC->isMC = false;
                         doutMC->isSwap = 0;
@@ -364,7 +491,8 @@ void FlexibleData(
     ParticleType particleType = ParticleType::D0, // 입자 타입 (D0 또는 DStar)
     bool doCent = true,                 // 중앙값 설정 여부 (추가)
     bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
-    const std::string& date = "20250320"  // 날짜 문자열
+    const std::string& date = "20250320",  // 날짜 문자열
+    const EventPlaneCalibrator* trkCalibrator = nullptr
 ) {
     std::cout << "Starting FlexibleData job #" << jobIdx << std::endl;
     std::cout << "Processing Data files: " << dataPath << std::endl;
@@ -373,28 +501,46 @@ void FlexibleData(
 
     // 데이터 메인 트리 체인 생성
     std::unique_ptr<TChain> chainData(new TChain(treeName.c_str()));
-    std::ifstream inputFile(dataPath);
-     if (!inputFile.is_open()) {
-         std::cerr << "Error opening the input file list: " << dataPath << std::endl;
-         return 1;
-     }
+    std::vector<std::string> files;
+    bool useRecursiveInput = false;
 
-     std::string line;
-     std::vector<std::string> files;
-     std::cout << "File Content: " << std::endl;
-     while (getline(inputFile, line)) {
-         std::cout << line << std::endl;
-         files.push_back(line);
-     }
-     inputFile.close();
-     FillChain(chainData.get(),files);
+    if (TString(dataPath).EndsWith(".root")) {
+        files.push_back(dataPath);
+    } else {
+        std::ifstream inputFile(dataPath);
+        if (inputFile.is_open()) {
+            std::string line;
+            std::cout << "File Content: " << std::endl;
+            while (getline(inputFile, line)) {
+                if (line.empty()) continue;
+                std::cout << line << std::endl;
+                files.push_back(line);
+            }
+            inputFile.close();
+        } else {
+            useRecursiveInput = true;
+        }
+    }
+
+    if (!files.empty()) {
+        FillChain(chainData.get(), files);
+    } else if (useRecursiveInput) {
+        loadRootFilesRecursively(chainData.get(), dataPath);
+    } else {
+        std::cerr << "Error opening the input file list: " << dataPath << std::endl;
+        return;
+    }
 
     // Event Info 체인 (doCent가 true일 경우에만 생성 및 사용)
     std::unique_ptr<TChain> chainEventInfo = nullptr;
     Short_t centrality = -99; // 기본값 초기화
     if (doCent) {
         chainEventInfo.reset(new TChain(eventInfoTreeName.c_str()));
-	FillChain(chainEventInfo.get(),files);
+        if (!files.empty()) {
+            FillChain(chainEventInfo.get(), files);
+        } else {
+            loadRootFilesRecursively(chainEventInfo.get(), dataPath);
+        }
         if (chainEventInfo->GetEntries() > 0) {
             chainEventInfo->SetBranchAddress("centrality", &centrality);
             std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
@@ -409,16 +555,24 @@ void FlexibleData(
     Double_t Psi2Raw_Trk = -99; // 기본값 초기화
     if (doEvtPlane) {
         chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
-	FillChain(chainEventPlane.get(),files);
+        if (!files.empty()) {
+            FillChain(chainEventPlane.get(), files);
+        } else {
+            loadRootFilesRecursively(chainEventPlane.get(), dataPath);
+        }
         if (chainEventPlane->GetEntries() > 0) {
             chainEventPlane->SetBranchAddress("trkQx", &trkQx);
             chainEventPlane->SetBranchAddress("trkQy", &trkQy);
-            std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
+            std::cout << "Event plane branches linked from " << eventPlaneInfoTreeName << std::endl;
         } else {
-            std::cerr << "Warning: Event info tree '" << eventInfoTreeName << "' not found or empty in data files. Centrality will not be saved." << std::endl;
-            doCent = false; // Centrality 처리 비활성화
+            std::cerr << "Warning: Event plane tree '" << eventPlaneInfoTreeName << "' not found or empty in data files. Event plane will not be saved." << std::endl;
+            doEvtPlane = false; // Event plane 처리 비활성화
         }
     }
+    Double_t Psi2Rec_Trk = -99;
+    Double_t Psi2Flat_Trk = -99;
+    const bool saveRecAngle = doEvtPlane && trkCalibrator && trkCalibrator->HasCentering();
+    const bool saveFlatAngle = doEvtPlane && trkCalibrator && trkCalibrator->IsReady();
 
     using namespace DataFormat;
 
@@ -480,6 +634,12 @@ void FlexibleData(
     }
     if (doEvtPlane){
         tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+        if (saveRecAngle) {
+            tskim->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
+        }
+        if (saveFlatAngle) {
+            tskim->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
+        }
         std::cout << "Added 'Psi2Raw_Trk' branch to output tree." << std::endl;
     }
 
@@ -508,9 +668,17 @@ void FlexibleData(
         }
         if (doEvtPlane && chainEventPlane) {
             chainEventPlane->GetEntry(iEvt);
-            Psi2Raw_Trk = atan2(trkQy, trkQx);
+            Psi2Raw_Trk = 0.5*atan2(trkQy, trkQx);
+            if (saveRecAngle) {
+                Psi2Rec_Trk = trkCalibrator->EvalRecentered(trkQx, trkQy);
+            }
+            if (saveFlatAngle) {
+                Psi2Flat_Trk = trkCalibrator->EvalFlattened(trkQx, trkQy);
+            }
         } else {
             Psi2Raw_Trk = -1.0f; // Psi2Raw_Trk를 사용하지 않으면 기본값 유지
+            if (saveRecAngle) Psi2Rec_Trk = -1.0f;
+            if (saveFlatAngle) Psi2Flat_Trk = -1.0f;
         }
 
         // Data 메인 트리 처리
@@ -521,12 +689,12 @@ void FlexibleData(
             simpleDTreeevt* dinData = (simpleDTreeevt*)dinDataPtr;
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
-               // if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pTD1[iD1] <1 || dinData->pTD2[iD1] <1 || dinData->EtaD1[iD1] >2.4 || dinData->EtaD2[iD1] >2.4) continue;
-                    doutData->isMC = false;
-                    doutData->isSwap = 0;
-                    doutData->matchGEN = 0;
-                    doutData->copyDn<simpleDTreeevt>(*dinData, iD1);
-                    tskim->Fill();
+                if (!CandidateSelection::PassD0Data(*dinData, iD1)) continue;
+                doutData->isMC = false;
+                doutData->isSwap = 0;
+                doutData->matchGEN = 0;
+                doutData->copyDn<simpleDTreeevt>(*dinData, iD1);
+                tskim->Fill();
             }
         } else {
             simpleDStarMCTreeflat* doutData = (simpleDStarMCTreeflat*)doutDataPtr;
@@ -534,13 +702,12 @@ void FlexibleData(
 
             for (auto iD1 : ROOT::TSeqI(dinData->candSize)) {
 
-             //   if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->pT[iD1] < 4  || abs(dinData->EtaD1[iD1]) >2.4 || abs(dinData->EtaD2[iD1]) >2.4 || dinData->pTGrandD1[iD1]< 0.5 || dinData->pTGrandD2[iD1] <0.5 || abs(dinData->EtaGrandD1[iD1]) > 2.4 || abs(dinData->EtaGrandD2[iD1])>2.4) continue;
-                if(dinData->pT[iD1] > 100 || abs(dinData->y[iD1]) >1 || dinData->mva[iD1] < 0.99) continue;
-                    doutData->isMC = false;
-                    doutData->isSwap = 0;
-                    doutData->matchGEN = 0;
-                    doutData->copyDn(*dinData, iD1);
-                    tskim->Fill();
+                if (!CandidateSelection::PassDStarData(*dinData, iD1)) continue;
+                doutData->isMC = false;
+                doutData->isSwap = 0;
+                doutData->matchGEN = 0;
+                doutData->copyDn(*dinData, iD1);
+                tskim->Fill();
             }
         }
     }
@@ -583,7 +750,8 @@ void FlexibleMC(
     bool setGEN = true,                  // GEN 트리 설정 여부
     bool doCent = true,                 // 중앙값 설정 여부
     bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
-    const std::string& date = "20250331"  // 날짜 문자열
+    const std::string& date = "20250331",  // 날짜 문자열
+    const EventPlaneCalibrator* trkCalibrator = nullptr
 ) {
     std::cout << "Starting FlexibleMC job #" << jobIdx << std::endl;
     std::cout << "Processing MC files: " << mcPath << std::endl;
@@ -594,23 +762,35 @@ void FlexibleMC(
 
     // 메인 트리 체인
     std::unique_ptr<TChain> chainMC(new TChain(treeName.c_str()));
-      std::ifstream inputFile(mcPath);
-     if (!inputFile.is_open()) {
-         std::cerr << "Error opening the input file list: " << mcPath << std::endl;
-         return 1;
-     }
+    std::vector<std::string> files;
+    bool useRecursiveInput = false;
 
-     std::string line;
-     std::vector<std::string> files;
-     std::cout << "File Content: " << std::endl;
-     while (getline(inputFile, line)) {
-         std::cout << line << std::endl;
-         files.push_back(line);
-     }
-     inputFile.close();
-    FillChain(chainMC.get(),files);
+    if (TString(mcPath).EndsWith(".root")) {
+        files.push_back(mcPath);
+    } else {
+        std::ifstream inputFile(mcPath);
+        if (inputFile.is_open()) {
+            std::string line;
+            std::cout << "File Content: " << std::endl;
+            while (getline(inputFile, line)) {
+                if (line.empty()) continue;
+                std::cout << line << std::endl;
+                files.push_back(line);
+            }
+            inputFile.close();
+        } else {
+            useRecursiveInput = true;
+        }
+    }
 
-   // loadRootFilesRecursively(chainMC.get(), mcPath);
+    if (!files.empty()) {
+        FillChain(chainMC.get(), files);
+    } else if (useRecursiveInput) {
+        loadRootFilesRecursively(chainMC.get(), mcPath);
+    } else {
+        std::cerr << "Error opening the input file list: " << mcPath << std::endl;
+        return;
+    }
 
     // Event Info 체인 (doCent가 true일 경우에만 생성 및 사용)
     std::unique_ptr<TChain> chainEventInfo = nullptr;
@@ -618,7 +798,11 @@ void FlexibleMC(
     Float_t ncoll = -99;
     if (doCent) {
         chainEventInfo.reset(new TChain(eventInfoTreeName.c_str()));
-    	FillChain(chainEventInfo.get(),files);
+        if (!files.empty()) {
+            FillChain(chainEventInfo.get(), files);
+        } else {
+            loadRootFilesRecursively(chainEventInfo.get(), mcPath);
+        }
         if (chainEventInfo->GetEntries() > 0) {
             chainEventInfo->SetBranchAddress("centrality", &centrality);
             std::cout << "Centrality branch linked from " << eventInfoTreeName << std::endl;
@@ -635,7 +819,11 @@ void FlexibleMC(
     Double_t Psi2Raw_Trk = -99; // 기본값 초기화
     if (doEvtPlane) {
         chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
-        FillChain(chainEventPlane.get(),files);
+        if (!files.empty()) {
+            FillChain(chainEventPlane.get(), files);
+        } else {
+            loadRootFilesRecursively(chainEventPlane.get(), mcPath);
+        }
         if (chainEventPlane->GetEntries() > 0) {
             chainEventPlane->SetBranchAddress("trkQx", &trkQx);
             chainEventPlane->SetBranchAddress("trkQy", &trkQy);
@@ -645,6 +833,11 @@ void FlexibleMC(
             doEvtPlane = false; // Event plane 처리 비활성화
         }
     }
+
+    Double_t Psi2Rec_Trk = -99;
+    Double_t Psi2Flat_Trk = -99;
+    const bool saveRecAngle = doEvtPlane && trkCalibrator && trkCalibrator->HasCentering();
+    const bool saveFlatAngle = doEvtPlane && trkCalibrator && trkCalibrator->IsReady();
 
     using namespace DataFormat;
 
@@ -710,8 +903,20 @@ void FlexibleMC(
     }
     if (doEvtPlane) {
         tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+        if (saveRecAngle) {
+            tskim->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
+        }
+        if (saveFlatAngle) {
+            tskim->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
+        }
         if(setGEN && tskimGEN) {
             tskimGEN->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
+            if (saveRecAngle) {
+                tskimGEN->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
+            }
+            if (saveFlatAngle) {
+                tskimGEN->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
+            }
         }
         std::cout << "Added 'Psi2Raw_Trk' branch to output tree(s)." << std::endl;
     }
@@ -742,9 +947,17 @@ void FlexibleMC(
         
         if (doEvtPlane && chainEventPlane) {
             chainEventPlane->GetEntry(iEvt);
-            Psi2Raw_Trk = atan2(trkQy, trkQx);
+            Psi2Raw_Trk = 0.5*atan2(trkQy, trkQx);
+            if (saveRecAngle) {
+                Psi2Rec_Trk = trkCalibrator->EvalRecentered(trkQx, trkQy);
+            }
+            if (saveFlatAngle) {
+                Psi2Flat_Trk = trkCalibrator->EvalFlattened(trkQx, trkQy);
+            }
         } else {
             Psi2Raw_Trk = -99.0f;
+            if (saveRecAngle) Psi2Rec_Trk = -99.0f;
+            if (saveFlatAngle) Psi2Flat_Trk = -99.0f;
         }
 
         chainMC->GetEntry(iEvt);
@@ -755,7 +968,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
-                //if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pTD1[iD1] <1 || dinMC->pTD2[iD1] <1 || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4) continue;
+                if (!CandidateSelection::PassD0MC(*dinMC, iD1)) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -764,7 +977,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
-              //  if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_D0Dau1_pT[iD1] <1 || dinMC->gen_D0Dau2_pT[iD1] <1 || dinMC->gen_D0Dau1_eta[iD1] >2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4) continue;
+                    if (!CandidateSelection::PassD0MCGen(*dinMC, iD1)) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
@@ -778,8 +991,7 @@ void FlexibleMC(
 
             for (auto iD1 : ROOT::TSeqI(dinMC->candSize))
             {
-            //    if(dinMC->pT[iD1] > 100 || abs(dinMC->y[iD1]) >1 || dinMC->pT[iD1] < 4  || abs(dinMC->EtaD1[iD1]) >2.4 || abs(dinMC->EtaD2[iD1]) >2.4 || dinMC->pTGrandD1[iD1]< 0.5 || dinMC->pTGrandD2[iD1] <0.5 || abs(dinMC->EtaGrandD1[iD1]) > 2.4 || abs(dinMC->EtaGrandD2[iD1])>2.4) continue;
-
+                if (!CandidateSelection::PassDStarMC(*dinMC, iD1)) continue;
                 doutMC->isMC = true;
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
@@ -788,7 +1000,7 @@ void FlexibleMC(
             {
                 for (auto iD1 : ROOT::TSeqI(dinMC->candSize_gen))
                 {
-            //    if(dinMC->gen_pT[iD1] > 100 || abs(dinMC->gen_y[iD1]) >1 || dinMC->gen_pT[iD1] < 4  || dinMC->EtaD1[iD1] >2.4 || dinMC->EtaD2[iD1] >2.4 || dinMC->gen_D0Dau1_pT[iD1]< 0.5 || dinMC->gen_D0Dau2_pT[iD1] <0.5 || dinMC->gen_D0Dau1_eta[iD1] > 2.4 || dinMC->gen_D0Dau2_eta[iD1] >2.4 || dinMC->gen_D1pT[iD1] < 0.4) continue;
+                    if (!CandidateSelection::PassDStarMCGen(*dinMC, iD1)) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
                     tskimGEN->Fill();
@@ -822,22 +1034,41 @@ void FlexibleMC(
 
 
 
-int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=true,bool isPP=true, std::string path = "", std::string suffix="") {
+int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char* collision_type="PbPb", int jobIdx_=0, int start=0, int end=-1, std::string path = "", std::string suffix="", const char* centering_file="", const char* flattening_file="") {
 
     int start_ = start;
     int end_ = end;
-    int jobIdx_ = idx;
     bool setGEN = true;
-    ParticleType particleType = isD0 ?  ParticleType::D0 :ParticleType::DStar;
+    
+    // Parse particle type
+    ParticleType particleType = (std::string(particle_type) == "D0") ? ParticleType::D0 : ParticleType::DStar;
+    
+    // Parse collision type
+    bool isPP = (std::string(collision_type) == "pp");
+    
     bool doCent = false;
     bool doEvtPlane = false;
     if(!isPP){
-    doCent =  particleType == ParticleType::DStar ? true :false;
-    doEvtPlane = particleType == ParticleType::DStar ? true : false;
+        doCent =  particleType == ParticleType::DStar ? true : false;
+        doEvtPlane = particleType == ParticleType::DStar ? true : false;
     }
+
+    const std::string centeringFile = centering_file ? centering_file : "";
+    const std::string flatteningFile = flattening_file ? flattening_file : "";
+    EventPlaneCalibrator trkCalibrator;
+    if (!centeringFile.empty()) {
+        if (trkCalibrator.LoadCentering(centeringFile)) {
+            std::cout << "Loaded event-plane centering parameters from " << centeringFile << std::endl;
+        }
+    }
+    if (!flatteningFile.empty()) {
+        if (trkCalibrator.LoadFlattening(flatteningFile)) {
+            std::cout << "Loaded event-plane flattening parameters from " << flatteningFile << std::endl;
+        }
+    }
+    const EventPlaneCalibrator* evtPlanePtr = (doEvtPlane && (trkCalibrator.HasCentering() || trkCalibrator.HasFlattening()))
+                                              ? &trkCalibrator : nullptr;
     
-
-
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
     std::string eventPlaneInfoTreeName = "eventplane/EventPlane"; // Event Plane 트리 이름 (추가)
 
@@ -846,9 +1077,8 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=t
     std::string mcPath = "/u/user/jun502s/SE_UserHome/DStarMC/D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/promptD0ToKPi_PT-1_TuneCP5_5p36TeV_pythia8-evtgen/crab_D0Ana_MCPromptD0Kpi_DpT1_CentralityTable_HFtowers200_HydjetDrum5F_CMSSW_13_2_11_25Apr23_v2/250423_131426/0000";
     std::string dataPath = "/u/user/jun502s/SE_UserHome/Run3_2023/Data/SkimMVA/D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/HIPhysicsRawPrime2/crab_D0Ana_Data_Step1_Run375513_HIPhysicsRawPrime0_wOffCentTable_CMSSW_13_2_13_MVA_25Apr2025_v1/250424_165928/";
 
-
     std::string date = "";
-    int dataSampleRate =100;
+    int dataSampleRate = 100;
     int mcSampleRate = 100; 
 
     std::string outputPath;
@@ -857,34 +1087,57 @@ int FlexibleFlattener(int start=0, int end=-1, int idx=0, int type=0, int isD0=t
     std::string treeNameData = particleType==ParticleType::D0 ? "d0ana_newreduced/PATCompositeNtuple": "dStarana/PATCompositeNtuple";
 
     if (type == 1) {
-	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppMC/D0" : "./Data/FlatSample/ppMC/DStar";
-	    outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
- 	    if(!path.empty()) mcPath = path;
-	    if(!suffix.empty()) outputPrefix += "_"+ suffix;
-	    outputPath += "/"+suffix;
-		    FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, setGEN, doCent, doEvtPlane, date);
+        // MC
+        outputPath = particleType==ParticleType::D0 ? "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "MC/D0" : "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "MC/DStar";
+        outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
+        if(!path.empty()) mcPath = path;
+        std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
+        if(!suffix.empty()) {
+            outputPrefix += "_"+suffix;
+            outputPath += "/"+suffix;
+        } else {
+            outputPath += "/"+folderName;
+        }
+        // Ensure output directory is created
+        gSystem->mkdir(outputPath.c_str(), true);
+        std::cout << "MC mode: Output path = " << outputPath << std::endl;
+        FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, setGEN, doCent, doEvtPlane, date, evtPlanePtr);
 
     } else if (type == 0) {
-	    outputPath = particleType==ParticleType::D0 ? "./Data/FlatSample/ppData/D0" : "./Data/FlatSample/ppData/DStar";
-	    outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
-
-	    if(!path.empty()) dataPath = path;
-	    if(!suffix.empty()) outputPrefix += "_"+suffix;
-	    outputPath += "/"+suffix;
-
-	    FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date);
+        // Data
+        outputPath = particleType==ParticleType::D0 ? "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Data/D0" : "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Data/DStar";
+        outputPrefix = particleType==ParticleType::D0 ? "flatSkimForBDT_D0" : "flatSkimForBDT_DStar";
+        if(!path.empty()) dataPath = path;
+        std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
+        if(!suffix.empty()) {
+            outputPrefix += "_"+suffix;
+            outputPath += "/"+suffix;
+        } else {
+            outputPath += "/"+folderName;
+        }
+        // Ensure output directory is created
+        gSystem->mkdir(outputPath.c_str(), true);
+        std::cout << "Data mode: Output path = " << outputPath << std::endl;
+        FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date, evtPlanePtr);
 
     } else if (type == 2) {
-        outputPath = "./Data/FlatSample/ppMix/";
-        outputPrefix = "flatSkimForBDT_DStar_ppRef_NonSwapMix";
-	if(!suffix.empty()) outputPrefix += "_"+suffix;
-        // FlexibleMix 호출 업데이트 필요 - mcPath, dataPath, treeName, eventInfoTreeName, doCent 등 설정
-        FlexibleMix(mcPath, dataPath, treeNameMC,treeNameData, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, mcSampleRate, dataSampleRate, doCent, date);
-        std::cout << "FlexibleMix (type 2) is currently commented out. Update parameters and uncomment to run." << std::endl;
+        // Mix
+        outputPath = "/home/jun502s/DstarAna/DStarAnalysis/Data/FlatSample/" + std::string(collision_type) + "Mix/";
+        outputPrefix = "flatSkimForBDT_DStar_" + std::string(collision_type) + "Ref_NonSwapMix";
+        std::string folderName = suffix.empty() ? Form("job_%d", jobIdx_) : suffix;
+        if(!suffix.empty()){
+            outputPrefix += "_"+suffix;
+            outputPath += "/"+suffix;
+        } else {
+            outputPath += "/"+folderName;
+        }
+        gSystem->mkdir(outputPath.c_str(), true);
+        std::cout << "Mix mode: Output path = " << outputPath << std::endl;
+        FlexibleMix(mcPath, dataPath, treeNameMC, treeNameData, eventInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, mcSampleRate, dataSampleRate, doCent, date);
 
     } else {
-	    std::cerr << "Invalid type value: " << type << ". Must be 0 (MC), 1 (Data), or 2 (Mix)." << std::endl;
-	    return 1;
+        std::cerr << "Invalid type value: " << type << ". Must be 0 (Data), 1 (MC), or 2 (Mix)." << std::endl;
+        return 1;
     }
 
     return 0;
