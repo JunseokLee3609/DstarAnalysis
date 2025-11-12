@@ -1034,7 +1034,7 @@ void FlexibleMC(
 
 
 
-int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char* collision_type="PbPb", int jobIdx_=0, int start=0, int end=-1, std::string path = "", std::string suffix="", const char* centering_file="", const char* flattening_file="") {
+int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char* collision_type="PbPb", int jobIdx_=0, int start=0, int end=-1, std::string path = "", std::string suffix="", const char* centering_file="", const char* flattening_file="", const char* evtplane_calib_file="") {
 
     int start_ = start;
     int end_ = end;
@@ -1055,15 +1055,37 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
 
     const std::string centeringFile = centering_file ? centering_file : "";
     const std::string flatteningFile = flattening_file ? flattening_file : "";
+    const std::string evtPlaneCalibFile = evtplane_calib_file ? evtplane_calib_file : "";
+    
     EventPlaneCalibrator trkCalibrator;
-    if (!centeringFile.empty()) {
-        if (trkCalibrator.LoadCentering(centeringFile)) {
-            std::cout << "Loaded event-plane centering parameters from " << centeringFile << std::endl;
+    
+    // If merged calibration file is provided, use it for both centering and flattening
+    if (!evtPlaneCalibFile.empty()) {
+        std::cout << "Loading event plane calibration from merged file: " << evtPlaneCalibFile << std::endl;
+        bool centerOK = trkCalibrator.LoadCentering(evtPlaneCalibFile);
+        bool flattenOK = trkCalibrator.LoadFlattening(evtPlaneCalibFile);
+        if (centerOK) {
+            std::cout << "  ✓ Loaded centering parameters" << std::endl;
+        } else {
+            std::cerr << "  ✗ Failed to load centering parameters" << std::endl;
         }
-    }
-    if (!flatteningFile.empty()) {
-        if (trkCalibrator.LoadFlattening(flatteningFile)) {
-            std::cout << "Loaded event-plane flattening parameters from " << flatteningFile << std::endl;
+        if (flattenOK) {
+            std::cout << "  ✓ Loaded flattening parameters" << std::endl;
+        } else {
+            std::cerr << "  ✗ Failed to load flattening parameters" << std::endl;
+        }
+    } 
+    // Otherwise, use separate files if provided (backward compatibility)
+    else {
+        if (!centeringFile.empty()) {
+            if (trkCalibrator.LoadCentering(centeringFile)) {
+                std::cout << "Loaded event-plane centering parameters from " << centeringFile << std::endl;
+            }
+        }
+        if (!flatteningFile.empty()) {
+            if (trkCalibrator.LoadFlattening(flatteningFile)) {
+                std::cout << "Loaded event-plane flattening parameters from " << flatteningFile << std::endl;
+            }
         }
     }
     const EventPlaneCalibrator* evtPlanePtr = (doEvtPlane && (trkCalibrator.HasCentering() || trkCalibrator.HasFlattening()))
