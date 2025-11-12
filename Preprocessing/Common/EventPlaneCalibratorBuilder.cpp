@@ -46,13 +46,14 @@ bool LoadInputFiles(TChain& chain, const std::string& input) {
  *
  * Usage (ROOT batch):
  *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root")'
- *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root","eventplane/EventPlane",123)'
  *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root","eventplane/EventPlane",123,0,180)'
  *
  * The macro reads the TChain "eventplane/EventPlane" and produces:
  *   - hQxvsQyRaw_Trk      : raw Q-vector scatter (for mean extraction)
  *   - hQxvsQyRec_Trk      : recentered Q-vector scatter (diagnostic)
+ *   - hPsiRaw_Trk         : raw Psi2 distribution
  *   - hPsiRec_Trk         : recentered Psi2 distribution
+ *   - hPsiFlat_Trk        : flattened Psi2 distribution
  *   - hsin2iPsi_Trk_%d    : flattening sine moments (i=1..10)
  *   - hcos2iPsi_Trk_%d    : flattening cosine moments (i=1..10)
  */
@@ -94,7 +95,7 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     trkChain.SetBranchAddress("trkQy", &trkQy);
 
     // Manually set up CS branches we need (candSize, pT, y, mass)
-    // Don't use csTree->setTree() as it tries to set eventplane branches that don't exist in CS ntuple
+    // Don't use simpleDMC setTree() as it tries to set eventplane branches that don't exist in CS ntuple
     Int_t candSize = 0;
     Float_t pT[5000], y[5000], mass[5000];
     csChain.SetBranchAddress("candSize", &candSize);
@@ -153,7 +154,7 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     long double sumQy = 0.0;
     Long64_t validRaw = 0;
     
-    std::cout << "============================================" << std::endl;
+    std::cout << "\n============================================" << std::endl;
     std::cout << "Pass 1: Computing Q-vector means" << std::endl;
     std::cout << "============================================" << std::endl;
     
