@@ -1,41 +1,54 @@
 #!/bin/bash
 
 # Script to run FlexibleFlattener for various data types
-#
-# Usage: ./run_flexible_flattener.sh [type] [particle] [collision] [jobIdx] [inputfile] [suffix]
-#
-# Required Arguments:
-#   type        - Data type: 0=Data, 1=MC, 2=Mix
-#   particle    - Particle type: D0 or DStar
-#   collision   - Collision system: PbPb or pp
-#
-# Optional Arguments:
-#   jobIdx      - Job index for output directory naming (default: 0)
-#                 If suffix is provided, this is ignored and suffix is used instead
-#   inputfile   - Custom input file path (optional, default: use preset paths)
-#                 Can be: single ROOT file, file list, or directory path
-#   suffix      - Output suffix for custom directory naming (optional, default: empty)
-#                 If provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/{suffix}
-#                 If not provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/job_{jobIdx}
-#
-# Examples:
-#   # Basic usage with defaults (Data, DStar, PbPb, job_0)
-#   ./run_flexible_flattener.sh 0 DStar PbPb
-#
-#   # MC processing with custom job index
-#   ./run_flexible_flattener.sh 1 DStar PbPb 5
-#
-#   # Data processing with custom input file
-#   ./run_flexible_flattener.sh 0 DStar PbPb 0 /path/to/input.root
-#
-#   # MC processing with custom suffix (output in custom directory)
-#   ./run_flexible_flattener.sh 1 DStar PbPb 0 "" "MyCustomSuffix"
-#
-#   # Full example with all parameters
-#   ./run_flexible_flattener.sh 1 DStar PbPb 0 /path/to/input.root "Nov2025"
-#
-# Output:
-#   Files are saved to: Data/FlatSample/{type}{collision}/{particle}/{suffix or job_{jobIdx}}/
+
+# Function to display usage
+show_usage() {
+    cat <<EOF
+Usage: ./run_flexible_flattener.sh <type> <particle> <collision> [jobIdx] [inputfile] [suffix]
+
+Required Arguments:
+  type        - Data type: 0=Data, 1=MC, 2=Mix
+  particle    - Particle type: D0 or DStar
+  collision   - Collision system: PbPb or pp
+
+Optional Arguments:
+  jobIdx      - Job index for output directory naming (default: 0)
+                If suffix is provided, this is ignored and suffix is used instead
+  inputfile   - Custom input file path (optional, default: use preset paths)
+                Can be: single ROOT file, file list, or directory path
+  suffix      - Output suffix for custom directory naming (optional, default: empty)
+                If provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/{suffix}
+                If not provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/job_{jobIdx}
+
+Examples:
+  # Basic usage with defaults (Data, DStar, PbPb, job_0)
+  ./run_flexible_flattener.sh 0 DStar PbPb
+
+  # MC processing with custom job index
+  ./run_flexible_flattener.sh 1 DStar PbPb 5
+
+  # Data processing with custom input file
+  ./run_flexible_flattener.sh 0 DStar PbPb 0 /path/to/input.root
+
+  # MC processing with custom suffix (output in custom directory)
+  ./run_flexible_flattener.sh 1 DStar PbPb 0 "" "MyCustomSuffix"
+
+  # Full example with all parameters
+  ./run_flexible_flattener.sh 1 DStar PbPb 0 /path/to/input.root "Nov2025"
+
+Output:
+  Files are saved to: Data/FlatSample/{type}{collision}/{particle}/{suffix or job_{jobIdx}}/
+EOF
+}
+
+# Check if required arguments are provided
+if [ $# -lt 3 ]; then
+    echo "ERROR: Missing required arguments"
+    echo ""
+    show_usage
+    exit 1
+fi
 
 # Set ROOT environment
 if [ -f /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh ]; then
