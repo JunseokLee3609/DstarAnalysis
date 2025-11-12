@@ -8,6 +8,7 @@ show_usage() {
 Usage: ./run_flexible_flattener.sh <type> <particle> <collision> [jobIdx] [inputfile] [suffix]
 
 Required Arguments:
+
   type        - Data type: 0=Data, 1=MC, 2=Mix
   particle    - Particle type: D0 or DStar
   collision   - Collision system: PbPb or pp
@@ -35,6 +36,7 @@ Examples:
   ./run_flexible_flattener.sh 1 DStar PbPb 0 "" "MyCustomSuffix"
 
   # Full example with all parameters
+
   ./run_flexible_flattener.sh 1 DStar PbPb 0 /path/to/input.root "Nov2025"
 
 Output:
@@ -64,9 +66,9 @@ DSTAR_ANALYSIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"
 FLAT_SAMPLE_DIR="${DSTAR_ANALYSIS_DIR}/Data/FlatSample"
 
 # Default values
-TYPE=${1:-0}  # 0=Data, 1=MC, 2=Mix
-PARTICLE=${2:-DStar}
-COLLISION=${3:-PbPb}
+TYPE="$1"  # 0=Data, 1=MC, 2=Mix
+PARTICLE="$2"
+COLLISION="$3"
 JOB_IDX=${4:-0}
 INPUTFILE=${5:-""}  # Optional: custom input file
 SUFFIX=${6:-""}     # Optional: output suffix
