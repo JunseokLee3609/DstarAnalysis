@@ -47,6 +47,13 @@ namespace DataFormat{
    Float_t         matchGen2DPointingAngle[MAXCAND];   //[candSize]
    Float_t         matchGen3DDecayLength[MAXCAND];   //[candSize]
    Float_t         matchGen2DDecayLength[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStarpT[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStareta[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStarphi[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStarmass[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStary[MAXCAND];   //[candSize]
+   Int_t           matchGen_DStarcharge[MAXCAND];   //[candSize]
+   Float_t         matchGen_DStarpdgId[MAXCAND];   //[candSize]
    Float_t         matchGen_D0pT[MAXCAND];   //[candSize]
    Float_t         matchGen_D0eta[MAXCAND];   //[candSize]
    Float_t         matchGen_D0phi[MAXCAND];   //[candSize]
@@ -2058,6 +2065,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             int idmom_reco[MAXCAND];
             int idBAnc_reco[MAXCAND];
             bool matchGEN[MAXCAND];
+            bool matchGen_validDstarChain[MAXCAND];
             float matchGen3DPointingAngle[MAXCAND];
             float matchGen2DPointingAngle[MAXCAND];
             float matchGen3DDecayLength[MAXCAND];
@@ -2069,6 +2077,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             float matchgen_D0y[MAXCAND];
             int matchgen_D0charge[MAXCAND];
             float matchgen_D0pdgId[MAXCAND];
+            float matchGen_DStarpT[MAXCAND];
+            float matchGen_DStareta[MAXCAND];
+            float matchGen_DStarphi[MAXCAND];
+            float matchGen_DStarmass[MAXCAND];
+            float matchGen_DStary[MAXCAND];
+            int matchGen_DStarcharge[MAXCAND];
+            float matchGen_DStarpdgId[MAXCAND];
             float matchGen_D0pT[MAXCAND];
             float matchGen_D0eta[MAXCAND];
             float matchGen_D0phi[MAXCAND];
@@ -2284,6 +2299,16 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("bestvtxY",&bestvtxY);
             t->SetBranchAddress("bestvtxZ",&bestvtxZ);
             t->SetBranchAddress("candSize",&candSize);
+            // if (t->GetBranch("centrality")) {
+            //     t->SetBranchAddress("centrality",&centrality);
+            // } else {
+            //     centrality = -1;
+            // }
+            // if (t->GetBranch("Ncoll")) {
+            //     t->SetBranchAddress("Ncoll",&ncoll);
+            // } else {
+            //     ncoll = 0.f;
+            // }
             t->SetBranchAddress("pT",&pT);
             t->SetBranchAddress("y",&y);
             t->SetBranchAddress("eta",&eta);
@@ -2305,6 +2330,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("idmom_reco",&idmom_reco);
             t->SetBranchAddress("idBAnc_reco",&idBAnc_reco);
             t->SetBranchAddress("matchGEN",&matchGEN);
+            t->SetBranchAddress("matchGen_validDstarChain",&matchGen_validDstarChain);
             t->SetBranchAddress("matchGen3DPointingAngle",&matchGen3DPointingAngle);
             t->SetBranchAddress("matchGen2DPointingAngle",&matchGen2DPointingAngle);
             t->SetBranchAddress("matchGen3DDecayLength",&matchGen3DDecayLength);
@@ -2316,6 +2342,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("matchgen_D0y",&matchgen_D0y);
             t->SetBranchAddress("matchgen_D0charge",&matchgen_D0charge);
             t->SetBranchAddress("matchgen_D0pdgId",&matchgen_D0pdgId);
+            t->SetBranchAddress("matchGen_DStarpT",&matchGen_DStarpT);
+            t->SetBranchAddress("matchGen_DStareta",&matchGen_DStareta);
+            t->SetBranchAddress("matchGen_DStarphi",&matchGen_DStarphi);
+            t->SetBranchAddress("matchGen_DStarmass",&matchGen_DStarmass);
+            t->SetBranchAddress("matchGen_DStary",&matchGen_DStary);
+            t->SetBranchAddress("matchGen_DStarcharge",&matchGen_DStarcharge);
+            t->SetBranchAddress("matchGen_DStarpdgId",&matchGen_DStarpdgId);
             t->SetBranchAddress("matchGen_D0pT",&matchGen_D0pT);
             t->SetBranchAddress("matchGen_D0eta",&matchGen_D0eta);
             t->SetBranchAddress("matchGen_D0phi",&matchGen_D0phi);
@@ -2492,6 +2525,10 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             float bestvtxY;
             float bestvtxZ;
             int candSize;
+            Short_t centrality;
+            Double_t trkQx;
+            Double_t trkQy;
+            float ncoll;
             float pT;
             float y;
             float eta;
@@ -2513,6 +2550,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             int idmom_reco;
             int idBAnc_reco;
             bool matchGEN;
+            bool matchGen_validDstarChain;
             float matchGen3DPointingAngle;
             float matchGen2DPointingAngle;
             float matchGen3DDecayLength;
@@ -2524,6 +2562,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             float matchgen_D0y;
             int matchgen_D0charge;
             float matchgen_D0pdgId;
+            float matchGen_DStarpT;
+            float matchGen_DStareta;
+            float matchGen_DStarphi;
+            float matchGen_DStarmass;
+            float matchGen_DStary;
+            int matchGen_DStarcharge;
+            float matchGen_DStarpdgId;
             float matchGen_D0pT;
             float matchGen_D0eta;
             float matchGen_D0phi;
@@ -2734,6 +2779,16 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
                 t->SetBranchAddress("gen_D1charge",&gen_D1charge);
                 t->SetBranchAddress("gen_D1pdgId",&gen_D1pdgId);
                 t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
+                if (t->GetBranch("centrality")) {
+                    t->SetBranchAddress("centrality",&centrality);
+                } else {
+                    centrality = -1;
+                }
+                if (t->GetBranch("Ncoll")) {
+                    t->SetBranchAddress("Ncoll",&ncoll);
+                } else {
+                    ncoll = 0.f;
+                }
         }; 
         template <typename T>
         void setTree(T *t){
@@ -2747,6 +2802,18 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("bestvtxY",&bestvtxY);
             t->SetBranchAddress("bestvtxZ",&bestvtxZ);
             t->SetBranchAddress("candSize",&candSize);
+            if (t->GetBranch("centrality")) {
+                t->SetBranchAddress("centrality",&centrality);
+            } else {
+                centrality = -1;
+            }
+            if (t->GetBranch("Ncoll")) {
+                t->SetBranchAddress("Ncoll",&ncoll);
+            } else {
+                ncoll = 0.f;
+            }
+            t->SetBranchAddress("trkQx",&trkQx);
+            t->SetBranchAddress("trkQy",&trkQy);
             t->SetBranchAddress("pT",&pT);
             t->SetBranchAddress("y",&y);
             t->SetBranchAddress("eta",&eta);
@@ -2768,6 +2835,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("idmom_reco",&idmom_reco);
             t->SetBranchAddress("idBAnc_reco",&idBAnc_reco);
             t->SetBranchAddress("matchGEN",&matchGEN);
+            t->SetBranchAddress("matchGen_validDstarChain",&matchGen_validDstarChain);
             t->SetBranchAddress("matchGen3DPointingAngle",&matchGen3DPointingAngle);
             t->SetBranchAddress("matchGen2DPointingAngle",&matchGen2DPointingAngle);
             t->SetBranchAddress("matchGen3DDecayLength",&matchGen3DDecayLength);
@@ -2779,6 +2847,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("matchgen_D0y",&matchgen_D0y);
             t->SetBranchAddress("matchgen_D0charge",&matchgen_D0charge);
             t->SetBranchAddress("matchgen_D0pdgId",&matchgen_D0pdgId);
+            t->SetBranchAddress("matchGen_DStarpT",&matchGen_DStarpT);
+            t->SetBranchAddress("matchGen_DStareta",&matchGen_DStareta);
+            t->SetBranchAddress("matchGen_DStarphi",&matchGen_DStarphi);
+            t->SetBranchAddress("matchGen_DStarmass",&matchGen_DStarmass);
+            t->SetBranchAddress("matchGen_DStary",&matchGen_DStary);
+            t->SetBranchAddress("matchGen_DStarcharge",&matchGen_DStarcharge);
+            t->SetBranchAddress("matchGen_DStarpdgId",&matchGen_DStarpdgId);
             t->SetBranchAddress("matchGen_D0pT",&matchGen_D0pT);
             t->SetBranchAddress("matchGen_D0eta",&matchGen_D0eta);
             t->SetBranchAddress("matchGen_D0phi",&matchGen_D0phi);
@@ -2871,6 +2946,10 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("bestvtxY",&bestvtxY);
             t->Branch("bestvtxZ",&bestvtxZ);
             t->Branch("candSize",&candSize);
+            t->Branch("centrality",&centrality);
+            t->Branch("trkQx",&trkQx);
+            t->Branch("trkQy",&trkQy);
+            t->Branch("Ncoll",&ncoll);
             t->Branch("pT",&pT);
             t->Branch("y",&y);
             t->Branch("eta",&eta);
@@ -2892,6 +2971,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("idmom_reco",&idmom_reco);
             t->Branch("idBAnc_reco",&idBAnc_reco);
             t->Branch("matchGEN",&matchGEN);
+            t->Branch("matchGen_validDstarChain",&matchGen_validDstarChain);
             t->Branch("matchGen3DPointingAngle",&matchGen3DPointingAngle);
             t->Branch("matchGen2DPointingAngle",&matchGen2DPointingAngle);
             t->Branch("matchGen3DDecayLength",&matchGen3DDecayLength);
@@ -2903,6 +2983,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("matchgen_D0y",&matchgen_D0y);
             t->Branch("matchgen_D0charge",&matchgen_D0charge);
             t->Branch("matchgen_D0pdgId",&matchgen_D0pdgId);
+            t->Branch("matchGen_DStarpT",&matchGen_DStarpT);
+            t->Branch("matchGen_DStareta",&matchGen_DStareta);
+            t->Branch("matchGen_DStarphi",&matchGen_DStarphi);
+            t->Branch("matchGen_DStarmass",&matchGen_DStarmass);
+            t->Branch("matchGen_DStary",&matchGen_DStary);
+            t->Branch("matchGen_DStarcharge",&matchGen_DStarcharge);
+            t->Branch("matchGen_DStarpdgId",&matchGen_DStarpdgId);
             t->Branch("matchGen_D0pT",&matchGen_D0pT);
             t->Branch("matchGen_D0eta",&matchGen_D0eta);
             t->Branch("matchGen_D0phi",&matchGen_D0phi);
@@ -3030,6 +3117,9 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("gen_D1charge",&gen_D1charge);
             t->Branch("gen_D1pdgId",&gen_D1pdgId);
             t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
+            t->Branch("trkQx",&trkQx);
+            t->Branch("trkQy",&trkQy);
+            t->Branch("centrality",&centrality);
     };
         void copyDn( simpleDStarMCTreeevt& evt, int idx){
             Ntrkoffline=evt.Ntrkoffline;
@@ -3063,6 +3153,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             idmom_reco=evt.idmom_reco[idx];
             idBAnc_reco=evt.idBAnc_reco[idx];
             matchGEN=evt.matchGEN[idx];
+            matchGen_validDstarChain=evt.matchGen_validDstarChain[idx];
             matchGen3DPointingAngle=evt.matchGen3DPointingAngle[idx];
             matchGen2DPointingAngle=evt.matchGen2DPointingAngle[idx];
             matchGen3DDecayLength=evt.matchGen3DDecayLength[idx];
@@ -3074,6 +3165,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             matchgen_D0y=evt.matchgen_D0y[idx];
             matchgen_D0charge=evt.matchgen_D0charge[idx];
             matchgen_D0pdgId=evt.matchgen_D0pdgId[idx];
+            matchGen_DStarpT=evt.matchGen_DStarpT[idx];
+            matchGen_DStareta=evt.matchGen_DStareta[idx];
+            matchGen_DStarphi=evt.matchGen_DStarphi[idx];
+            matchGen_DStarmass=evt.matchGen_DStarmass[idx];
+            matchGen_DStary=evt.matchGen_DStary[idx];
+            matchGen_DStarcharge=evt.matchGen_DStarcharge[idx];
+            matchGen_DStarpdgId=evt.matchGen_DStarpdgId[idx];
             matchGen_D0pT=evt.matchGen_D0pT[idx];
             matchGen_D0eta=evt.matchGen_D0eta[idx];
             matchGen_D0phi=evt.matchGen_D0phi[idx];
@@ -3311,6 +3409,7 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             idmom_reco=evt.idmom_reco;
             idBAnc_reco=evt.idBAnc_reco;
             matchGEN=evt.matchGEN;
+            matchGen_validDstarChain=evt.matchGen_validDstarChain;
             matchGen3DPointingAngle=evt.matchGen3DPointingAngle;
             matchGen2DPointingAngle=evt.matchGen2DPointingAngle;
             matchGen3DDecayLength=evt.matchGen3DDecayLength;
@@ -3322,6 +3421,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             matchgen_D0y=evt.matchgen_D0y;
             matchgen_D0charge=evt.matchgen_D0charge;
             matchgen_D0pdgId=evt.matchgen_D0pdgId;
+            matchGen_DStarpT=evt.matchGen_DStarpT;
+            matchGen_DStareta=evt.matchGen_DStareta;
+            matchGen_DStarphi=evt.matchGen_DStarphi;
+            matchGen_DStarmass=evt.matchGen_DStarmass;
+            matchGen_DStary=evt.matchGen_DStary;
+            matchGen_DStarcharge=evt.matchGen_DStarcharge;
+            matchGen_DStarpdgId=evt.matchGen_DStarpdgId;
             matchGen_D0pT=evt.matchGen_D0pT;
             matchGen_D0eta=evt.matchGen_D0eta;
             matchGen_D0phi=evt.matchGen_D0phi;
@@ -3399,6 +3505,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             dedxHarmonic2GrandD2=evt.dedxHarmonic2GrandD2;
 	    mva = evt.mva;
         Psi2Raw_Trk = evt.Psi2Raw_Trk;
+        trkQx = evt.trkQx;
+        trkQy = evt.trkQy;
             //isData=evt.isData;
             };
 };    struct simpleDStarDataTreeflat{
@@ -3477,6 +3585,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             float mva;
             bool isMC;
             double Psi2Raw_Trk;
+            float centrality;
+            float ncoll;
             // int candSize_gen;
             // float gen_pT;
             // float gen_eat;
@@ -3559,6 +3669,13 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             // t->SetBranchAddress("matchgen_D0y",&matchgen_D0y);
             // t->SetBranchAddress("matchgen_D0charge",&matchgen_D0charge);
             // t->SetBranchAddress("matchgen_D0pdgId",&matchgen_D0pdgId);
+            // t->SetBranchAddress("matchGen_DStarpT",&matchGen_DStarpT);
+            // t->SetBranchAddress("matchGen_DStareta",&matchGen_DStareta);
+            // t->SetBranchAddress("matchGen_DStarphi",&matchGen_DStarphi);
+            // t->SetBranchAddress("matchGen_DStarmass",&matchGen_DStarmass);
+            // t->SetBranchAddress("matchGen_DStary",&matchGen_DStary);
+            // t->SetBranchAddress("matchGen_DStarcharge",&matchGen_DStarcharge);
+            // t->SetBranchAddress("matchGen_DStarpdgId",&matchGen_DStarpdgId);
             // t->SetBranchAddress("matchGen_D0pT",&matchGen_D0pT);
             // t->SetBranchAddress("matchGen_D0eta",&matchGen_D0eta);
             // t->SetBranchAddress("matchGen_D0phi",&matchGen_D0phi);
@@ -3652,6 +3769,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("bestvtxY",&bestvtxY);
             t->Branch("bestvtxZ",&bestvtxZ);
             t->Branch("candSize",&candSize);
+            t->Branch("centrality",&centrality);
+            t->Branch("Ncoll",&ncoll);
             t->Branch("pT",&pT);
             t->Branch("y",&y);
             t->Branch("eta",&eta);
