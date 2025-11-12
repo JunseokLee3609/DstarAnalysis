@@ -11,10 +11,6 @@
 #include "TH2D.h"
 #include "TString.h"
 
-// Use the same data format helper as eventplaneana to ensure identical selection
-#include "/home/jun502s/evtplane/evtplanereco/simpleDMC.h"
-using namespace DataFormat;
-
 namespace {
 
 bool LoadInputFiles(TChain& chain, const std::string& input) {
@@ -97,9 +93,14 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     trkChain.SetBranchAddress("trkQx", &trkQx);
     trkChain.SetBranchAddress("trkQy", &trkQy);
 
-    // Use simpleDMC helper to access candidate arrays
-    auto csTree = new simpleDStarDataTreeevt;
-    csTree->setTree(&csChain);
+    // Manually set up CS branches we need (candSize, pT, y, mass)
+    // Don't use csTree->setTree() as it tries to set eventplane branches that don't exist in CS ntuple
+    Int_t candSize = 0;
+    Float_t pT[5000], y[5000], mass[5000];
+    csChain.SetBranchAddress("candSize", &candSize);
+    csChain.SetBranchAddress("pT", pT);
+    csChain.SetBranchAddress("y", y);
+    csChain.SetBranchAddress("mass", mass);
 
     Short_t cen = -99;
     centChain.SetBranchAddress("centrality", &cen);
@@ -114,7 +115,6 @@ int EventPlaneCalibratorBuilder(const char* input = "",
 
     if (nEntries <= 1) {
         std::cerr << "Error: insufficient synchronized entries across chains." << std::endl;
-        delete csTree;
         return 1;
     }
     std::cout << "Loaded synchronized entries: " << nEntries << std::endl;
@@ -139,11 +139,11 @@ int EventPlaneCalibratorBuilder(const char* input = "",
         if (centChain.GetEntry(idx) < 0) return false;
         if (cen < centMin || cen >= centMax) return false;
         bool isJpsi = false;
-        for (UInt_t icand = 0; icand < csTree->candSize; ++icand) {
-            if (std::abs(csTree->y[icand]) >= 1) continue;
-            Float_t pt = csTree->pT[icand];
-            Float_t mass = csTree->mass[icand];
-            if (mass > 1.7 && mass < 2.1 && pt >= 0.2 && pt < 20) { isJpsi = true; break; }
+        for (Int_t icand = 0; icand < candSize; ++icand) {
+            if (std::abs(y[icand]) >= 1) continue;
+            Float_t pt = pT[icand];
+            Float_t m = mass[icand];
+            if (m > 1.7 && m < 2.1 && pt >= 0.2 && pt < 20) { isJpsi = true; break; }
         }
         if (!isJpsi) return false;
         return true;
@@ -173,7 +173,6 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     }
     if (validRaw == 0) {
         std::cerr << "Error: no entries passed selection for mean calculation." << std::endl;
-        delete csTree;
         return 1;
     }
     const double meanQx = static_cast<double>(sumQx / validRaw);
@@ -256,7 +255,6 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     TFile fout(outputPath.c_str(), "RECREATE");
     if (fout.IsZombie()) {
         std::cerr << "Error: failed to create output file " << outputPath << std::endl;
-        delete csTree;
         return 1;
     }
 
@@ -280,6 +278,5 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::cout << "  - hsin2iPsi_Trk_1-10, hcos2iPsi_Trk_1-10" << std::endl;
     std::cout << "============================================" << std::endl;
     
-    delete csTree;
     return 0;
 }

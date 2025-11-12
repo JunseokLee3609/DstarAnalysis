@@ -425,6 +425,10 @@ namespace DataFormat{
    Float_t         Trk3DDCAErr[MAXCAND];   //[candSize]
    Float_t         mva[MAXCAND];   //[candSize]
    Float_t         dca3D[MAXCAND];   //[candSize]
+   
+   // Event Plane branches
+   Double_t        trkQx;
+   Double_t        trkQy;
 
    // List of branches
    TBranch        *b_Ntrkoffline;   //!
@@ -615,10 +619,14 @@ namespace DataFormat{
    fChain->SetBranchAddress("EtaD2", EtaD2, &b_EtaD2);
    fChain->SetBranchAddress("PhiD2", PhiD2, &b_PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2", dedxHarmonic2D2, &b_dedxHarmonic2D2);
+    fChain->SetBranchAddress("trkQx", &trkQx, &b_trkQx);
+    fChain->SetBranchAddress("trkQy", &trkQy, &b_trkQy);
    fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
     fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
+    fChain->SetBranchAddress("trkQx", &trkQx, &b_trkQx);
+    fChain->SetBranchAddress("trkQy", &trkQy, &b_trkQy);
         };
     template <typename T>
         void setGENTree(T *fChain){ 
@@ -850,6 +858,8 @@ namespace DataFormat{
     fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->SetBranchAddress("mva",&mva);
     fChain->SetBranchAddress("dca3D",&dca3D);
+    fChain->SetBranchAddress("trkQx",&trkQx);
+    fChain->SetBranchAddress("trkQy",&trkQy);
     fChain->SetBranchAddress("centrality",&centrality);
     fChain->SetBranchAddress("Ncoll",&ncoll);
     };
