@@ -9,6 +9,11 @@
 #include "TFile.h"
 #include "TH1D.h"
 #include "TH2D.h"
+#include "TString.h"
+
+// Use the same data format helper as eventplaneana to ensure identical selection
+#include "/home/jun502s/evtplane/evtplanereco/simpleDMC.h"
+using namespace DataFormat;
 
 namespace {
 
@@ -46,6 +51,7 @@ bool LoadInputFiles(TChain& chain, const std::string& input) {
  * Usage (ROOT batch):
  *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root")'
  *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root","eventplane/EventPlane",123)'
+ *   root -l -b -q 'Preprocessing/Common/EventPlaneCalibratorBuilder.cpp("input.list","trkEvtPlaneCalib.root","eventplane/EventPlane",123,0,180)'
  *
  * The macro reads the TChain "eventplane/EventPlane" and produces:
  *   - hQxvsQyRaw_Trk      : raw Q-vector scatter (for mean extraction)
@@ -57,29 +63,61 @@ bool LoadInputFiles(TChain& chain, const std::string& input) {
 int EventPlaneCalibratorBuilder(const char* input = "",
                                 const char* output = "trkEvtPlaneCalib.root",
                                 const char* treeName = "eventplane/EventPlane",
-                                int jobIdx = -1) {
+                                int jobIdx = -1,
+                                int centMin = 0,
+                                int centMax = 180) {
     if (!input || std::string(input).empty()) {
         std::cerr << "Error: input file or list is required." << std::endl;
         return 1;
     }
 
-    TChain chain(treeName);
-    if (!LoadInputFiles(chain, input)) {
+    // Track event-plane tree
+    TChain trkChain(treeName);
+    if (!LoadInputFiles(trkChain, input)) {
         std::cerr << "Error: failed to load any entries for tree " << treeName << std::endl;
+        return 1;
+    }
+
+    // CS ntuple for J/psi selection (match eventplaneana)
+    TChain csChain("dStarana/PATCompositeNtuple");
+    if (!LoadInputFiles(csChain, input)) {
+        std::cerr << "Error: failed to load CS ntuple entries." << std::endl;
+        return 1;
+    }
+
+    // Centrality tree
+    TChain centChain("eventinfoana/EventInfoNtuple");
+    if (!LoadInputFiles(centChain, input)) {
+        std::cerr << "Error: failed to load centrality entries." << std::endl;
         return 1;
     }
 
     Double_t trkQx = 0.0;
     Double_t trkQy = 0.0;
-    chain.SetBranchAddress("trkQx", &trkQx);
-    chain.SetBranchAddress("trkQy", &trkQy);
+    trkChain.SetBranchAddress("trkQx", &trkQx);
+    trkChain.SetBranchAddress("trkQy", &trkQy);
 
-    const Long64_t nEntries = chain.GetEntries();
-    if (nEntries <= 0) {
-        std::cerr << "Error: empty chain after loading inputs." << std::endl;
+    // Use simpleDMC helper to access candidate arrays
+    auto csTree = new simpleDStarDataTreeevt;
+    csTree->setTree(&csChain);
+
+    Short_t cen = -99;
+    centChain.SetBranchAddress("centrality", &cen);
+
+    // Use the minimum entries across chains, start at 1 to match eventplaneana
+    Long64_t nTrk = trkChain.GetEntries();
+    Long64_t nCs  = csChain.GetEntries();
+    Long64_t nCent= centChain.GetEntries();
+    Long64_t nEntries = nTrk;
+    if (nCs < nEntries) nEntries = nCs;
+    if (nCent < nEntries) nEntries = nCent;
+
+    if (nEntries <= 1) {
+        std::cerr << "Error: insufficient synchronized entries across chains." << std::endl;
+        delete csTree;
         return 1;
     }
-    std::cout << "Loaded " << nEntries << " events from " << treeName << std::endl;
+    std::cout << "Loaded synchronized entries: " << nEntries << std::endl;
 
     auto hQxvsQyRaw = std::make_unique<TH2D>("hQxvsQyRaw_Trk", "", 160, -2, 2, 160, -2, 2);
     auto hQxvsQyRec = std::make_unique<TH2D>("hQxvsQyRec_Trk", "", 160, -2, 2, 160, -2, 2);
@@ -90,11 +128,26 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::array<std::unique_ptr<TH1D>, 10> hSin;
     std::array<std::unique_ptr<TH1D>, 10> hCos;
     for (int i = 1; i <= 10; ++i) {
-        hSin[i - 1] = std::make_unique<TH1D>(
-            Form("hsin2iPsi_Trk_%d", i), "", 100, -1.2, 1.2);
-        hCos[i - 1] = std::make_unique<TH1D>(
-            Form("hcos2iPsi_Trk_%d", i), "", 100, -1.2, 1.2);
+        hSin[i - 1] = std::make_unique<TH1D>(Form("hsin2iPsi_Trk_%d", i), "", 100, -1.0, 1.0);
+        hCos[i - 1] = std::make_unique<TH1D>(Form("hcos2iPsi_Trk_%d", i), "", 100, -1.0, 1.0);
     }
+
+    auto passSelection = [&](Long64_t idx) -> bool {
+        trkChain.GetEntry(idx);
+        if (!std::isfinite(trkQx) || !std::isfinite(trkQy)) return false;
+        if (csChain.GetEntry(idx) < 0) return false;
+        if (centChain.GetEntry(idx) < 0) return false;
+        if (cen < centMin || cen >= centMax) return false;
+        bool isJpsi = false;
+        for (UInt_t icand = 0; icand < csTree->candSize; ++icand) {
+            if (std::abs(csTree->y[icand]) >= 1) continue;
+            Float_t pt = csTree->pT[icand];
+            Float_t mass = csTree->mass[icand];
+            if (mass > 1.7 && mass < 2.1 && pt >= 0.2 && pt < 20) { isJpsi = true; break; }
+        }
+        if (!isJpsi) return false;
+        return true;
+    };
 
     long double sumQx = 0.0;
     long double sumQy = 0.0;
@@ -104,14 +157,13 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::cout << "Pass 1: Computing Q-vector means" << std::endl;
     std::cout << "============================================" << std::endl;
     
-    for (Long64_t i = 0; i < nEntries; ++i) {
+    for (Long64_t i = 1; i < nEntries; ++i) {
         if (i > 0 && i % 1000000 == 0) {
             double progress = 100.0 * i / nEntries;
             std::cout << "  Processing: " << i << " / " << nEntries 
                       << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl;
         }
-        chain.GetEntry(i);
-        if (!std::isfinite(trkQx) || !std::isfinite(trkQy)) continue;
+        if (!passSelection(i)) continue;
         hQxvsQyRaw->Fill(trkQx, trkQy);
         const double psiRaw = 0.5 * std::atan2(trkQy, trkQx);
         hPsiRaw->Fill(psiRaw);
@@ -120,7 +172,8 @@ int EventPlaneCalibratorBuilder(const char* input = "",
         ++validRaw;
     }
     if (validRaw == 0) {
-        std::cerr << "Error: no finite trkQx/trkQy entries were found." << std::endl;
+        std::cerr << "Error: no entries passed selection for mean calculation." << std::endl;
+        delete csTree;
         return 1;
     }
     const double meanQx = static_cast<double>(sumQx / validRaw);
@@ -134,21 +187,18 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::cout << "============================================" << std::endl;
     
     Long64_t validRec = 0;
-    for (Long64_t i = 0; i < nEntries; ++i) {
+    for (Long64_t i = 1; i < nEntries; ++i) {
         if (i > 0 && i % 1000000 == 0) {
             double progress = 100.0 * i / nEntries;
             std::cout << "  Processing: " << i << " / " << nEntries 
                       << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl;
         }
-        chain.GetEntry(i);
-        if (!std::isfinite(trkQx) || !std::isfinite(trkQy)) continue;
+        if (!passSelection(i)) continue;
         const double qxRec = trkQx - meanQx;
         const double qyRec = trkQy - meanQy;
         const double psiRec = 0.5 * std::atan2(qyRec, qxRec);
-
         hQxvsQyRec->Fill(qxRec, qyRec);
         hPsiRec->Fill(psiRec);
-
         for (int harm = 1; harm <= 10; ++harm) {
             const double arg = 2.0 * harm * psiRec;
             hSin[harm - 1]->Fill(std::sin(arg));
@@ -170,14 +220,13 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::cout << "Pass 3: Applying flattening corrections" << std::endl;
     std::cout << "============================================" << std::endl;
     
-    for (Long64_t i = 0; i < nEntries; ++i) {
+    for (Long64_t i = 1; i < nEntries; ++i) {
         if (i > 0 && i % 1000000 == 0) {
             double progress = 100.0 * i / nEntries;
             std::cout << "  Processing: " << i << " / " << nEntries 
                       << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl;
         }
-        chain.GetEntry(i);
-        if (!std::isfinite(trkQx) || !std::isfinite(trkQy)) continue;
+        if (!passSelection(i)) continue;
         const double qxRec = trkQx - meanQx;
         const double qyRec = trkQy - meanQy;
         double psiFlat = 0.5 * std::atan2(qyRec, qxRec);
@@ -207,6 +256,7 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     TFile fout(outputPath.c_str(), "RECREATE");
     if (fout.IsZombie()) {
         std::cerr << "Error: failed to create output file " << outputPath << std::endl;
+        delete csTree;
         return 1;
     }
 
@@ -230,5 +280,6 @@ int EventPlaneCalibratorBuilder(const char* input = "",
     std::cout << "  - hsin2iPsi_Trk_1-10, hcos2iPsi_Trk_1-10" << std::endl;
     std::cout << "============================================" << std::endl;
     
+    delete csTree;
     return 0;
 }
