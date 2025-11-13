@@ -229,12 +229,15 @@ int EventPlaneCalibratorBuilder(const char* input = "",
         if (!passSelection(i)) continue;
         const double qxRec = trkQx - meanQx;
         const double qyRec = trkQy - meanQy;
-        double psiFlat = 0.5 * std::atan2(qyRec, qxRec);
+        const double psiRecHere = 0.5 * std::atan2(qyRec, qxRec);
         
+        // Apply flattening correction following EventPlaneAnalyzerFinal: PsiFlat = PsiRec + sum_i (1/i)*(-<sin>*cos(2i PsiRec) + <cos>*sin(2i PsiRec))
+        double deltaPsi2 = 0.0;
         for (int harm = 1; harm <= 10; ++harm) {
-            const double arg = 2.0 * harm * psiFlat;
-            psiFlat += (2.0 / (2.0 * harm)) * (meanSin[harm-1] * std::cos(arg) - meanCos[harm-1] * std::sin(arg));
+            const double arg = 2.0 * harm * psiRecHere;
+            deltaPsi2 += (1.0 / harm) * ((-meanSin[harm-1]) * std::cos(arg) + (meanCos[harm-1]) * std::sin(arg));
         }
+        const double psiFlat = psiRecHere + deltaPsi2;
         
         hPsiFlat->Fill(psiFlat);
     }
