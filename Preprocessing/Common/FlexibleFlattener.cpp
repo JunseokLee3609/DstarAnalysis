@@ -1,6 +1,10 @@
 #include <fstream>
 #include <array>
 #include <cmath>
+#include <vector>
+#include <algorithm>
+#include <memory>
+#include <string>
 #include <ROOT/TThreadExecutor.hxx>
 #include "../../Interface/simpleDMC.h"
 #include "CandidateSelection.h"
@@ -8,108 +12,234 @@
 #include <TFile.h>
 #include <TH1.h>
 #include <TH2.h>
+#include <TProfile.h>
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
-}
+struct TrackEventPlaneCalibration {
+    struct BinPayload {
+        double meanQx = 0.0;
+        double meanQy = 0.0;
+        std::array<double, CandidateSelection::kPsiMaxFlatteningHarmonics> avgSin{};
+        std::array<double, CandidateSelection::kPsiMaxFlatteningHarmonics> avgCos{};
+        bool valid = false;
+        std::string source;
+    };
 
-class EventPlaneCalibrator {
-public:
-    bool LoadCentering(const std::string& filename);
-    bool LoadFlattening(const std::string& filename);
-
-    bool HasCentering() const { return fHasCentering; }
-    bool HasFlattening() const { return fHasFlattening; }
-    bool IsReady() const { return fHasCentering && fHasFlattening; }
-
-    double EvalRaw(double qx, double qy) const { return 0.5 * std::atan2(qy, qx); }
-    double EvalRecentered(double qx, double qy) const;
-    double EvalFlattened(double qx, double qy) const;
-
-private:
-    static double WrapToHalfPi(double ang);
-
-    bool fHasCentering = false;
-    bool fHasFlattening = false;
-    double fQxMean = 0.0;
-    double fQyMean = 0.0;
-    std::array<double, 10> fSin2i{};
-    std::array<double, 10> fCos2i{};
+    std::array<BinPayload, CandidateSelection::kPsiCentBinCount> bins{};
+    bool anyValid = false;
+    std::string sourceHint;
 };
 
-bool EventPlaneCalibrator::LoadCentering(const std::string& filename) {
-    if (filename.empty()) return false;
-    TFile* infile = TFile::Open(filename.c_str());
-    if (!infile || infile->IsZombie()) {
-        std::cerr << "Warning: failed to open centering file " << filename << std::endl;
-        return false;
-    }
-    TH2* hQ = dynamic_cast<TH2*>(infile->Get("hQxvsQyRaw_Trk"));
-    if (!hQ) {
-        std::cerr << "Warning: histogram 'hQxvsQyRaw_Trk' missing in " << filename << std::endl;
-        infile->Close();
-        delete infile;
-        return false;
-    }
-    fQxMean = hQ->GetMean(1);
-    fQyMean = hQ->GetMean(2);
-    fHasCentering = true;
-    infile->Close();
-    delete infile;
-    return true;
-}
+std::vector<std::string> BuildCalibrationCandidates(const std::string& basePath,
+                                                    const std::string& label) {
+    std::vector<std::string> candidates;
+    if (basePath.empty()) return candidates;
 
-bool EventPlaneCalibrator::LoadFlattening(const std::string& filename) {
-    if (filename.empty()) return false;
-    TFile* infile = TFile::Open(filename.c_str());
-    if (!infile || infile->IsZombie()) {
-        std::cerr << "Warning: failed to open flattening file " << filename << std::endl;
-        return false;
-    }
-    bool ok = true;
-    for (int i = 1; i < 11; ++i) {
-        TH1* hSin = dynamic_cast<TH1*>(infile->Get(Form("hsin2iPsi_Trk_%d", i)));
-        TH1* hCos = dynamic_cast<TH1*>(infile->Get(Form("hcos2iPsi_Trk_%d", i)));
-        if (!hSin || !hCos) {
-            std::cerr << "Warning: missing flattening histograms for harmonic " << i << " in " << filename << std::endl;
-            ok = false;
-            break;
+    const bool hasPlaceholder = basePath.find("%s") != std::string::npos;
+    const bool baseHasRootExt = TString(basePath).EndsWith(".root");
+
+    auto appendUnique = [&](const std::string& path) {
+        if (path.empty()) return;
+        if (std::find(candidates.begin(), candidates.end(), path) == candidates.end()) {
+            candidates.push_back(path);
         }
-        fSin2i[i - 1] = hSin->GetMean(1);
-        fCos2i[i - 1] = hCos->GetMean(1);
+    };
+
+    if (hasPlaceholder) {
+        const std::string formatted = Form(basePath.c_str(), label.c_str());
+        appendUnique(formatted);
+        if (!formatted.empty() && formatted.back() != '/' &&
+            !TString(formatted).EndsWith(".root")) {
+            appendUnique(formatted + ".root");
+        }
+    } else {
+        appendUnique(basePath);
+        if (!baseHasRootExt && !basePath.empty() && basePath.back() != '/') {
+            appendUnique(basePath + ".root");
+        }
+        if (!baseHasRootExt) {
+            appendUnique(basePath + "_" + label + ".root");
+            appendUnique(basePath + label + ".root");
+            if (!basePath.empty()) {
+                if (basePath.back() == '/') {
+                    appendUnique(basePath + label + ".root");
+                } else {
+                    appendUnique(basePath + "/" + label + ".root");
+                }
+            }
+        }
     }
-    fHasFlattening = ok;
-    infile->Close();
-    delete infile;
-    return ok;
+
+    return candidates;
 }
 
-double EventPlaneCalibrator::EvalRecentered(double qx, double qy) const {
-    if (!fHasCentering) return EvalRaw(qx, qy);
-    const double qxRec = qx - fQxMean;
-    const double qyRec = qy - fQyMean;
-    return 0.5 * std::atan2(qyRec, qxRec);
-}
-
-double EventPlaneCalibrator::EvalFlattened(double qx, double qy) const {
-    const double psiRec = EvalRecentered(qx, qy);
-    if (!fHasFlattening) return psiRec;
-    double deltaPsi = 0.0;
-    for (int i = 1; i < 11; ++i) {
-        const double coeff = 2.0 * i * psiRec;
-        deltaPsi += (2.0 / i) * ((-1.0) * fSin2i[i - 1] * std::cos(coeff) + fCos2i[i - 1] * std::sin(coeff));
+TrackEventPlaneCalibration LoadTrackEventPlaneCalibration(const std::string& basePath) {
+    TrackEventPlaneCalibration calib;
+    calib.sourceHint = basePath;
+    if (basePath.empty()) {
+        std::cout << "[EventPlane] No calibration base path provided; psi flattening disabled." << std::endl;
+        return calib;
     }
-    return WrapToHalfPi(psiRec + 0.5 * deltaPsi);
+
+    std::cout << "[EventPlane] Loading calibration histograms from: " << basePath << std::endl;
+
+    // Try to open the single file
+    std::unique_ptr<TFile> file(TFile::Open(basePath.c_str(), "READ"));
+    if (!file || file->IsZombie()) {
+        std::cerr << "[EventPlane] Error: Could not open calibration file: " << basePath << std::endl;
+        return calib;
+    }
+
+    std::cout << "[EventPlane] Successfully opened calibration file" << std::endl;
+
+    for (size_t i = 0; i < CandidateSelection::kPsiCentBinCount; ++i) {
+        const auto& bin = CandidateSelection::kPsiCentBins[i];
+        const std::string label = bin.label;
+
+        std::cout << "[EventPlane] Loading centrality bin: " << label << std::endl;
+
+        TrackEventPlaneCalibration::BinPayload payload;
+        payload.source = basePath;
+
+        bool ok = true;
+        
+        // Get mean Qx and Qy from Raw 2D histogram
+        if (auto* h2d = dynamic_cast<TH2D*>(file->Get(Form("Raw/hQxvsQyRaw_Trk_cent%s", label.c_str())))) {
+            payload.meanQx = h2d->GetMean(1);  // X-axis mean
+            payload.meanQy = h2d->GetMean(2);  // Y-axis mean
+            std::cout << "[EventPlane]   meanQx = " << payload.meanQx << ", meanQy = " << payload.meanQy << std::endl;
+            
+            if (!std::isfinite(payload.meanQx) || !std::isfinite(payload.meanQy)) {
+                std::cerr << "[EventPlane] Warning: Non-finite mean values for " << label << std::endl;
+                ok = false;
+            }
+        } else {
+            std::cerr << "[EventPlane] Warning: Could not find Raw/hQxvsQyRaw_Trk_cent" << label << std::endl;
+            ok = false;
+        }
+
+        // Get sin/cos coefficients from Recentering Psi histogram
+        if (auto* hPsiRec = dynamic_cast<TH1D*>(file->Get(Form("Recentering/hPsiRec_Trk_cent%s", label.c_str())))) {
+            for (int iHarm = 1; iHarm <= CandidateSelection::kPsiMaxFlatteningHarmonics; ++iHarm) {
+                double sum_sin = 0.0;
+                double sum_cos = 0.0;
+                double total = 0.0;
+                
+                // Integrate sin(2*n*Psi) and cos(2*n*Psi) over the histogram
+                for (int ibin = 1; ibin <= hPsiRec->GetNbinsX(); ++ibin) {
+                    double psi = hPsiRec->GetBinCenter(ibin);
+                    double weight = hPsiRec->GetBinContent(ibin);
+                    
+                    sum_sin += weight * std::sin(2.0 * iHarm * psi);
+                    sum_cos += weight * std::cos(2.0 * iHarm * psi);
+                    total += weight;
+                }
+                
+                if (total > 0) {
+                    payload.avgSin[iHarm - 1] = sum_sin / total;
+                    payload.avgCos[iHarm - 1] = sum_cos / total;
+                } else {
+                    payload.avgSin[iHarm - 1] = 0.0;
+                    payload.avgCos[iHarm - 1] = 0.0;
+                }
+                
+                if (!std::isfinite(payload.avgSin[iHarm - 1]) || !std::isfinite(payload.avgCos[iHarm - 1])) {
+                    std::cerr << "[EventPlane] Warning: Non-finite flattening coefficients for " << label << " harm=" << iHarm << std::endl;
+                    ok = false;
+                }
+            }
+            std::cout << "[EventPlane]   Computed flattening coefficients from histogram" << std::endl;
+        } else {
+            std::cerr << "[EventPlane] Warning: Could not find Recentering/hPsiRec_Trk_cent" << label << std::endl;
+            ok = false;
+        }
+
+        if (!ok) {
+            std::cerr << "[EventPlane] Warning: incomplete calibration payload for cent bin "
+                      << bin.label << "; flattening disabled for this bin." << std::endl;
+            continue;
+        }
+
+        payload.valid = true;
+        calib.bins[i] = payload;
+        calib.anyValid = true;
+
+        std::cout << "[EventPlane] Successfully loaded calibration for cent " << label << std::endl;
+    }
+
+    if (!calib.anyValid) {
+        std::cerr << "[EventPlane] Warning: no usable calibration histograms were found. "
+                  << "Psi flattening will fall back to raw values." << std::endl;
+    }
+
+    return calib;
 }
 
-double EventPlaneCalibrator::WrapToHalfPi(double ang) {
-    const double halfPi = 0.5 * kPi;
-    const double range = 2.0 * halfPi;
-    double wrapped = ang;
-    while (wrapped < -halfPi) wrapped += range;
-    while (wrapped > halfPi) wrapped -= range;
-    return wrapped;
+struct PsiValues {
+    double psiRaw = CandidateSelection::kPsiInvalidValue;
+    double psiRec = CandidateSelection::kPsiInvalidValue;
+    double psiFlat = CandidateSelection::kPsiInvalidValue;
+};
+
+PsiValues EvaluateAllPsi(short centrality, double trkQx, double trkQy,
+                         const TrackEventPlaneCalibration* calib) {
+    PsiValues result;
+    
+    if (!std::isfinite(trkQx) || !std::isfinite(trkQy)) {
+        return result;
+    }
+
+    result.psiRaw = 0.5 * std::atan2(trkQy, trkQx);
+    
+    if (!calib || !calib->anyValid) {
+        result.psiRec = result.psiRaw;
+        result.psiFlat = result.psiRaw;
+        return result;
+    }
+
+    const int centIdx = CandidateSelection::PsiCentBinIndex(centrality);
+    if (centIdx < 0) {
+        result.psiRec = result.psiRaw;
+        result.psiFlat = result.psiRaw;
+        return result;
+    }
+
+    const auto& payload = calib->bins[centIdx];
+    if (!payload.valid) {
+        result.psiRec = result.psiRaw;
+        result.psiFlat = result.psiRaw;
+        return result;
+    }
+
+    const double qxRec = trkQx - payload.meanQx;
+    const double qyRec = trkQy - payload.meanQy;
+    result.psiRec = 0.5 * std::atan2(qyRec, qxRec);
+
+    result.psiFlat = result.psiRec;
+    for (int iHarm = 1; iHarm <= CandidateSelection::kPsiMaxFlatteningHarmonics; ++iHarm) {
+        result.psiFlat += (1.0 / iHarm) *
+                   (-payload.avgSin[iHarm - 1] * std::cos(2.0 * iHarm * result.psiRec) +
+                    payload.avgCos[iHarm - 1] * std::sin(2.0 * iHarm * result.psiRec));
+    }
+    result.psiFlat = std::remainder(result.psiFlat, kPi);
+
+    return result;
 }
+
+double EvaluateFlattenedPsi(short centrality, double trkQx, double trkQy,
+                            const TrackEventPlaneCalibration* calib) {
+    return EvaluateAllPsi(centrality, trkQx, trkQy, calib).psiFlat;
+}
+
+}  // namespace
+
+// EventPlaneCalibrator removed (no longer used)
+
+
+
+
+
 
 float findNcoll(int hiBin) {
     const int nbins = 200;
@@ -370,12 +500,16 @@ void FlexibleMix(
                     }
                     if (isMatched) {
                         doutMC->isMC = true;
-                        doutMC->copyDn(*dinMC, iD1);
+                        // removed
+                // removed
+                doutMC->copyDn(*dinMC, iD1);
                         tskim->Fill();
                     } else {
                         if (idxMC % mcSampleRate == 0) {
                             doutMC->isMC = true;
-                            doutMC->copyDn(*dinMC, iD1);
+                            // removed
+                // removed
+                doutMC->copyDn(*dinMC, iD1);
                             tskim->Fill();
                         }
                         idxMC++;
@@ -393,12 +527,16 @@ void FlexibleMix(
                     }
                     if (isMatched) {
                         doutMC->isMC = true;
-                        doutMC->copyDn(*dinMC, iD1);
+                        // removed
+                // removed
+                doutMC->copyDn(*dinMC, iD1);
                         tskim->Fill();
                     } else {
                         if (idxMC % mcSampleRate == 0) {
                             doutMC->isMC = true;
-                            doutMC->copyDn(*dinMC, iD1);
+                            // removed
+                // removed
+                doutMC->copyDn(*dinMC, iD1);
                             tskim->Fill();
                         }
                         idxMC++;
@@ -492,7 +630,8 @@ void FlexibleData(
     bool doCent = true,                 // 중앙값 설정 여부 (추가)
     bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250320",  // 날짜 문자열
-    const EventPlaneCalibrator* trkCalibrator = nullptr
+    const TrackEventPlaneCalibration* trackCalib = nullptr,
+    const std::string& collision_type = "pp"
 ) {
     std::cout << "Starting FlexibleData job #" << jobIdx << std::endl;
     std::cout << "Processing Data files: " << dataPath << std::endl;
@@ -552,7 +691,6 @@ void FlexibleData(
     std::unique_ptr<TChain> chainEventPlane = nullptr;
     Double_t trkQx = -99; // 기본값 초기화
     Double_t trkQy = -99; // 기본값 초기화
-    Double_t Psi2Raw_Trk = -99; // 기본값 초기화
     if (doEvtPlane) {
         chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
         if (!files.empty()) {
@@ -569,10 +707,11 @@ void FlexibleData(
             doEvtPlane = false; // Event plane 처리 비활성화
         }
     }
-    Double_t Psi2Rec_Trk = -99;
-    Double_t Psi2Flat_Trk = -99;
-    const bool saveRecAngle = doEvtPlane && trkCalibrator && trkCalibrator->HasCentering();
-    const bool saveFlatAngle = doEvtPlane && trkCalibrator && trkCalibrator->IsReady();
+    const bool useTrackPlaneCalib = (trackCalib && trackCalib->anyValid &&
+                                     particleType == ParticleType::DStar && doEvtPlane);
+    // Psi angles removed; no recentering/flattening stored
+    const bool saveRecAngle = false;
+    const bool saveFlatAngle = false;
 
     using namespace DataFormat;
 
@@ -632,15 +771,12 @@ void FlexibleData(
         tskim->Branch("centrality", &centrality, "centrality/S");
         std::cout << "Added 'centrality' branch to output tree." << std::endl;
     }
+    // Independent EP branches to avoid name collision
+    Double_t trkQx_ep = -99, trkQy_ep = -99;
     if (doEvtPlane){
-        tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
-        if (saveRecAngle) {
-            tskim->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
-        }
-        if (saveFlatAngle) {
-            tskim->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
-        }
-        std::cout << "Added 'Psi2Raw_Trk' branch to output tree." << std::endl;
+        tskim->Branch("trkQx_ep", &trkQx_ep, "trkQx_ep/D");
+        tskim->Branch("trkQy_ep", &trkQy_ep, "trkQy_ep/D");
+        std::cout << "Added 'trkQx_ep/trkQy_ep' branches to output tree." << std::endl;
     }
 
     // 처리할 이벤트 수 결정
@@ -666,19 +802,14 @@ void FlexibleData(
         } else {
             centrality = -1.0f; // centrality를 사용하지 않으면 기본값 유지
         }
+        trkQx = -99;
+        trkQy = -99;
+        PsiValues psiValues;
         if (doEvtPlane && chainEventPlane) {
             chainEventPlane->GetEntry(iEvt);
-            Psi2Raw_Trk = 0.5*atan2(trkQy, trkQx);
-            if (saveRecAngle) {
-                Psi2Rec_Trk = trkCalibrator->EvalRecentered(trkQx, trkQy);
+            if (useTrackPlaneCalib) {
+                psiValues = EvaluateAllPsi(centrality, trkQx, trkQy, trackCalib);
             }
-            if (saveFlatAngle) {
-                Psi2Flat_Trk = trkCalibrator->EvalFlattened(trkQx, trkQy);
-            }
-        } else {
-            Psi2Raw_Trk = -1.0f; // Psi2Raw_Trk를 사용하지 않으면 기본값 유지
-            if (saveRecAngle) Psi2Rec_Trk = -1.0f;
-            if (saveFlatAngle) Psi2Flat_Trk = -1.0f;
         }
 
         // Data 메인 트리 처리
@@ -693,6 +824,9 @@ void FlexibleData(
                 doutData->isMC = false;
                 doutData->isSwap = 0;
                 doutData->matchGEN = 0;
+                // removed
+                // removed
+                trkQx_ep = trkQx; trkQy_ep = trkQy;
                 doutData->copyDn<simpleDTreeevt>(*dinData, iD1);
                 tskim->Fill();
             }
@@ -706,7 +840,15 @@ void FlexibleData(
                 doutData->isMC = false;
                 doutData->isSwap = 0;
                 doutData->matchGEN = 0;
+                // removed
+                // removed
+                trkQx_ep = trkQx; trkQy_ep = trkQy;
                 doutData->copyDn(*dinData, iD1);
+                if (useTrackPlaneCalib && std::string(collision_type) == "PbPb") {
+                    doutData->Psi2Raw_Trk = psiValues.psiRaw;
+                    doutData->Psi2Rec_Trk = psiValues.psiRec;
+                    doutData->Psi2Flat_Trk = psiValues.psiFlat;
+                }
                 tskim->Fill();
             }
         }
@@ -751,7 +893,8 @@ void FlexibleMC(
     bool doCent = true,                 // 중앙값 설정 여부
     bool doEvtPlane = true,            // 이벤트 평면 설정 여부 (추가)
     const std::string& date = "20250331",  // 날짜 문자열
-    const EventPlaneCalibrator* trkCalibrator = nullptr
+    const TrackEventPlaneCalibration* trackCalib = nullptr,
+    const std::string& collision_type = "pp"
 ) {
     std::cout << "Starting FlexibleMC job #" << jobIdx << std::endl;
     std::cout << "Processing MC files: " << mcPath << std::endl;
@@ -816,7 +959,6 @@ void FlexibleMC(
     std::unique_ptr<TChain> chainEventPlane = nullptr;
     Double_t trkQx = -99; // 기본값 초기화
     Double_t trkQy = -99; // 기본값 초기화
-    Double_t Psi2Raw_Trk = -99; // 기본값 초기화
     if (doEvtPlane) {
         chainEventPlane.reset(new TChain(eventPlaneInfoTreeName.c_str()));
         if (!files.empty()) {
@@ -833,11 +975,12 @@ void FlexibleMC(
             doEvtPlane = false; // Event plane 처리 비활성화
         }
     }
+    const bool useTrackPlaneCalib = (trackCalib && trackCalib->anyValid &&
+                                     particleType == ParticleType::DStar && doEvtPlane);
 
-    Double_t Psi2Rec_Trk = -99;
-    Double_t Psi2Flat_Trk = -99;
-    const bool saveRecAngle = doEvtPlane && trkCalibrator && trkCalibrator->HasCentering();
-    const bool saveFlatAngle = doEvtPlane && trkCalibrator && trkCalibrator->IsReady();
+    // Psi angles removed; no recentering/flattening stored
+    const bool saveRecAngle = false;
+    const bool saveFlatAngle = false;
 
     using namespace DataFormat;
 
@@ -901,24 +1044,9 @@ void FlexibleMC(
         }
         std::cout << "Added 'centrality' and 'Ncoll' branches to output tree(s)." << std::endl;
     }
+    // trkQx/trkQy branches are provided by output tree class; values set per-candidate below
     if (doEvtPlane) {
-        tskim->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
-        if (saveRecAngle) {
-            tskim->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
-        }
-        if (saveFlatAngle) {
-            tskim->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
-        }
-        if(setGEN && tskimGEN) {
-            tskimGEN->Branch("Psi2Raw_Trk", &Psi2Raw_Trk, "Psi2Raw_Trk/D");
-            if (saveRecAngle) {
-                tskimGEN->Branch("Psi2Rec_Trk", &Psi2Rec_Trk, "Psi2Rec_Trk/D");
-            }
-            if (saveFlatAngle) {
-                tskimGEN->Branch("Psi2Flat_Trk", &Psi2Flat_Trk, "Psi2Flat_Trk/D");
-            }
-        }
-        std::cout << "Added 'Psi2Raw_Trk' branch to output tree(s)." << std::endl;
+        std::cout << "Event plane will be stored via output object fields (and GEN if enabled)." << std::endl;
     }
 
 
@@ -945,19 +1073,14 @@ void FlexibleMC(
             centrality = -1.0f;
         }
         
+        trkQx = -99;
+        trkQy = -99;
+        PsiValues psiValues;
         if (doEvtPlane && chainEventPlane) {
             chainEventPlane->GetEntry(iEvt);
-            Psi2Raw_Trk = 0.5*atan2(trkQy, trkQx);
-            if (saveRecAngle) {
-                Psi2Rec_Trk = trkCalibrator->EvalRecentered(trkQx, trkQy);
+            if (useTrackPlaneCalib) {
+                psiValues = EvaluateAllPsi(centrality, trkQx, trkQy, trackCalib);
             }
-            if (saveFlatAngle) {
-                Psi2Flat_Trk = trkCalibrator->EvalFlattened(trkQx, trkQy);
-            }
-        } else {
-            Psi2Raw_Trk = -99.0f;
-            if (saveRecAngle) Psi2Rec_Trk = -99.0f;
-            if (saveFlatAngle) Psi2Flat_Trk = -99.0f;
         }
 
         chainMC->GetEntry(iEvt);
@@ -970,6 +1093,8 @@ void FlexibleMC(
             {
                 if (!CandidateSelection::PassD0MC(*dinMC, iD1)) continue;
                 doutMC->isMC = true;
+                // removed
+                // removed
                 doutMC->copyDn(*dinMC, iD1);
                 tskim->Fill();
             }
@@ -993,7 +1118,14 @@ void FlexibleMC(
             {
                 if (!CandidateSelection::PassDStarMC(*dinMC, iD1)) continue;
                 doutMC->isMC = true;
+                // removed
+                // removed
                 doutMC->copyDn(*dinMC, iD1);
+                if (useTrackPlaneCalib && std::string(collision_type) == "PbPb") {
+                    doutMC->Psi2Raw_Trk = psiValues.psiRaw;
+                    doutMC->Psi2Rec_Trk = psiValues.psiRec;
+                    doutMC->Psi2Flat_Trk = psiValues.psiFlat;
+                }
                 tskim->Fill();
             }
             if (setGEN && tskimGEN)
@@ -1003,6 +1135,11 @@ void FlexibleMC(
                     if (!CandidateSelection::PassDStarMCGen(*dinMC, iD1)) continue;
                     doutMC->isMC = true;
                     doutMC->copyGENDn(*dinMC, iD1);
+                    if (useTrackPlaneCalib && std::string(collision_type) == "PbPb") {
+                        doutMC->Psi2Raw_Trk = psiValues.psiRaw;
+                        doutMC->Psi2Rec_Trk = psiValues.psiRec;
+                        doutMC->Psi2Flat_Trk = psiValues.psiFlat;
+                    }
                     tskimGEN->Fill();
                 }
             }
@@ -1056,40 +1193,22 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
     const std::string centeringFile = centering_file ? centering_file : "";
     const std::string flatteningFile = flattening_file ? flattening_file : "";
     const std::string evtPlaneCalibFile = evtplane_calib_file ? evtplane_calib_file : "";
-    
-    EventPlaneCalibrator trkCalibrator;
-    
-    // If merged calibration file is provided, use it for both centering and flattening
+    TrackEventPlaneCalibration trackCalib;
+    const TrackEventPlaneCalibration* trackCalibPtr = nullptr;
     if (!evtPlaneCalibFile.empty()) {
-        std::cout << "Loading event plane calibration from merged file: " << evtPlaneCalibFile << std::endl;
-        bool centerOK = trkCalibrator.LoadCentering(evtPlaneCalibFile);
-        bool flattenOK = trkCalibrator.LoadFlattening(evtPlaneCalibFile);
-        if (centerOK) {
-            std::cout << "  ✓ Loaded centering parameters" << std::endl;
-        } else {
-            std::cerr << "  ✗ Failed to load centering parameters" << std::endl;
-        }
-        if (flattenOK) {
-            std::cout << "  ✓ Loaded flattening parameters" << std::endl;
-        } else {
-            std::cerr << "  ✗ Failed to load flattening parameters" << std::endl;
-        }
-    } 
-    // Otherwise, use separate files if provided (backward compatibility)
-    else {
-        if (!centeringFile.empty()) {
-            if (trkCalibrator.LoadCentering(centeringFile)) {
-                std::cout << "Loaded event-plane centering parameters from " << centeringFile << std::endl;
+        if (!isPP && particleType == ParticleType::DStar) {
+            trackCalib = LoadTrackEventPlaneCalibration(evtPlaneCalibFile);
+            if (trackCalib.anyValid) {
+                trackCalibPtr = &trackCalib;
+            } else {
+                std::cerr << "[EventPlane] Warning: supplied calibration file '"
+                          << evtPlaneCalibFile << "' did not yield usable histograms." << std::endl;
             }
-        }
-        if (!flatteningFile.empty()) {
-            if (trkCalibrator.LoadFlattening(flatteningFile)) {
-                std::cout << "Loaded event-plane flattening parameters from " << flatteningFile << std::endl;
-            }
+        } else {
+            std::cout << "[EventPlane] Calibration input provided but ignored "
+                         "(only applied for PbPb DStar jobs)." << std::endl;
         }
     }
-    const EventPlaneCalibrator* evtPlanePtr = (doEvtPlane && (trkCalibrator.HasCentering() || trkCalibrator.HasFlattening()))
-                                              ? &trkCalibrator : nullptr;
     
     std::string eventInfoTreeName = "eventinfoana/EventInfoNtuple";
     std::string eventPlaneInfoTreeName = "eventplane/EventPlane"; // Event Plane 트리 이름 (추가)
@@ -1123,7 +1242,7 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
         // Ensure output directory is created
         gSystem->mkdir(outputPath.c_str(), true);
         std::cout << "MC mode: Output path = " << outputPath << std::endl;
-        FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, setGEN, doCent, doEvtPlane, date, evtPlanePtr);
+        FlexibleMC(mcPath, treeNameMC, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, setGEN, doCent, doEvtPlane, date, trackCalibPtr, collision_type);
 
     } else if (type == 0) {
         // Data
@@ -1140,7 +1259,7 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
         // Ensure output directory is created
         gSystem->mkdir(outputPath.c_str(), true);
         std::cout << "Data mode: Output path = " << outputPath << std::endl;
-        FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date, evtPlanePtr);
+        FlexibleData(dataPath, treeNameData, eventInfoTreeName, eventPlaneInfoTreeName, outputPath, outputPrefix, start_, end_, jobIdx_, particleType, doCent, doEvtPlane, date, trackCalibPtr, collision_type);
 
     } else if (type == 2) {
         // Mix

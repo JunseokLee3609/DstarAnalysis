@@ -626,14 +626,14 @@ namespace DataFormat{
    fChain->SetBranchAddress("EtaD2", EtaD2, &b_EtaD2);
    fChain->SetBranchAddress("PhiD2", PhiD2, &b_PhiD2);
    fChain->SetBranchAddress("dedxHarmonic2D2", dedxHarmonic2D2, &b_dedxHarmonic2D2);
-    fChain->SetBranchAddress("trkQx", &trkQx, &b_trkQx);
-    fChain->SetBranchAddress("trkQy", &trkQy, &b_trkQy);
+    fChain->SetBranchAddress("trkQx", &trkQx);
+    fChain->SetBranchAddress("trkQy", &trkQy);
    fChain->SetBranchAddress("Trk3DDCA", Trk3DDCA, &b_Trk3DDCA);
     fChain->SetBranchAddress("Trk3DDCAErr", Trk3DDCAErr, &b_Trk3DDCAErr);
     fChain->SetBranchAddress("mva", mva, &b_mva);
     fChain->SetBranchAddress("dca3D", dca3D, &b_dca3D);
-    fChain->SetBranchAddress("trkQx", &trkQx, &b_trkQx);
-    fChain->SetBranchAddress("trkQy", &trkQy, &b_trkQy);
+    fChain->SetBranchAddress("trkQx", &trkQx);
+    fChain->SetBranchAddress("trkQy", &trkQy);
         };
     template <typename T>
         void setGENTree(T *fChain){ 
@@ -865,8 +865,9 @@ namespace DataFormat{
     fChain->SetBranchAddress("Trk3DDCAErr",&Trk3DDCAErr);
     fChain->SetBranchAddress("mva",&mva);
     fChain->SetBranchAddress("dca3D",&dca3D);
-    fChain->SetBranchAddress("trkQx",&trkQx);
-    fChain->SetBranchAddress("trkQy",&trkQy);
+    /* trkQx/trkQy handled in separate eventplane chain */
+    // fChain->SetBranchAddress("trkQx",&trkQx);
+    // fChain->SetBranchAddress("trkQy",&trkQy);
     fChain->SetBranchAddress("centrality",&centrality);
     fChain->SetBranchAddress("Ncoll",&ncoll);
     };
@@ -1481,6 +1482,8 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
      Float_t        mva;   //[candSize]
      Float_t       dca3D;   //[candSize]
      Double_t       Psi2Raw_Trk;   //[candSize]
+     Double_t       Psi2Rec_Trk;   //[candSize]
+     Double_t       Psi2Flat_Trk;  //[candSize]
 
    bool isMC;
     simpleDTreeflat* getEventHandle(){ return this;}
@@ -1537,6 +1540,8 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
    fChain->Branch("isMC",&isMC);
     fChain->SetBranchAddress("dca3D",&dca3D);
     fChain->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
+    fChain->SetBranchAddress("Psi2Rec_Trk",&Psi2Rec_Trk);
+    fChain->SetBranchAddress("Psi2Flat_Trk",&Psi2Flat_Trk);
     };
         template <typename T>
     void setOutputTree(T *fChain){
@@ -1591,6 +1596,8 @@ gen_D0Dau2_pdgId =evt.gen_D0Dau2_pdgId[idx];   //[candSize_gen]
     fChain->Branch("mva",&mva);
     fChain->Branch("dca3D",&dca3D);
     fChain->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
+    fChain->Branch("Psi2Rec_Trk",&Psi2Rec_Trk);
+    fChain->Branch("Psi2Flat_Trk",&Psi2Flat_Trk);
           };
 void copyDn( simpleDTreeevt& evt, int idx){
 Npixel =evt.Npixel;
@@ -2660,6 +2667,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             bool isMC;
 	   float mva;
        double Psi2Raw_Trk;
+       double Psi2Rec_Trk;
+       double Psi2Flat_Trk;
 
                   Int_t           candSize_gen;
    Float_t         gen_mass;   //[candSize_gen]
@@ -2789,6 +2798,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
                 t->SetBranchAddress("gen_D1charge",&gen_D1charge);
                 t->SetBranchAddress("gen_D1pdgId",&gen_D1pdgId);
                 t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
+                t->SetBranchAddress("Psi2Rec_Trk",&Psi2Rec_Trk);
+                t->SetBranchAddress("Psi2Flat_Trk",&Psi2Flat_Trk);
                 if (t->GetBranch("centrality")) {
                     t->SetBranchAddress("centrality",&centrality);
                 } else {
@@ -3081,6 +3092,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("isMC",&isMC);
 	    t->Branch("mva",&mva);
         t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
+        t->Branch("Psi2Rec_Trk",&Psi2Rec_Trk);
+        t->Branch("Psi2Flat_Trk",&Psi2Flat_Trk);
         };
         template <typename T>
         void setGENOutputTree(T *t){
@@ -3127,6 +3140,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->Branch("gen_D1charge",&gen_D1charge);
             t->Branch("gen_D1pdgId",&gen_D1pdgId);
             t->Branch("Psi2Raw_Trk",&Psi2Raw_Trk);
+            t->Branch("Psi2Rec_Trk",&Psi2Rec_Trk);
+            t->Branch("Psi2Flat_Trk",&Psi2Flat_Trk);
             t->Branch("trkQx",&trkQx);
             t->Branch("trkQy",&trkQy);
             t->Branch("centrality",&centrality);
@@ -3595,6 +3610,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             float mva;
             bool isMC;
             double Psi2Raw_Trk;
+            double Psi2Rec_Trk;
+            double Psi2Flat_Trk;
             float centrality;
             float ncoll;
             // int candSize_gen;
@@ -3766,6 +3783,8 @@ Psi2Raw_Trk = evt.Psi2Raw_Trk[idx];
             t->SetBranchAddress("dca3D",&dca3D);
 	    t->SetBranchAddress("mva",&mva);
         t->SetBranchAddress("Psi2Raw_Trk",&Psi2Raw_Trk);
+        t->SetBranchAddress("Psi2Rec_Trk",&Psi2Rec_Trk);
+        t->SetBranchAddress("Psi2Flat_Trk",&Psi2Flat_Trk);
     };
             template <typename T>
         void setOutputTree(T *t){

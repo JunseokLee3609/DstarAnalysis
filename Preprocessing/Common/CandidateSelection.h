@@ -1,10 +1,38 @@
 #pragma once
 
+#include <array>
 #include <cmath>
+#include <string>
 
 #include "../../Interface/simpleDMC.h"
 
 namespace CandidateSelection {
+
+inline constexpr double kPsiInvalidValue = -999.0;
+inline constexpr int kPsiMaxFlatteningHarmonics = 10;
+
+struct PsiCentBinDef {
+    int min;
+    int max;
+    const char* label;
+};
+
+inline constexpr std::array<PsiCentBinDef, 3> kPsiCentBins = {{
+    {0, 20, "0to10"},
+    {20, 60, "10to30"},
+    {60, 100, "30to50"}
+}};
+
+inline constexpr size_t kPsiCentBinCount = kPsiCentBins.size();
+
+inline int PsiCentBinIndex(short centrality) {
+    for (size_t i = 0; i < kPsiCentBinCount; ++i) {
+        if (centrality >= kPsiCentBins[i].min && centrality < kPsiCentBins[i].max) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
 
 struct D0RecoCuts {
     float minCandPt = -1.f;
@@ -169,4 +197,3 @@ inline bool PassDStarMCGen(const DataFormat::simpleDStarMCTreeevt& tree, int idx
 }
 
 } // namespace CandidateSelection
-
