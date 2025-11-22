@@ -2,7 +2,7 @@
 # Format: kinVarInt varName varMin varMax
 # kinVarInt: 0=pT, 1=rapidity, 2=centrality, 3=costheta
 
-# pT bins [GeV/c] - 5-20 with 1 GeV interval, 20-50 with 2 GeV interval
+#for reweighting function
 0 pT 5 6
 0 pT 6 7
 0 pT 7 8
@@ -23,16 +23,33 @@
 0 pT 24 26
 0 pT 26 28
 0 pT 28 30
-0 pT 30 32
-0 pT 32 34
-0 pT 34 36
-0 pT 36 38
-0 pT 38 40
-0 pT 40 42
-0 pT 42 44
-0 pT 44 46
-0 pT 46 48
-0 pT 48 50
+0 pT 30 35
+0 pT 35 40
+0 pT 40 50
+#0 pT 30 32
+#0 pT 32 34
+#0 pT 34 36
+#0 pT 36 38
+#0 pT 38 40
+#0 pT 40 42
+#0 pT 42 44
+#0 pT 44 46
+#0 pT 46 48
+#0 pT 48 50
+#analysis bin
+0 pT 5 7
+0 pT 7 10
+0 pT 10 20
+0 pT 20 30
+0 pT 30 50 
+#0 pT 50 60
+#0 pT 60 70
+#0 pT 70 80
+#0 pT 80 90
+#0 pT 90 100
+#0 pT 100 110
+#0 pT 110 120
+
 
 # Rapidity bins (uncomment to use)
 # 1 y 0.0 0.3

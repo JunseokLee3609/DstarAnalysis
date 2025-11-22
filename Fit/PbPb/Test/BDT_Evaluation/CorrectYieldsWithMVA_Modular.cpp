@@ -48,6 +48,7 @@
 #include "RooArgSet.h"
 
 #include "/home/jun502s/DstarAna/DStarAnalysis/Fit/Common/Analysis/SimpleDatasetManager.h"
+#include "BDTKinematicConfig.h"
 
 namespace {
   enum class VarType { PT=0, RAPIDITY=1, CENTRALITY=2, COS=3 };
@@ -122,31 +123,220 @@ namespace {
     void SetVarType(VarType v) { fVarType = v; }
   };
   
-  TH1D* BuildGenPTWeightHist(const char* resultsDir, TTree* mcGenTree, VarType vtype,
+  // Wrapper to handle RooDataSet (for modular version compatibility)
+  TH1D* BuildGenPTWeightHist(const char* resultsDir, RooDataSet* mcRds, VarType vtype,
+                             double baseMVA = 0.990, double wmin = 0.2, double wmax = 5.0){
+    // For now, skip gen tree filling since RooDataSet already contains the data
+    // Extract only from data fit results
+    std::cout << "\n=== STAGE 1: Build Reweighting Function ===" << std::endl;
+    std::cout << "Variable: " << VarName(vtype) << std::endl;
+    std::cout << "Base MVA: " << baseMVA << std::endl;
+    std::cout << "Using pre-built MC gen RooDataSet" << std::endl;
+    
+    // Get bin edges from centralized BDT config
+    BDTKinematicConfig::VarType bdtVtype = static_cast<BDTKinematicConfig::VarType>(static_cast<int>(vtype));
+    const auto& edges = BDTKinematicConfig::GetFineBinsEdges(bdtVtype);
+    int nBins = BDTKinematicConfig::GetFineBinsNBins(bdtVtype);
+
+    TH1D *hMCGen=nullptr, *hTarget=nullptr;
+    
+    if(vtype == VarType::PT){
+      hMCGen = new TH1D("hMCRecoPt", "D* MC reco pT (matchGEN==1)", nBins, edges.data());
+      hTarget = new TH1D("hTargetPt", "Data fit yields at baseline MVA", nBins, edges.data());
+    } else if(vtype == VarType::RAPIDITY){
+      hMCGen = new TH1D("hMCRecoY", "D* MC reco |y| (matchGEN==1)", nBins, edges.data());
+      hTarget = new TH1D("hTargetY", "Data fit yields at baseline MVA", nBins, edges.data());
+    } else if(vtype == VarType::CENTRALITY){
+      hMCGen = new TH1D("hMCRecoCent", "D* MC reco centrality (matchGEN==1)", nBins, edges.data());
+      hTarget = new TH1D("hTargetCent", "Data fit yields at baseline MVA", nBins, edges.data());
+    }
+    
+    if(!hMCGen || !hTarget) return nullptr;
+    
+    hMCGen->Sumw2();
+    hTarget->Sumw2();
+
+    // Fill from RooDataSet (pre-filled with reco pT values from matchGEN==1 candidates)
+    if(mcRds){
+      std::cout << "Filling from RooDataSet with " << mcRds->numEntries() << " reco entries (matchGEN==1)" << std::endl;
+      for(int i=0; i<mcRds->numEntries(); ++i){
+        const RooArgSet* row = mcRds->get(i);
+        if(vtype == VarType::PT){
+          double val = dynamic_cast<RooRealVar*>(row->find("gen_pT"))->getVal();  // Note: variable name is gen_pT but contains reco values
+          hMCGen->Fill(val);
+        } else if(vtype == VarType::RAPIDITY){
+          double val = dynamic_cast<RooRealVar*>(row->find("gen_y"))->getVal();
+          hMCGen->Fill(val);
+        } else if(vtype == VarType::CENTRALITY){
+          double val = dynamic_cast<RooRealVar*>(row->find("centrality"))->getVal();
+          hMCGen->Fill(val);
+        }
+      }
+    }
+    
+    std::cout << "MC Reco (matchGEN==1) entries: " << hMCGen->Integral() << std::endl;
+
+    // Fill target histogram from data fit results at baseline MVA
+    {
+      std::string varStr = VarName(vtype);
+      char mvaBuf[64];
+      snprintf(mvaBuf, sizeof(mvaBuf), "mva%.3f", baseMVA);
+      std::string mvaTag = mvaBuf;
+      for(char &c : mvaTag) if(c=='.') c='p';
+      std::string prefix = std::string("fitresult_") + varStr + "_";
+
+      TSystemDirectory dir(resultsDir, resultsDir);
+      TList* fl = dir.GetListOfFiles();
+      std::cout << "Reading fit results from: " << resultsDir << " for MVA " << baseMVA << std::endl;
+      
+      if (fl) {
+        TIter next(fl);
+        TSystemFile* f;
+        int count = 0;
+        while((f=(TSystemFile*)next())) {
+          std::string fname = f->GetName();
+          if (fname.find(prefix) == 0 && fname.find(mvaTag) != std::string::npos && 
+              fname.size() > 5 && fname.substr(fname.size()-5) == ".root") {
+            count++;
+            size_t start = prefix.size();
+            size_t pos_mva = fname.find("_mva");
+            if (pos_mva == std::string::npos || pos_mva <= start) continue;
+            std::string range = fname.substr(start, pos_mva - start);
+            size_t us = range.find('_');
+            if (us == std::string::npos) continue;
+            std::string smin = range.substr(0, us);
+            std::string smax = range.substr(us+1);
+            for(char &c : smin) if(c=='p') c='.';
+            for(char &c : smax) if(c=='p') c='.';
+            double vmin = atof(smin.c_str());
+            double vmax = atof(smax.c_str());
+            std::string fpath = std::string(resultsDir) + "/" + fname;
+            TFile* tf = TFile::Open(fpath.c_str(), "READ");
+            if (!tf || tf->IsZombie()) { if(tf) tf->Close(); continue; }
+            RooFitResult* r = (RooFitResult*)tf->Get("fitResult");
+            double y=0, ey=0;
+            if (r) {
+              getParamValErr(r, "nsig", y, ey);
+              std::cout << "  Bin [" << vmin << ", " << vmax << "]: yield = " << y << " +/- " << ey << std::endl;
+            }
+            tf->Close();
+            
+            // Distribute coarse bin yield equally across all overlapping fine bins
+            int binMin = hTarget->FindBin(vmin + 0.01);
+            int binMax = hTarget->FindBin(vmax - 0.01);
+            if(binMin <= binMax){
+              int nBinsOverlap = binMax - binMin + 1;
+              double yPerBin = y / nBinsOverlap;
+              double eyPerBin = ey / nBinsOverlap;
+              for(int b = binMin; b <= binMax; ++b){
+                hTarget->SetBinContent(b, yPerBin);
+                hTarget->SetBinError(b, eyPerBin);
+              }
+            }
+          }
+        }
+        std::cout << "Found " << count << " fit results at MVA " << baseMVA << std::endl;
+      }
+      std::cout << "Target total yield: " << hTarget->Integral() << std::endl;
+    }
+    
+    // Build weight histogram: w(x) = hTarget(x) / hMCGen(x)
+    TH1D* hWeight = (TH1D*)hTarget->Clone("hWeight");
+    hWeight->SetTitle("Reweighting factor: data_yield / MC_gen");
+    for(int i=1; i<=hWeight->GetNbinsX(); ++i){
+      if(hMCGen->GetBinContent(i) > 0){
+        double ratio = hTarget->GetBinContent(i) / hMCGen->GetBinContent(i);
+        double err = 0;
+        if(hMCGen->GetBinContent(i) > 0 && hTarget->GetBinContent(i) > 0){
+          err = ratio * sqrt(pow(hTarget->GetBinError(i)/hTarget->GetBinContent(i), 2) + 
+                             pow(hMCGen->GetBinError(i)/hMCGen->GetBinContent(i), 2));
+        }
+        hWeight->SetBinContent(i, ratio);
+        hWeight->SetBinError(i, err);
+      } else {
+        hWeight->SetBinContent(i, 1.0);
+        hWeight->SetBinError(i, 0);
+      }
+    }
+    
+    // Clip weights to [wmin, wmax]
+    for(int i=1; i<=hWeight->GetNbinsX(); ++i){
+      double w = hWeight->GetBinContent(i);
+      if(w < wmin || w > wmax){
+        std::cout << "  Bin " << i << ": weight " << w << " clipped to [" << wmin << ", " << wmax << "]" << std::endl;
+        if(w < wmin) hWeight->SetBinContent(i, wmin);
+        if(w > wmax) hWeight->SetBinContent(i, wmax);
+        hWeight->SetBinError(i, 0);
+      }
+    }
+    
+    // Plot reweighting factor
+    gSystem->mkdir("results/aggregated", true);
+    TCanvas* cWeight = new TCanvas("cWeight", "Reweighting Factor", 900, 700);
+    cWeight->SetLeftMargin(0.12);
+    cWeight->SetBottomMargin(0.12);
+    cWeight->SetRightMargin(0.05);
+    hWeight->SetMarkerStyle(20);
+    hWeight->SetMarkerSize(1.2);
+    hWeight->SetMarkerColor(kBlack);
+    hWeight->SetLineWidth(2);
+    hWeight->SetLineColor(kBlack);
+    hWeight->GetYaxis()->SetTitle("w(x) = N_{data} / N_{MC,reco,matched}");
+    hWeight->GetXaxis()->SetTitle(VarLabel(vtype));
+    hWeight->GetYaxis()->SetTitleOffset(1.3);
+    hWeight->SetMinimum(0);
+    hWeight->Draw("E");
+    TLine lineOne(hWeight->GetXaxis()->GetXmin(), 1.0, hWeight->GetXaxis()->GetXmax(), 1.0);
+    lineOne.SetLineStyle(2);
+    lineOne.SetLineColor(kRed);
+    lineOne.SetLineWidth(2);
+    lineOne.Draw();
+    
+    std::string baseName = std::string("results/aggregated/reweight_") + VarName(vtype);
+    cWeight->SaveAs((baseName + ".png").c_str());
+    cWeight->SaveAs((baseName + ".pdf").c_str());
+    delete cWeight;
+    
+    // Save to ROOT file
+    gSystem->mkdir("results/aggregated", true);
+    TFile* fOut = TFile::Open((baseName + ".root").c_str(), "RECREATE");
+    hWeight->Write("hWeight");
+    hMCGen->Write();
+    hTarget->Write();
+    fOut->Close();
+    delete fOut;
+    
+    std::cout << "Reweighting saved: " << baseName << ".root" << std::endl;
+    
+    delete hMCGen;
+    delete hTarget;
+    
+    return hWeight;
+  }
+
+  TH1D* BuildGenPTWeightHist_Tree(const char* resultsDir, TTree* mcGenTree, VarType vtype,
                              double baseMVA = 0.990, double wmin = 0.2, double wmax = 5.0){
     std::cout << "\n=== STAGE 1: Build Reweighting Function ===" << std::endl;
     std::cout << "Variable: " << VarName(vtype) << std::endl;
     std::cout << "Base MVA: " << baseMVA << std::endl;
     std::cout << "MC gen distribution (matchGEN==1 from skimGENTreeFlat)" << std::endl;
     
-    const double ptEdges[] = {5,7,10,20,30,40,50,60,70,80,90,100,110,120};
-    const int nPt = sizeof(ptEdges)/sizeof(double) - 1;
-    const double yEdges[] = {0, 0.5, 1.0, 1.5, 2.0, 2.5};
-    const int nY = sizeof(yEdges)/sizeof(double) - 1;
-    const double centEdges[] = {0, 10, 30, 50, 90};
-    const int nCent = sizeof(centEdges)/sizeof(double) - 1;
+    // Get bin edges from centralized BDT config
+    BDTKinematicConfig::VarType bdtVtype = static_cast<BDTKinematicConfig::VarType>(static_cast<int>(vtype));
+    const auto& edges = BDTKinematicConfig::GetFineBinsEdges(bdtVtype);
+    int nBins = BDTKinematicConfig::GetFineBinsNBins(bdtVtype);
 
     TH1D *hMCGen=nullptr, *hTarget=nullptr;
     
     if(vtype == VarType::PT){
-      hMCGen = new TH1D("hMCGenPt", "D* MC gen pT (fiducial)", nPt, ptEdges);
-      hTarget = new TH1D("hTargetPt", "Data fit yields at baseline MVA", nPt, ptEdges);
+      hMCGen = new TH1D("hMCGenPt", "D* MC gen pT (fiducial)", nBins, edges.data());
+      hTarget = new TH1D("hTargetPt", "Data fit yields at baseline MVA", nBins, edges.data());
     } else if(vtype == VarType::RAPIDITY){
-      hMCGen = new TH1D("hMCGenY", "D* MC gen |y| (fiducial)", nY, yEdges);
-      hTarget = new TH1D("hTargetY", "Data fit yields at baseline MVA", nY, yEdges);
+      hMCGen = new TH1D("hMCGenY", "D* MC gen |y| (fiducial)", nBins, edges.data());
+      hTarget = new TH1D("hTargetY", "Data fit yields at baseline MVA", nBins, edges.data());
     } else if(vtype == VarType::CENTRALITY){
-      hMCGen = new TH1D("hMCGenCent", "D* MC gen centrality (fiducial)", nCent, centEdges);
-      hTarget = new TH1D("hTargetCent", "Data fit yields at baseline MVA", nCent, centEdges);
+      hMCGen = new TH1D("hMCGenCent", "D* MC gen centrality (fiducial)", nBins, edges.data());
+      hTarget = new TH1D("hTargetCent", "Data fit yields at baseline MVA", nBins, edges.data());
     }
     
     if(!hMCGen || !hTarget) return nullptr;
@@ -205,8 +395,6 @@ namespace {
             for(char &c : smax) if(c=='p') c='.';
             double vmin = atof(smin.c_str());
             double vmax = atof(smax.c_str());
-            double x = 0.5*(vmin+vmax);
-
             std::string fpath = std::string(resultsDir) + "/" + fname;
             TFile* tf = TFile::Open(fpath.c_str(), "READ");
             if (!tf || tf->IsZombie()) { if(tf) tf->Close(); continue; }
@@ -217,9 +405,19 @@ namespace {
               std::cout << "  Bin [" << vmin << ", " << vmax << "]: yield = " << y << " +/- " << ey << std::endl;
             }
             tf->Close();
-            int bin = hTarget->FindBin(x);
-            hTarget->SetBinContent(bin, y);
-            hTarget->SetBinError(bin, ey);
+            
+            // Distribute coarse bin yield equally across all overlapping fine bins
+            int binMin = hTarget->FindBin(vmin + 0.01);
+            int binMax = hTarget->FindBin(vmax - 0.01);
+            if(binMin <= binMax){
+              int nBinsOverlap = binMax - binMin + 1;
+              double yPerBin = y / nBinsOverlap;
+              double eyPerBin = ey / nBinsOverlap;
+              for(int b = binMin; b <= binMax; ++b){
+                hTarget->SetBinContent(b, yPerBin);
+                hTarget->SetBinError(b, eyPerBin);
+              }
+            }
           }
         }
         std::cout << "Found " << count << " fit results at MVA " << baseMVA << std::endl;
@@ -335,6 +533,13 @@ namespace {
     std::map<double, TH1D*>& GetMap() { return fEffHistos; }
   };
   
+  // Stub for RooDataSet compatibility (requires actual trees for implementation)
+  std::map<double, TH1D*> BuildEfficiencyMaps(const char* resultsDir, VarType vtype, 
+                                              const std::vector<double>& mvaList, RooDataSet* mcRds){
+    std::cerr << "ERROR: BuildEfficiencyMaps not implemented for RooDataSet. Need actual TTree objects." << std::endl;
+    return std::map<double, TH1D*>();
+  }
+
   std::map<double, TH1D*> BuildEfficiencyMaps(const char* resultsDir, VarType vtype, 
                                               const std::vector<double>& mvaList, TTree* mcGenTree, TTree* mcRecoTree){
     std::cout << "\n=== STAGE 2: Build Efficiency Map ===" << std::endl;

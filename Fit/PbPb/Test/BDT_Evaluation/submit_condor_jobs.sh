@@ -74,7 +74,7 @@ for bin in "${BINS_ARRAY[@]}"; do
     mc_cache="results/histogram_cache/mc_histograms_${vname}_${vmin_fmt}_${vmax_fmt}.root"
     data_cache="results/histogram_cache/data_histograms_${vname}_${vmin_fmt}_${vmax_fmt}.root"
 
-    base_inputs="run_fit_single_bin.sh, FitSingleBin.cpp, BDTParameterLoader.h, bdt_fit_parameters_phenom2.json"
+    base_inputs="run_fit_single_bin.sh, FitSingleBin.cpp, BDTKinematicConfig.h"
     inputs="$base_inputs"
     if [[ -f "$mc_cache" ]]; then inputs="$inputs, $mc_cache"; fi
     if [[ -f "$data_cache" ]]; then inputs="$inputs, $data_cache"; fi

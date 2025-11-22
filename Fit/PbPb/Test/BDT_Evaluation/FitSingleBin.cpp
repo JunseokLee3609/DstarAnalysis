@@ -12,14 +12,18 @@
 //   root -l -b -q 'FitSingleBin.cpp(0, ptmin, ptmax, 1, 1)'
 //
 // Usage: 
-//   FitSingleBin(kinVarInt, varMin, varMax, generateHistograms, doFit)
+//   FitSingleBin(kinVarInt, varMin, varMax, generateHistograms, doFit, dcaMode, dcaCut)
 //   kinVarInt: 0=pT, 1=rapidity, 2=centrality
 //   generateHistograms: 1=create histograms from datasets, 0=load from cache (default=1)
 //   doFit: 1=perform fitting (MC then Data), 0=skip fitting (default=1)
+//   dcaMode: 0=inclusive, 1=prompt (dca3D <= dcaCut), 2=nonprompt (dca3D > dcaCut); ignored if dcaCut<0
+//   dcaCut: threshold value for dca3D (e.g., 0.01); set <0 for inclusive
 
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <iomanip>
+#include <algorithm>
 #include "TFile.h"
 #include "TH1D.h"
 #include "TCanvas.h"
@@ -41,7 +45,7 @@
 #include "RooDstD0BG.h"
 #include "RooMsgService.h"
 #include "/home/jun502s/DstarAna/DStarAnalysis/Fit/Common/Analysis/SimpleDatasetManager.h"
-#include "BDTParameterLoader.h"
+#include "BDTKinematicConfig.h"
 
 // Histogram binning configuration
 const int NBINS = 80;  // Number of bins for mass histogram
@@ -72,7 +76,7 @@ std::string GetVarLabel(KinematicVar var) {
     }
 }
 
-void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHistograms = 1, int doFit = 1) {
+void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHistograms = 1, int doFit = 1, int dcaMode = 0, double dcaCut = 0.01) {
     
     using namespace RooFit;
     
@@ -93,20 +97,33 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
     std::cout << "Histogram binning: " << NBINS << " bins from " << MASS_MIN << " to " << MASS_MAX << " GeV" << std::endl;
     std::cout << "Mode: " << (generateHistograms ? "GENERATE" : "LOAD") << " histograms, " 
               << (doFit ? "PERFORM" : "SKIP") << " fitting" << std::endl;
-    
-    // MVA thresholds to scan - ASCENDING ORDER for cascading reduction
-    // Process from lowest MVA to highest, reusing reduced dataset
-    // 0.990 -> reduce 12.4M to 5.9M
-    // 0.991 -> reduce 5.9M to 5.7M (reuse previous)
-    // 0.999 -> reduce 1.5M to 1.4M (reuse previous)
-    std::vector<double> mvaThresholds;
-    for (int i = 990; i <= 999; ++i) {
-        mvaThresholds.push_back(i / 1000.0);
+    std::string catLabel = "incl";
+    if (dcaCut >= 0) {
+        if (dcaMode == 1) catLabel = "prompt";
+        else if (dcaMode == 2) catLabel = "nonprompt";
+        std::cout << "DCA split: " << catLabel << " (threshold=" << dcaCut << ")" << std::endl;
+    } else {
+        std::cout << "DCA split: inclusive" << std::endl;
     }
     
-    std::cout << "MVA thresholds: " << mvaThresholds.size() << " points from " 
-              << mvaThresholds[0] << " to " << mvaThresholds.back() 
-              << " (ascending order for cascading reduction)" << std::endl;
+    // MVA thresholds to scan - ASCENDING ORDER for cascading reduction
+    // Read from BDTKinematicConfig.h
+    const auto& mvaThresholdsArray = BDTKinematicConfig::GetMVAThresholds();
+    std::vector<double> mvaThresholds(mvaThresholdsArray.begin(), mvaThresholdsArray.end());
+    
+    // Sort MVA thresholds in ascending order for cascading reduction
+    std::sort(mvaThresholds.begin(), mvaThresholds.end());
+    
+    std::cout << "MVA thresholds (from BDTKinematicConfig): " << mvaThresholds.size() << " points" << std::endl;
+    std::cout << "  Range: " << std::fixed << std::setprecision(3) 
+              << mvaThresholds[0] << " to " << mvaThresholds.back() << std::endl;
+    
+    std::cout << "  Values: ";
+    for (size_t i = 0; i < mvaThresholds.size(); ++i) {
+        if (i > 0) std::cout << ", ";
+        std::cout << std::fixed << std::setprecision(3) << mvaThresholds[i];
+    }
+    std::cout << std::endl;
     
     // Histogram cache file paths - separate for MC and Data
     std::string histCacheDir = "results/histogram_cache";
@@ -115,10 +132,10 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
     std::ostringstream mcHistFileName, dataHistFileName;
     mcHistFileName << histCacheDir << "/mc_histograms_" << varName 
                    << "_" << std::fixed << std::setprecision(2) << varMin 
-                   << "_" << varMax << ".root";
+                   << "_" << varMax << "_" << catLabel << ".root";
     dataHistFileName << histCacheDir << "/data_histograms_" << varName 
                      << "_" << std::fixed << std::setprecision(2) << varMin 
-                     << "_" << varMax << ".root";
+                     << "_" << varMax << "_" << catLabel << ".root";
     
     std::string mcHistFilePath = mcHistFileName.str();
     std::string dataHistFilePath = dataHistFileName.str();
@@ -265,6 +282,11 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             kinCut = Form("centrality > %f && centrality <= %f", varMin, varMax);
         }
         std::cout << "Kinematic cut: " << kinCut << std::endl;
+        std::string dcaCutStr;
+        if (dcaCut >= 0) {
+            if (dcaMode == 1) dcaCutStr = Form(" && dca3D <= %.6f", dcaCut);
+            else if (dcaMode == 2) dcaCutStr = Form(" && dca3D > %.6f", dcaCut);
+        }
         
         // Process MC histograms with cascading reduction
         std::cout << "\n--- Processing MC Histograms ---" << std::endl;
@@ -278,10 +300,10 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             // Build cut
             std::string completeCut;
             if (mvaIdx == 0) {
-                completeCut = Form("mva > %.3f && %s", mva, kinCut.c_str());
+                completeCut = Form("mva > %.3f && %s%s", mva, kinCut.c_str(), dcaCutStr.c_str());
                 std::cout << "  Full cut: " << completeCut << std::endl;
             } else {
-                completeCut = Form("mva > %.3f", mva);
+                completeCut = Form("mva > %.3f%s", mva, dcaCutStr.c_str());
                 std::cout << "  Incremental cut: " << completeCut << " (reusing previous dataset)" << std::endl;
             }
             
@@ -349,10 +371,10 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             // Build cut
             std::string completeCut;
             if (mvaIdx == 0) {
-                completeCut = Form("mva > %.3f && %s", mva, kinCut.c_str());
+                completeCut = Form("mva > %.3f && %s%s", mva, kinCut.c_str(), dcaCutStr.c_str());
                 std::cout << "  Full cut: " << completeCut << std::endl;
             } else {
-                completeCut = Form("mva > %.3f", mva);
+                completeCut = Form("mva > %.3f%s", mva, dcaCutStr.c_str());
                 std::cout << "  Incremental cut: " << completeCut << " (reusing previous dataset)" << std::endl;
             }
             
@@ -445,16 +467,9 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         return;
     }
     
-    // Load fit parameters from JSON
-    BDTParameterLoader paramLoader;
-    paramLoader.loadFromFile("bdt_fit_parameters_phenom2.json");
-    
-    std::cout << "\n=== Fit Parameters (MVA-specific tuning enabled) ===" << std::endl;
-    std::cout << "Each MVA threshold uses independently tuned parameters" << std::endl;
-    
-    // Print loaded parameters for this bin
-    BDTBinIdentifier binTestId(kinVarInt, varMin, varMax, 0.99);
-    paramLoader.printMatchedBinForMVA(binTestId, 0.99);
+    // Use simple uniform parameter initialization (same as MakeHistKinematicBin.cpp)
+    std::cout << "\n=== Fit Parameters (uniform initialization for all bins) ===" << std::endl;
+    std::cout << "Using standard parameter ranges for all MVA thresholds" << std::endl;
     
     // Create new massPion variable with proper range and bins for fitting
     RooRealVar massPion("massPion", "#Delta M(D*-D^{0})", MASS_MIN, MASS_MAX, "GeV/c^{2}");
@@ -494,12 +509,6 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         std::cout << "\n>>> Processing MVA > " << std::fixed << std::setprecision(3) << mva 
                   << " (" << mvaIdx << "/" << mvaThresholds.size() << ")" << std::endl;
         
-        // Create bin identifier with MVA threshold
-        BDTBinIdentifier binId(kinVarInt, varMin, varMax, mva);
-        
-        // Print matched parameters for this MVA
-        paramLoader.printMatchedBinForMVA(binId, mva);
-        
         // === MC FIT ===
         std::cout << "\n--- MC Fit ---" << std::endl;
         TH1D* mcHist = mcCachedHistograms[mva];
@@ -518,21 +527,14 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             continue;
         }
         
-        // === LOAD PARAMETERS FROM JSON ===
-        auto meanP = paramLoader.getParameter(binId, "signal_mean");
-        auto sigmaP = paramLoader.getParameter(binId, "signal_sigma");
-        auto alphaLP = paramLoader.getParameter(binId, "signal_alphaL");
-        auto alphaRP = paramLoader.getParameter(binId, "signal_alphaR");
-        auto nLP = paramLoader.getParameter(binId, "signal_nL");
-        auto nRP = paramLoader.getParameter(binId, "signal_nR");
-        
-        // === MC SIGNAL PDF ===
-        RooRealVar mcMeanCB("meanCB", "mean", meanP.value, meanP.min, meanP.max);
-        RooRealVar mcSigmaCB("sigmaCB", "sigma", sigmaP.value, sigmaP.min, sigmaP.max);
-        RooRealVar mcAlphaL("alphaL", "alphaL", alphaLP.value, alphaLP.min, alphaLP.max);
-        RooRealVar mcAlphaR("alphaR", "alphaR", alphaRP.value, alphaRP.min, alphaRP.max);
-        RooRealVar mcNL("nL", "nL", nLP.value, nLP.min, nLP.max);
-        RooRealVar mcNR("nR", "nR", nRP.value, nRP.min, nRP.max);
+        // === INITIALIZE MC SIGNAL PARAMETERS (uniform for all bins) ===
+        // Using same initialization as MakeHistKinematicBin.cpp
+        RooRealVar mcMeanCB("meanCB", "mean", 0.1455, 0.145, 0.146);
+        RooRealVar mcSigmaCB("sigmaCB", "sigma", 0.0005, 0.0001, 0.01);
+        RooRealVar mcAlphaL("alphaL", "alphaL", 1.1, 0.1, 5.0);
+        RooRealVar mcAlphaR("alphaR", "alphaR", 1.1, 0.1, 5.0);
+        RooRealVar mcNL("nL", "nL", 2.0, 1.0, 100.0);
+        RooRealVar mcNR("nR", "nR", 2.5, 1.0, 100.0);
         
         // MC fit: Allow ALL parameters to float in MC, ignore JSON fixed flags
         // All tail parameters (alphaL, alphaR, nL, nR) must be floating for MC
@@ -556,8 +558,8 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         std::cout << "    nR = " << mcNR.getVal() << " +/- " << mcNR.getError() << std::endl;
         
         // Save MC fit result
-        std::string mcFitFileNameBase = Form("results/mc_fits/fitresult_%s_%.2f_%.2f_mva%.3f", 
-                                       varName.c_str(), varMin, varMax, mva);
+        std::string mcFitFileNameBase = Form("results/mc_fits/fitresult_%s_%.2f_%.2f_%s_mva%.3f", 
+                                       varName.c_str(), varMin, varMax, catLabel.c_str(), mva);
         for (char& c : mcFitFileNameBase) if (c == '.') c = 'p';
         std::string mcFitFileName = mcFitFileNameBase + ".root";
         
@@ -596,58 +598,45 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             continue;
         }
         
-        // Load background parameters
-        auto mP = paramLoader.getParameter(binId, "background_m");
-        auto lambdaP = paramLoader.getParameter(binId, "background_lambda");
-        auto p0P = paramLoader.getParameter(binId, "background_p0");
-        auto p1P = paramLoader.getParameter(binId, "background_p1");
+        // === INITIALIZE DATA SIGNAL PARAMETERS (uniform for all bins) ===
+        // Start with same initialization as MC
+        RooRealVar dataMeanCB("meanCB", "mean", 0.1455, 0.145, 0.146);
+        RooRealVar dataSigmaCB("sigmaCB", "sigma", 0.0005, 0.0001, 0.01);
+        RooRealVar dataAlphaL("alphaL", "alphaL", 1.1, 0.1, 5.0);
+        RooRealVar dataAlphaR("alphaR", "alphaR", 1.1, 0.1, 5.0);
+        RooRealVar dataNL("nL", "nL", 2.0, 1.0, 100.0);
+        RooRealVar dataNR("nR", "nR", 2.5, 1.0, 100.0);
         
-        // Initialize Data signal parameters with JSON values
-        RooRealVar dataMeanCB("meanCB", "mean", meanP.value, meanP.min, meanP.max);
-        RooRealVar dataSigmaCB("sigmaCB", "sigma", sigmaP.value, sigmaP.min, sigmaP.max);
-        RooRealVar dataAlphaL("alphaL", "alphaL", alphaLP.value, alphaLP.min, alphaLP.max);
-        RooRealVar dataAlphaR("alphaR", "alphaR", alphaRP.value, alphaRP.min, alphaRP.max);
-        RooRealVar dataNL("nL", "nL", nLP.value, nLP.min, nLP.max);
-        RooRealVar dataNR("nR", "nR", nRP.value, nRP.min, nRP.max);
-        
-        // Load MC fit results and fix parameters marked as fixed in JSON
+        // Load MC fit results and fix tail parameters (nL, nR always fixed)
         std::cout << "  Loading MC fit results to fix tail parameters..." << std::endl;
         TFile* mcFitFileLoad = TFile::Open(mcFitFileName.c_str(), "READ");
         if (mcFitFileLoad && !mcFitFileLoad->IsZombie()) {
             RooFitResult* mcFitResLoad = (RooFitResult*)mcFitFileLoad->Get("fitResult");
             if (mcFitResLoad) {
-                // Fix parameters based on JSON fixed flags
-                if (nLP.fixed) {
-                    RooRealVar* mcNLval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("nL");
-                    if (mcNLval) {
-                        dataNL.setVal(mcNLval->getVal());
-                        dataNL.setConstant(true);
-                        std::cout << "    Fixed nL = " << dataNL.getVal() << " (from MC)" << std::endl;
-                    }
+                // Fix all tail parameters (nL, nR, alphaL, alphaR) from MC fit
+                RooRealVar* mcNLval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("nL");
+                if (mcNLval) {
+                    dataNL.setVal(mcNLval->getVal());
+                    dataNL.setConstant(true);
+                    std::cout << "    Fixed nL = " << dataNL.getVal() << " (from MC)" << std::endl;
                 }
-                if (nRP.fixed) {
-                    RooRealVar* mcNRval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("nR");
-                    if (mcNRval) {
-                        dataNR.setVal(mcNRval->getVal());
-                        dataNR.setConstant(true);
-                        std::cout << "    Fixed nR = " << dataNR.getVal() << " (from MC)" << std::endl;
-                    }
+                RooRealVar* mcNRval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("nR");
+                if (mcNRval) {
+                    dataNR.setVal(mcNRval->getVal());
+                    dataNR.setConstant(true);
+                    std::cout << "    Fixed nR = " << dataNR.getVal() << " (from MC)" << std::endl;
                 }
-                if (alphaLP.fixed) {
-                    RooRealVar* mcAlphaLval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("alphaL");
-                    if (mcAlphaLval) {
-                        dataAlphaL.setVal(mcAlphaLval->getVal());
-                        dataAlphaL.setConstant(true);
-                        std::cout << "    Fixed alphaL = " << dataAlphaL.getVal() << " (from MC)" << std::endl;
-                    }
+                RooRealVar* mcAlphaLval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("alphaL");
+                if (mcAlphaLval) {
+                    dataAlphaL.setVal(mcAlphaLval->getVal());
+                    dataAlphaL.setConstant(true);
+                    std::cout << "    Fixed alphaL = " << dataAlphaL.getVal() << " (from MC)" << std::endl;
                 }
-                if (alphaRP.fixed) {
-                    RooRealVar* mcAlphaRval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("alphaR");
-                    if (mcAlphaRval) {
-                        dataAlphaR.setVal(mcAlphaRval->getVal());
-                        dataAlphaR.setConstant(true);
-                        std::cout << "    Fixed alphaR = " << dataAlphaR.getVal() << " (from MC)" << std::endl;
-                    }
+                RooRealVar* mcAlphaRval = (RooRealVar*)mcFitResLoad->floatParsFinal().find("alphaR");
+                if (mcAlphaRval) {
+                    dataAlphaR.setVal(mcAlphaRval->getVal());
+                    dataAlphaR.setConstant(true);
+                    std::cout << "    Fixed alphaR = " << dataAlphaR.getVal() << " (from MC)" << std::endl;
                 }
             }
             mcFitFileLoad->Close();
@@ -657,83 +646,31 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         RooCrystalBall dataSignalPdf("signalPdf", "signalPdf", massPion, dataMeanCB, dataSigmaCB, 
                                      dataAlphaL, dataNL, dataAlphaR, dataNR);
         
-        // Background PDF - dynamically select based on JSON type
-        std::string bkgType = paramLoader.getBackgroundPDFType(binId);
-        std::cout << "  Background PDF type: " << bkgType << std::endl;
+        // === BACKGROUND PDF: Phenomenological2 (uniform for all bins) ===
+        // (x - m_pi)^m * exp(lambda * (x - m_pi))
+        std::cout << "  Background PDF type: Phenomenological2" << std::endl;
         
-        // Declare all possible background parameters (for plotting later)
-        RooRealVar m_param("m_param", "m", mP.value, mP.min, mP.max);
-        RooRealVar c_param("c_param", "c", lambdaP.value, lambdaP.min, lambdaP.max);
-        RooRealVar a_param("a_param", "a", 0.0, -1000.0, 1000.0);  // Default for p0
-        RooRealVar b_param("b_param", "b", 0.0, -1000.0, 1000.0);  // Default for p1
+        RooRealVar m_param("m_param", "m", 1.0, 0.0, 10.0);
+        RooRealVar c_param("c_param", "lambda", -2.0, -50.0, 50.0);
         
-        RooAbsPdf* bkgPdf = nullptr;
+        // Formula: (x - m0)^m * exp(lambda * (x - m0)) with threshold at pion mass
+        RooArgList phenom2Args(massPion, RooFit::RooConst(0.13957), m_param, c_param);
+        std::string formula = "(@0>@1) * TMath::Power(TMath::Max(@0-@1, 1e-9), @2) * TMath::Exp(@3 * TMath::Max(@0-@1, 0.0))";
+        RooGenericPdf bkgPdf("bkgPdf", "Phenomenological2", formula.c_str(), phenom2Args);
         
-        if (bkgType == "Phenomenological2") {
-            // Phenomenological2: (x - m_pi)^m * exp(lambda * (x - m_pi))
-            // Use m_param as m and c_param as lambda (threshold at pion mass)
-            if (mP.fixed) m_param.setConstant(true);
-            if (lambdaP.fixed) c_param.setConstant(true);
-            
-            // Set a_param and b_param to zero (not used)
-            a_param.setVal(0.0);
-            a_param.setConstant(true);
-            b_param.setVal(0.0);
-            b_param.setConstant(true);
-            
-            // Loosen/adjust Phenomenological2 initial values and ranges if not fixed
-            if (!mP.fixed) {
-                m_param.setRange(0.0, 10.0);
-                if (m_param.getVal() < 0.0 || m_param.getVal() > 10.0) m_param.setVal(1.0);
-            }
-            if (!lambdaP.fixed) {
-                c_param.setRange(-50.0, 50.0);
-                if (fabs(c_param.getVal()) > 50.0 || fabs(c_param.getVal()) < 1e-6) c_param.setVal(-2.0);
-            }
-            
-            // Formula: (x - m0)^m * exp(lambda * (x - m0)) with threshold at pion mass
-            RooArgList phenom2Args(massPion, RooFit::RooConst(0.13957), m_param, c_param);
-            cout << "m_param: " << m_param.getVal() << " m_param_min: " << m_param.getMin() << " m_param_max: " << m_param.getMax() << endl;
-            cout << "c_param: " << c_param.getVal() << " c_param_min: " << c_param.getMin() << " c_param_max: " << c_param.getMax() << endl;
-            std::string formula = "(@0>@1) * TMath::Power(TMath::Max(@0-@1, 1e-9), @2) * TMath::Exp(@3 * TMath::Max(@0-@1, 0.0))";
-            bkgPdf = new RooGenericPdf("bkgPdf", "Phenomenological2", formula.c_str(), phenom2Args);
-            
-        } else if (bkgType == "RooDstD0BG" || bkgType == "DstD0") {
-            // Original RooDstD0BG
-        RooRealVar dm0("dm0", "dm0_pion_mass", 0.13957);
-        dm0.setConstant(true);
-            
-            // Load p0 and p1 parameters
-            a_param.setVal(p0P.value);
-            a_param.setRange(p0P.min, p0P.max);
-            b_param.setVal(p1P.value);
-            b_param.setRange(p1P.min, p1P.max);
-            
-            if (mP.fixed) m_param.setConstant(true);
-            if (lambdaP.fixed) c_param.setConstant(true);
-            if (p0P.fixed) a_param.setConstant(true);
-            if (p1P.fixed) b_param.setConstant(true);
-            
-            bkgPdf = new RooDstD0BG("bkgPdf", "bkgPdf", massPion, dm0, c_param, a_param, b_param);
-            
-        } else {
-            std::cerr << "ERROR: Unknown background PDF type: " << bkgType << std::endl;
-            continue;
-        }
-        
-        
-        // Combined model
-        auto nsigRatioP = paramLoader.getParameter(binId, "yield_nsig_ratio");
-        auto nbkgRatioP = paramLoader.getParameter(binId, "yield_nbkg_ratio");
-        double nsigRatio = (nsigRatioP.value > 0) ? nsigRatioP.value : 0.5;
-        double nbkgRatio = (nbkgRatioP.value > 0) ? nbkgRatioP.value : 0.5;
-        
+        // Combined model (signal + background)
+        // Initialize yields based on histogram entries
         double nTotal = dataBinnedData.sumEntries();
+        double nsigRatio = 0.5;  // Initial guess: 50% signal
+        double nbkgRatio = 0.5;  // Initial guess: 50% background
+        
         RooRealVar nsig("nsig", "nsig", nTotal*nsigRatio, 0, nTotal);
-        cout << "nsigRatio: " << nsigRatio << " nsig: " << nsig.getVal() << " nTotal: " << nTotal << endl;
         RooRealVar nbkg("nbkg", "nbkg", nTotal*nbkgRatio, 0, nTotal);
-        cout << "nbkgRatio: " << nbkgRatio << " nbkg: " << nbkg.getVal() << " nTotal: " << nTotal << endl;
-        RooAddPdf model("model", "model", RooArgList(dataSignalPdf, *bkgPdf), RooArgList(nsig, nbkg));
+        
+        std::cout << "  Initial yield estimates: nsig = " << nsig.getVal() 
+                  << ", nbkg = " << nbkg.getVal() << " (total = " << nTotal << ")" << std::endl;
+        
+        RooAddPdf model("model", "model", RooArgList(dataSignalPdf, bkgPdf), RooArgList(nsig, nbkg));
         
         // Data fit with Extended likelihood and no SumW2 errors
         std::cout << "  Performing Data fit with tail params fixed from MC..." << std::endl;
@@ -750,8 +687,8 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         double nbkgRatioFit = nbkg.getVal() / nTotFit;
         
         // Save Data fit result
-        std::string dataFitFileNameBase = Form("results/data_fits/fitresult_%s_%.2f_%.2f_mva%.3f", 
-                                         varName.c_str(), varMin, varMax, mva);
+        std::string dataFitFileNameBase = Form("results/data_fits/fitresult_%s_%.2f_%.2f_%s_mva%.3f", 
+                                         varName.c_str(), varMin, varMax, catLabel.c_str(), mva);
         for (char& c : dataFitFileNameBase) if (c == '.') c = 'p';
         std::string dataFitFileName = dataFitFileNameBase + ".root";
         
@@ -763,7 +700,7 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         dataBinnedData.plotOn(dataFrame, MarkerSize(0.6), MarkerColor(kBlack), LineColor(kBlack), Name("data"));
         model.plotOn(dataFrame, LineColor(kBlack), LineWidth(2), Name("model"));
         model.plotOn(dataFrame, Components(dataSignalPdf), LineStyle(kDashed), LineColor(kRed), LineWidth(2), Name("signal"));
-        model.plotOn(dataFrame, Components(*bkgPdf), LineStyle(kDashed), LineColor(kBlue), LineWidth(2), Name("bkg"));
+        model.plotOn(dataFrame, Components(bkgPdf), LineStyle(kDashed), LineColor(kBlue), LineWidth(2), Name("bkg"));
         dataFrame->Write("massFrame");
         dataFitFile->Close();
         
@@ -786,7 +723,7 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
         dataBinnedData.plotOn(dataFramePlot, MarkerSize(0.6), MarkerColor(kBlack), LineColor(kBlack), Name("data"));
         model.plotOn(dataFramePlot, LineColor(kBlack), LineWidth(2), Name("model"));
         model.plotOn(dataFramePlot, Components(dataSignalPdf), LineStyle(kDashed), LineColor(kRed), LineWidth(2), Name("signal"));
-        model.plotOn(dataFramePlot, Components(*bkgPdf), LineStyle(kDashed), LineColor(kBlue), LineWidth(2), Name("bkg"));
+        model.plotOn(dataFramePlot, Components(bkgPdf), LineStyle(kDashed), LineColor(kBlue), LineWidth(2), Name("bkg"));
         
         if (mcFrame && mcFitResForPlot && dataFramePlot) {
             // Create canvas with MC (left) and Data (right) - 4 pads
@@ -932,24 +869,13 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             // Right: Background
             y = 0.95;
             dataParamText.SetTextSize(0.050);
-            dataParamText.DrawLatex(x_right, y, Form("#bf{Bkg} (%s)", bkgType.c_str()));
+            dataParamText.DrawLatex(x_right, y, "#bf{Bkg} (Phenomenological2)");
             y -= dy;
             dataParamText.SetTextSize(0.040);
-            if (bkgType == "Phenomenological2") {
-                dataParamText.DrawLatex(x_right, y, Form("m: %.3f%s", m_param.getVal(), m_param.isConstant() ? " (f)" : ""));
-                y -= dy;
-                dataParamText.DrawLatex(x_right, y, Form("#lambda: %.3f%s", c_param.getVal(), c_param.isConstant() ? " (f)" : ""));
-                y -= dy * 3;  // Skip unused params
-            } else {
-                dataParamText.DrawLatex(x_right, y, Form("m: %.3f%s", m_param.getVal(), m_param.isConstant() ? " (f)" : ""));
-                y -= dy;
-                dataParamText.DrawLatex(x_right, y, Form("c: %.3f%s", c_param.getVal(), c_param.isConstant() ? " (f)" : ""));
-                y -= dy;
-                dataParamText.DrawLatex(x_right, y, Form("a: %.3f%s", a_param.getVal(), a_param.isConstant() ? " (f)" : ""));
-                y -= dy;
-                dataParamText.DrawLatex(x_right, y, Form("b: %.3f%s", b_param.getVal(), b_param.isConstant() ? " (f)" : ""));
-                y -= dy;
-            }
+            dataParamText.DrawLatex(x_right, y, Form("m: %.3f%s", m_param.getVal(), m_param.isConstant() ? " (f)" : ""));
+            y -= dy;
+            dataParamText.DrawLatex(x_right, y, Form("#lambda: %.3f%s", c_param.getVal(), c_param.isConstant() ? " (f)" : ""));
+            y -= dy * 3;  // Skip unused params
             dataParamText.SetTextSize(0.035);
             dataParamText.DrawLatex(x_right, y, Form("N_{b}: %.0f", nbkg.getVal()));
             y -= dy;
@@ -959,8 +885,8 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
             // Save plot
             cMass->cd();  // Go back to main canvas
             cMass->Update();  // Force update before saving
-            std::string plotName = Form("results/data_fits/mass_fits_%s_%.2f_%.2f_mva%.3f", 
-                                       varName.c_str(), varMin, varMax, mva);
+            std::string plotName = Form("results/data_fits/mass_fits_%s_%.2f_%.2f_%s_mva%.3f", 
+                                       varName.c_str(), varMin, varMax, catLabel.c_str(), mva);
             for (char& c : plotName) if (c == '.') c = 'p';
             cMass->SaveAs((plotName + ".png").c_str());
             cMass->SaveAs((plotName + ".pdf").c_str());
@@ -1023,8 +949,8 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
     tex->SetTextSize(0.04);
     tex->DrawLatex(0.20, 0.88, Form("%s: [%.2f, %.2f]", varLabel.c_str(), varMin, varMax));
     
-    std::string yieldPlotName = Form("results/data_fits/yield_vs_mva_%s_%.2f_%.2f", 
-                                     varName.c_str(), varMin, varMax);
+    std::string yieldPlotName = Form("results/data_fits/yield_vs_mva_%s_%.2f_%.2f_%s", 
+                                     varName.c_str(), varMin, varMax, catLabel.c_str());
     for (char& c : yieldPlotName) if (c == '.') c = 'p';
     cYield->SaveAs((yieldPlotName + ".png").c_str());
     cYield->SaveAs((yieldPlotName + ".pdf").c_str());
@@ -1033,8 +959,8 @@ void FitSingleBin(int kinVarInt, double varMin, double varMax, int generateHisto
     delete cYield;
     
     // Save yields to text file
-    std::string yieldsFileName = Form("results/data_fits/yields_%s_%.2f_%.2f.txt", 
-                                   varName.c_str(), varMin, varMax);
+    std::string yieldsFileName = Form("results/data_fits/yields_%s_%.2f_%.2f_%s.txt", 
+                                   varName.c_str(), varMin, varMax, catLabel.c_str());
     for (char& c : yieldsFileName) if (c == '.') c = 'p';
     std::ofstream out(yieldsFileName);
     out << "# MVA & Data | " << varName << " bin: [" << varMin << ", " << varMax << "]\n";
