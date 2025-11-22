@@ -177,8 +177,8 @@ vector<RooDataSet*> RDSMaker(
     map<string, bool> boolBranchMap;
     
     // Event plane angle variable
-    Double_t Psi2Raw_Trk = -99.0f;
-    tree->SetBranchAddress("Psi2Raw_Trk", &Psi2Raw_Trk);
+    Double_t Psi2Flat_Trk = -99.0f;
+    tree->SetBranchAddress("Psi2Flat_Trk", &Psi2Flat_Trk);
     vector<VarDef> formulaVars;
     RooRealVar weightVar("weight", "Event Weight", 0.0, 10000.0); // 가중치 변수
 
@@ -395,7 +395,7 @@ if (saveEP) {
                 cosThetaHX.setVal(cos_val);
                 
                 // Event plane frame calculation
-                TVector3 DstarDau1_EP = DstarDau1Vector_EventPlane(dstar, dau1, Psi2Raw_Trk);
+                TVector3 DstarDau1_EP = DstarDau1Vector_EventPlane(dstar, dau1, Psi2Flat_Trk);
                 float cos_val_ep = DstarDau1_EP.Unit().Y();
                 cout << "EP cosTheta: " << cos_val_ep << endl;
                 cosThetaEP.setVal(cos_val_ep);
