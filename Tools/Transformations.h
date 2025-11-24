@@ -91,19 +91,31 @@ TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLor
 
     // ******** Determine event-plane normal in the D* rest frame ******** //
     TVector3 epNormalLab(-std::sin(eventPlaneAngle), std::cos(eventPlaneAngle), 0.0);
-    TLorentzVector epNormal4(0.0, epNormalLab.X(), epNormalLab.Y(), epNormalLab.Z());
+    //TLorentzVector epNormal4(0.0, epNormalLab.X(), epNormalLab.Y(), epNormalLab.Z());
+    //TLorentzVector epNormal4(epNormalLab.X(), epNormalLab.Y(), epNormalLab.Z(),0.0);
+    TLorentzVector epNormal4(epNormalLab,0.0);
     epNormal4.Boost(-DstarLV_Lab.BoostVector());
     TVector3 epNormalRest = epNormal4.Vect();
 
-    if (epNormalRest.Mag2() == 0.0) {
-        return Dau1Vec_Boosted;
-    }
+    //if (epNormalRest.Mag2() == 0.0) {
+    //    return Dau1Vec_Boosted;
+    //}
 
-    // ******** Rotate so event-plane normal aligns with +z axis ******** //
-    TVector3 rotatedVec(Dau1Vec_Boosted);
-    rotatedVec.RotateUz(epNormalRest.Unit());
+    if (epNormalRest.Mag2() == 0) return TVector3(0,0,-999);
+
+    TRotation rot;
+    rot.SetZAxis(epNormalRest.Unit()); 
+    TRotation rotInv = rot.Inverse(); 
+
+    TVector3 rotatedVec = Dau1Vec_Boosted;
+    rotatedVec.Transform(rotInv); // make daughter particle align with Z axis 
 
     return rotatedVec;
+    // ******** Rotate so event-plane normal aligns with +z axis ******** //
+//    TVector3 rotatedVec(Dau1Vec_Boosted);
+//    rotatedVec.RotateUz(epNormalRest.Unit());
+
+    //return rotatedVec;
 }
 // TVector3 DstarDau1Vector_EventPlane(const TLorentzVector DstarLV_Lab, const TLorentzVector DstarDau1LV_Lab, double eventPlaneAngle) {
     

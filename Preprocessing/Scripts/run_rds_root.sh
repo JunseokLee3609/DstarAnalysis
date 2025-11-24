@@ -34,6 +34,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON_DIR="${SCRIPT_DIR}/../Common"
 MACRO_PATH="${COMMON_DIR}/DStarRDSMakerImproved.cpp"
 
+# Setup logging
+LOG_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)/log"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/rds_root.log"
+
 if [[ ! -f "${MACRO_PATH}" ]]; then
     echo "ERROR: 매크로 파일을 찾을 수 없습니다: ${MACRO_PATH}" >&2
     exit 1
@@ -117,5 +122,8 @@ ROOT_CMD="${MACRO_PATH}(${isMC},${isD0},${isPP},\"${inputEscaped}\",\"${suffixEs
 
 echo ">>> ROOT 매크로 실행:"
 echo "    root -l -q '${ROOT_CMD}'"
+
+# Log the command with timestamp
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] $0 $@" >> "$LOG_FILE"
 
 root -l -q "${ROOT_CMD}"

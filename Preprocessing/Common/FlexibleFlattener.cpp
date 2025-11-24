@@ -1171,7 +1171,7 @@ void FlexibleMC(
 
 
 
-int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char* collision_type="PbPb", int jobIdx_=0, int start=0, int end=-1, std::string path = "", std::string suffix="", const char* centering_file="", const char* flattening_file="", const char* evtplane_calib_file="") {
+int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char* collision_type="PbPb", int jobIdx_=0, int start=0, int end=-1, std::string path = "", std::string suffix="", const char* evtplane_calib_file="") {
 
     int start_ = start;
     int end_ = end;
@@ -1190,8 +1190,6 @@ int FlexibleFlattener(int type=0, const char* particle_type="DStar", const char*
         doEvtPlane = particleType == ParticleType::DStar ? true : false;
     }
 
-    const std::string centeringFile = centering_file ? centering_file : "";
-    const std::string flatteningFile = flattening_file ? flattening_file : "";
     const std::string evtPlaneCalibFile = evtplane_calib_file ? evtplane_calib_file : "";
     TrackEventPlaneCalibration trackCalib;
     const TrackEventPlaneCalibration* trackCalibPtr = nullptr;

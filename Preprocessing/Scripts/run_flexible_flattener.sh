@@ -5,39 +5,40 @@
 # Function to display usage
 show_usage() {
     cat <<EOF
-Usage: ./run_flexible_flattener.sh <type> <particle> <collision> [jobIdx] [inputfile] [suffix]
+Usage: ./run_flexible_flattener.sh <type> <particle> <collision> [options]
 
 Required Arguments:
-
   type        - Data type: 0=Data, 1=MC, 2=Mix
   particle    - Particle type: D0 or DStar
   collision   - Collision system: PbPb or pp
 
 Optional Arguments:
-  jobIdx      - Job index for output directory naming (default: 0)
-                If suffix is provided, this is ignored and suffix is used instead
-  inputfile   - Custom input file path (optional, default: use preset paths)
-                Can be: single ROOT file, file list, or directory path
-  suffix      - Output suffix for custom directory naming (optional, default: empty)
-                If provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/{suffix}
-                If not provided, output directory will be: Data/FlatSample/{type}{collision}/{particle}/job_{jobIdx}
+  --job-idx NUM               - Job index (default: 0)
+  --start NUM                 - Start entry index (default: 0)
+  --end NUM                   - End entry index, -1 for all (default: -1)
+  --input FILE                - Input file/directory path (optional)
+  --suffix NAME               - Output suffix for custom directory naming (optional)
+  --evtplane-calib-file FILE  - Event plane calibration file (optional)
+  --help                      - Show this help message
 
 Examples:
-  # Basic usage with defaults (Data, DStar, PbPb, job_0)
+  # Basic usage (Data, DStar, PbPb, job 0)
   ./run_flexible_flattener.sh 0 DStar PbPb
 
-  # MC processing with custom job index
-  ./run_flexible_flattener.sh 1 DStar PbPb 5
+  # MC with custom job index
+  ./run_flexible_flattener.sh 1 DStar PbPb --job-idx 5
 
-  # Data processing with custom input file
-  ./run_flexible_flattener.sh 0 DStar PbPb 0 /path/to/input.root
+  # MC with entry range
+  ./run_flexible_flattener.sh 1 DStar PbPb --start 0 --end 100000
 
-  # MC processing with custom suffix (output in custom directory)
-  ./run_flexible_flattener.sh 1 DStar PbPb 0 "" "MyCustomSuffix"
+  # MC with custom input and suffix
+  ./run_flexible_flattener.sh 1 DStar PbPb --input /path/to/input.root --suffix MyCustom
 
-  # Full example with all parameters
+  # PbPb DStar with event plane calibration
+  ./run_flexible_flattener.sh 1 DStar PbPb --evtplane-calib-file /path/to/calib.root
 
-  ./run_flexible_flattener.sh 1 DStar PbPb 0 /path/to/input.root "Nov2025"
+  # Full example
+  ./run_flexible_flattener.sh 1 DStar PbPb --job-idx 2 --start 0 --end 50000 --input /data/mc.root --suffix Nov2025 --evtplane-calib-file /calib.root
 
 Output:
   Files are saved to: Data/FlatSample/{type}{collision}/{particle}/{suffix or job_{jobIdx}}/
@@ -52,26 +53,62 @@ if [ $# -lt 3 ]; then
     exit 1
 fi
 
-# Set ROOT environment
-if [ -f /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh ]; then
-    source /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh
-elif [ -f /software/ROOT/root_v6.32.06.Linux-ubuntu22.04-x86_64-gcc11.4/bin/thisroot.sh ]; then
-    source /software/ROOT/root_v6.32.06.Linux-ubuntu22.04-x86_64-gcc11.4/bin/thisroot.sh
-else
-    echo "WARNING: ROOT environment not found, proceeding without sourcing"
+# Display help if requested
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    show_usage
+    exit 0
 fi
 
-# Get absolute path to DStarAnalysis directory
-DSTAR_ANALYSIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"
-FLAT_SAMPLE_DIR="${DSTAR_ANALYSIS_DIR}/Data/FlatSample"
-
 # Default values
-TYPE="$1"  # 0=Data, 1=MC, 2=Mix
+TYPE="$1"
 PARTICLE="$2"
 COLLISION="$3"
-JOB_IDX=${4:-0}
-INPUTFILE=${5:-""}  # Optional: custom input file
-SUFFIX=${6:-""}     # Optional: output suffix
+JOB_IDX=0
+START=0
+END=-1
+INPUTFILE=""
+SUFFIX=""
+EVTPLANE_CALIB_FILE=""
+
+# Parse optional arguments
+shift 3  # Remove the first 3 required arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --job-idx)
+            JOB_IDX="$2"
+            shift 2
+            ;;
+        --start)
+            START="$2"
+            shift 2
+            ;;
+        --end)
+            END="$2"
+            shift 2
+            ;;
+        --input)
+            INPUTFILE="$2"
+            shift 2
+            ;;
+        --suffix)
+            SUFFIX="$2"
+            shift 2
+            ;;
+        --evtplane-calib-file)
+            EVTPLANE_CALIB_FILE="$2"
+            shift 2
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown option '$1'"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
 
 # Validate inputs
 if [[ ! "$TYPE" =~ ^[012]$ ]]; then
@@ -88,6 +125,40 @@ if [[ "$COLLISION" != "PbPb" && "$COLLISION" != "pp" ]]; then
     echo "ERROR: collision must be PbPb or pp"
     exit 1
 fi
+
+# Validate numeric parameters
+if ! [[ "$JOB_IDX" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: job-idx must be a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$START" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: start must be a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$END" =~ ^-?[0-9]+$ ]]; then
+    echo "ERROR: end must be an integer (-1 for all)"
+    exit 1
+fi
+
+# Set ROOT environment
+if [ -f /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh ]; then
+    source /software/ROOT/ROOT-v6.24/root-6.24-install/bin/thisroot.sh
+elif [ -f /software/ROOT/root_v6.32.06.Linux-ubuntu22.04-x86_64-gcc11.4/bin/thisroot.sh ]; then
+    source /software/ROOT/root_v6.32.06.Linux-ubuntu22.04-x86_64-gcc11.4/bin/thisroot.sh
+else
+    echo "WARNING: ROOT environment not found, proceeding without sourcing"
+fi
+
+# Get absolute path to DStarAnalysis directory
+DSTAR_ANALYSIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"
+FLAT_SAMPLE_DIR="${DSTAR_ANALYSIS_DIR}/Data/FlatSample"
+
+# Setup logging
+LOG_DIR="${DSTAR_ANALYSIS_DIR}/log"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/flexible_flattener.log"
 
 # Determine output directory based on type and collision system
 case "$TYPE" in
@@ -115,14 +186,8 @@ else
 fi
 mkdir -p "$OUTPUT_DIR"
 
-# Build ROOT macro call with optional parameters
-if [[ -z "$INPUTFILE" && -z "$SUFFIX" ]]; then
-    MACRO_CALL="FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX)"
-elif [[ -z "$SUFFIX" ]]; then
-    MACRO_CALL="FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, 0, -1, \"$INPUTFILE\")"
-else
-    MACRO_CALL="FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, 0, -1, \"$INPUTFILE\", \"$SUFFIX\")"
-fi
+# Build ROOT macro call with supported parameters
+MACRO_CALL="FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, $START, $END, \"$INPUTFILE\", \"$SUFFIX\", \"$EVTPLANE_CALIB_FILE\")"
 
 echo "=========================================="
 echo "Running FlexibleFlattener"
@@ -132,6 +197,8 @@ echo "Type: $TYPE ($([ $TYPE -eq 0 ] && echo 'Data' || ([ $TYPE -eq 1 ] && echo 
 echo "Particle: $PARTICLE"
 echo "Collision: $COLLISION"
 echo "Job Index: $JOB_IDX"
+echo "Start Entry: $START"
+echo "End Entry: $END"
 if [[ ! -z "$INPUTFILE" ]]; then
     echo "Input File: $INPUTFILE"
     if [[ "$INPUTFILE" == *.root ]]; then
@@ -147,6 +214,9 @@ fi
 if [[ ! -z "$SUFFIX" ]]; then
     echo "Output Suffix: $SUFFIX"
 fi
+if [[ ! -z "$EVTPLANE_CALIB_FILE" ]]; then
+    echo "Event Plane Calib File: $EVTPLANE_CALIB_FILE"
+fi
 echo "Output Base (Absolute): $OUTPUT_BASE"
 echo "Output directory: $OUTPUT_DIR"
 echo "Macro Call: $MACRO_CALL"
@@ -155,17 +225,14 @@ echo "=========================================="
 # Change to DStarAnalysis directory first
 cd "$DSTAR_ANALYSIS_DIR" || exit 1
 
-# Run ROOT macro with the correct include path resolution
-# ROOT will execute from DStarAnalysis directory where includes can be resolved properly
-if [[ -z "$INPUTFILE" && -z "$SUFFIX" ]]; then
-    ROOT_CALL="root -l -b -q 'Preprocessing/Common/FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX)'"
-elif [[ -z "$SUFFIX" ]]; then
-    ROOT_CALL="root -l -b -q 'Preprocessing/Common/FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, 0, -1, \"$INPUTFILE\")'"
-else
-    ROOT_CALL="root -l -b -q 'Preprocessing/Common/FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, 0, -1, \"$INPUTFILE\", \"$SUFFIX\")'"
-fi
+# Run ROOT macro with supported parameters
+ROOT_CALL="root -l -b -q 'Preprocessing/Common/FlexibleFlattener.cpp($TYPE, \"$PARTICLE\", \"$COLLISION\", $JOB_IDX, $START, $END, \"$INPUTFILE\", \"$SUFFIX\", \"$EVTPLANE_CALIB_FILE\")'"
 
 mkdir -p "$OUTPUT_DIR"
+
+# Log the command with timestamp
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] $0 $@" >> "$LOG_FILE"
+
 eval $ROOT_CALL
 
 if [ $? -eq 0 ]; then

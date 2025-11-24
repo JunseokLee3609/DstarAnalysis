@@ -395,8 +395,8 @@ if (saveEP) {
                 cosThetaHX.setVal(cos_val);
                 
                 // Event plane frame calculation
-                TVector3 DstarDau1_EP = DstarDau1Vector_EventPlane(dstar, dau1, Psi2Flat_Trk);
-                float cos_val_ep = DstarDau1_EP.Unit().Y();
+		TVector3 DstarDau1_EP = DstarDau1Vector_EventPlane(dstar, dau1, Psi2Flat_Trk);
+		float cos_val_ep = DstarVec_Rotated.CosTheta(); 
                 cout << "EP cosTheta: " << cos_val_ep << endl;
                 cosThetaEP.setVal(cos_val_ep);
                 
